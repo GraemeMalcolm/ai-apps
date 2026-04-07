@@ -46,9 +46,11 @@ const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
 const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 
-// Calculate speech model path - relative to the computing-local folder
-// We need to go up 2 directories to reach the ai-apps root, then into speech-model
-const speechModelUrl = '../../speech-model/speech-model.tar.gz';
+// Calculate speech model path dynamically based on current location
+// This works both locally and on GitHub Pages
+const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
@@ -212,7 +214,16 @@ async function loadVoskModel() {
         textInput.disabled = true;
         micBtn.disabled = true;
 
-        voskModel = await Vosk.createModel(speechModelUrl);
+        try {
+            voskModel = await Vosk.createModel(speechModelUrl);
+        } catch (modelError) {
+            // Remove the loading message since we failed
+            if (loadingMsg && loadingMsg.message) {
+                loadingMsg.message.remove();
+            }
+            throw modelError; // Re-throw to be caught by outer catch
+        }
+
         voskRecognizer = new voskModel.KaldiRecognizer(16000);
 
         // Set up recognizer event handlers
@@ -266,7 +277,7 @@ async function loadVoskModel() {
     } catch (error) {
         console.error('Failed to load Vosk model:', error);
         voskLoadingFailed = true;
-        addMessage('Sorry, offline speech recognition could not be loaded.', 'bot');
+        // Don't add another error message here - handleVoiceInput will inform the user
         sendBtn.disabled = false;
         textInput.disabled = false;
         micBtn.disabled = false;
@@ -1804,19 +1815,26 @@ async function handleVoiceInput() {
     if (usingWebSpeech) {
         const webSpeechWorked = await tryWebSpeech();
         if (!webSpeechWorked) {
-            // Web Speech failed, switch to Vosk
+            // Web Speech failed, try Vosk fallback
             console.log('Web Speech API not available, loading Vosk fallback...');
-            usingWebSpeech = false;
 
             // Load Vosk model if not already loaded
-            if (!voskLoaded) {
+            if (!voskLoaded && !voskLoadingFailed) {
                 const loaded = await loadVoskModel();
                 if (!loaded) {
-                    return; // Vosk failed to load
+                    // Vosk also failed - inform user and stay on Web Speech
+                    console.log('Vosk fallback unavailable, voice input disabled');
+                    addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model could not be loaded.', 'bot');
+                    return;
                 }
+            } else if (voskLoadingFailed) {
+                // Previously failed to load Vosk - inform user
+                addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model is not available.', 'bot');
+                return;
             }
 
-            // Now try Vosk
+            // Vosk loaded successfully, switch to it
+            usingWebSpeech = false;
             await startVoskRecording();
         }
     } else {
