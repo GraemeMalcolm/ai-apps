@@ -48,8 +48,10 @@ let usingWebSpeech = true; // Try Web Speech API first
 
 // Calculate speech model path dynamically based on current location
 // This works both locally and on GitHub Pages
+// From computing-local, go up 3 levels: computing-local -> computing-history -> ai-apps -> speech-model
 const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
+const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
 const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
 
 // Vision model paths
