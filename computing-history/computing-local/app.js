@@ -1241,9 +1241,13 @@ async function performClassification(imgEl, userText = "") {
                     }
                 }
 
-                // Animate the complete response
-                const finalReply = `${baseReply}<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
-                await typeTextInBubble(bubble, finalReply, 20);
+                // Update bubble to show confidence message without scanning indicator
+                setBubbleContent(bubble, baseReply);
+                scrollToBottom();
+
+                // Type only the OCR results below the confidence message
+                const ocrResults = `<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
+                await typeTextInBubble(bubble, baseReply + ocrResults, 20);
 
                 if (isVoiceInput) {
                     speakText(bubble);
@@ -1255,8 +1259,15 @@ async function performClassification(imgEl, userText = "") {
                 console.error("OCR Failed", e);
                 removeTyping();
                 if (!checkStopResponse()) {
-                    const fallbackReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
-                    await typeTextInBubble(bubble, fallbackReply, 20);
+                    const baseReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+
+                    // Update bubble to show confidence message
+                    setBubbleContent(bubble, baseReply);
+                    scrollToBottom();
+
+                    // Type only the error message and identification
+                    const errorResults = `<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
+                    await typeTextInBubble(bubble, baseReply + errorResults, 20);
 
                     if (isVoiceInput) {
                         speakText(bubble);
