@@ -600,6 +600,83 @@ function scrollToBottom() {
 }
 
 /**
+ * Animates typing text into a bubble character by character
+ * @param {HTMLElement} bubble - The bubble element to type into
+ * @param {string} text - The HTML text to animate
+ * @param {number} speed - Milliseconds per character (default: 20)
+ * @returns {Promise<void>} Resolves when animation completes or is stopped
+ */
+async function typeTextInBubble(bubble, text, speed = 20) {
+    return new Promise((resolve) => {
+        let currentIndex = 0;
+        let displayText = '';
+
+        // Parse HTML to handle tags properly
+        const htmlChunks = [];
+        let inTag = false;
+        let currentChunk = '';
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+
+            if (char === '<') {
+                if (currentChunk && !inTag) {
+                    htmlChunks.push({ type: 'text', content: currentChunk });
+                    currentChunk = '';
+                }
+                inTag = true;
+                currentChunk += char;
+            } else if (char === '>') {
+                currentChunk += char;
+                if (inTag) {
+                    htmlChunks.push({ type: 'tag', content: currentChunk });
+                    currentChunk = '';
+                    inTag = false;
+                }
+            } else {
+                currentChunk += char;
+            }
+        }
+
+        if (currentChunk) {
+            htmlChunks.push({ type: inTag ? 'tag' : 'text', content: currentChunk });
+        }
+
+        const typeInterval = setInterval(() => {
+            if (checkStopResponse() || currentIndex >= htmlChunks.length) {
+                clearInterval(typeInterval);
+                setBubbleContent(bubble, text);
+                scrollToBottom();
+                resolve();
+                return;
+            }
+
+            const chunk = htmlChunks[currentIndex];
+
+            if (chunk.type === 'tag') {
+                // Add entire tag at once
+                displayText += chunk.content;
+                currentIndex++;
+            } else {
+                // Type out text character by character
+                if (!chunk.charIndex) chunk.charIndex = 0;
+
+                if (chunk.charIndex < chunk.content.length) {
+                    displayText += chunk.content[chunk.charIndex];
+                    chunk.charIndex++;
+                } else {
+                    currentIndex++;
+                }
+            }
+
+            setBubbleContent(bubble, displayText);
+            scrollToBottom();
+
+        }, speed);
+    });
+}
+
+/**
  * Shows a typing indicator in the chat
  */
 function showTyping() {
@@ -1135,11 +1212,13 @@ async function performClassification(imgEl, userText = "") {
 
                 // Use the extracted text
                 const rawText = data.text || '';
-                let finalReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+                const baseReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.`;
+                let ocrMessage = '';
+                let boardIdMessage = '';
 
                 if (!rawText || rawText.trim().length === 0) {
-                    finalReply += `<br><br>I couldn't extract any text from the board.`;
-                    finalReply += `<br><br>${getBoardIdentificationMessage('')}`;
+                    ocrMessage = `I couldn't extract any text from the board.`;
+                    boardIdMessage = getBoardIdentificationMessage('');
                 } else {
                     // Clean the text - preserve hyphens, underscores, dots for part numbers
                     const cleanText = rawText
@@ -1154,16 +1233,17 @@ async function performClassification(imgEl, userText = "") {
 
                     // Validate: require at least 3 total alphanumeric characters
                     if (cleanText && cleanText.replace(/[^a-zA-Z0-9]/g, '').length >= 3) {
-                        finalReply += `<br><br>There are details printed on the board.`;
-                        finalReply += `<br><br>${getBoardIdentificationMessage(cleanText)}`;
+                        ocrMessage = `There are details printed on the board.`;
+                        boardIdMessage = getBoardIdentificationMessage(cleanText);
                     } else {
-                        finalReply += `<br><br>I couldn't extract any text from the board.`;
-                        finalReply += `<br><br>${getBoardIdentificationMessage('')}`;
+                        ocrMessage = `I couldn't extract any text from the board.`;
+                        boardIdMessage = getBoardIdentificationMessage('');
                     }
                 }
 
-                setBubbleContent(bubble, finalReply);
-                scrollToBottom();
+                // Animate the complete response
+                const finalReply = `${baseReply}<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
+                await typeTextInBubble(bubble, finalReply, 20);
 
                 if (isVoiceInput) {
                     speakText(bubble);
@@ -1176,8 +1256,7 @@ async function performClassification(imgEl, userText = "") {
                 removeTyping();
                 if (!checkStopResponse()) {
                     const fallbackReply = `I am <b>${confidence}%</b> sure this is a <b>${topMatch.className}</b>.<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
-                    setBubbleContent(bubble, fallbackReply);
-                    scrollToBottom();
+                    await typeTextInBubble(bubble, fallbackReply, 20);
 
                     if (isVoiceInput) {
                         speakText(bubble);
