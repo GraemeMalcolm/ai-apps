@@ -46,11 +46,9 @@ const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
 const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 
-// Calculate speech model path relative to the base path
-const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
-const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
-const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+// Calculate speech model path - relative to the computing-local folder
+// We need to go up 2 directories to reach the ai-apps root, then into speech-model
+const speechModelUrl = '../../speech-model/speech-model.tar.gz';
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
