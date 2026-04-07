@@ -88,6 +88,81 @@ body.dark {
     letter-spacing: -0.01em;
 }
 
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.model-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.model-status-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #e8e8ea;
+    color: var(--muted);
+    min-width: 160px;
+    text-align: center;
+}
+
+.model-status-text.loading {
+    background: #fff3e0;
+    color: #e65100;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.model-status-text.ready {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+body.dark .model-status-text {
+    background: #2a2438;
+    color: var(--muted);
+}
+
+body.dark .model-status-text.loading {
+    background: #3d2e00;
+    color: #ffb74d;
+}
+
+body.dark .model-status-text.ready {
+    background: #1b3a1f;
+    color: #66bb6a;
+}
+
+.model-toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.model-label {
+    min-width: 35px;
+    text-align: center;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
 .theme-toggle-wrap {
     display: flex;
     align-items: center;
@@ -186,6 +261,11 @@ input:checked+.slider::before {
     font-size: 0.94rem;
 }
 
+#analyzer-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .editor-box {
     flex: 1;
     min-height: 0;
@@ -195,6 +275,11 @@ input:checked+.slider::before {
     border: 1px solid var(--line);
     border-radius: 7px;
     overflow: hidden;
+}
+
+.editor-box:has(#source-text:disabled) {
+    opacity: 0.6;
+    pointer-events: none;
 }
 
 .editor-toolbar {
@@ -491,5 +576,16 @@ body.dark #placeholder-text {
 
     #placeholder-text {
         font-size: 1.45rem;
+    }
+
+    .toolbar-right {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-end;
+    }
+
+    .model-controls {
+        flex-direction: column;
+        gap: 8px;
     }
 }
