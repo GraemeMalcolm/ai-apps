@@ -44,7 +44,7 @@ import { Wllama } from '@wllama/wllama';
             { label: "Arabic paragraph", text: "انا اسكن في دبي واعمل في شركة برمجيات. في عطلة نهاية الاسبوع ازور عائلتي واقرا كتابا جديدا." }
         ],
         pii: [
-            { label: "Contact note", text: "John Smith can be reached at john.smith@contoso.com or +1 555 123 4567. Mailing address: 123 Anystreet, Anytown, WA, USA, 01234." },
+            { label: "Contact note", text: "John Smith can be reached by email at john@contoso.com, or by phone on +1 555 123 4567. Mailing address: 123 Anystreet, Anytown, WA, USA, 01234." },
             { label: "Customer form", text: "Customer Feedback Form\nDate: 4/1/2026\nCustomer: Mario Gizzi\nEmail: mario@adventure-works.com\nPhone: 555 123 0987\nRating: 5\nComment: Thanks for the great service. I received my delivery at 1482 Westward Way, Seattle. Everything looks great!" }
         ]
     };
