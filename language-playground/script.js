@@ -119,6 +119,14 @@ import { Wllama } from '@wllama/wllama';
         elements.results.style.display = "flex";
     }
 
+    function showLoading() {
+        elements.placeholder.hidden = true;
+        elements.placeholder.style.display = "none";
+        elements.results.hidden = false;
+        elements.results.style.display = "flex";
+        elements.results.innerHTML = "<div class='loading-state'><div class='loading-dots'><span></span><span></span><span></span></div></div>";
+    }
+
     function clearResults() {
         elements.results.innerHTML = "";
     }
@@ -199,8 +207,15 @@ import { Wllama } from '@wllama/wllama';
                 targetModelId,
                 {
                     initProgressCallback: function (progress) {
-                        const percentage = Math.round(progress.progress * 100);
-                        updateModelStatus('Loading Phi-3-mini: ' + percentage + '%', true);
+                        console.log('WebLLM progress object:', progress);
+
+                        // Use the text property if available for more detailed status
+                        if (progress.text) {
+                            updateModelStatus(progress.text, true);
+                        } else {
+                            const percentage = Math.round(progress.progress * 100);
+                            updateModelStatus('Loading Phi-3-mini: ' + percentage + '%', true);
+                        }
                     }
                 }
             );
@@ -239,8 +254,13 @@ import { Wllama } from '@wllama/wllama';
             const internalProgressCallback = ({ loaded, total }) => {
                 const progress = loaded / total;
                 const percentage = Math.round((progress * 100));
-                updateModelStatus('Loading SmolLM2: ' + percentage + '%', true);
-                console.log('Loading wllama: ' + percentage + '%');
+                const statusText = 'Loading SmolLM2: ' + percentage + '%';
+                console.log('Wllama progress:', percentage + '%', 'loaded:', loaded, 'total:', total);
+                updateModelStatus(statusText, true);
+                // Force DOM update
+                if (elements.modelStatus) {
+                    elements.modelStatus.offsetHeight;
+                }
             };
 
             // Try multithreaded (4 threads) first, fall back to single-threaded
@@ -940,6 +960,9 @@ import { Wllama } from '@wllama/wllama';
         }
 
         state.originalText = text;
+
+        // Show loading state
+        showLoading();
 
         try {
             if (state.mode === "language") {

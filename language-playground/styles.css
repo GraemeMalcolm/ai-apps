@@ -105,42 +105,26 @@ body.dark {
     font-weight: 500;
     padding: 6px 12px;
     border-radius: 999px;
-    background: #e8e8ea;
-    color: var(--muted);
+    background: var(--accent-soft);
+    color: var(--accent);
     min-width: 160px;
     text-align: center;
 }
 
 .model-status-text.loading {
-    background: #fff3e0;
-    color: #e65100;
     animation: pulse 2s ease-in-out infinite;
 }
 
 .model-status-text.ready {
-    background: #e8f5e9;
-    color: #2e7d32;
+    /* Steady state - no animation */
 }
 
-body.dark .model-status-text {
-    background: #2a2438;
-    color: var(--muted);
-}
-
-body.dark .model-status-text.loading {
-    background: #3d2e00;
-    color: #ffb74d;
-}
-
-body.dark .model-status-text.ready {
-    background: #1b3a1f;
-    color: #66bb6a;
-}
+/* Dark mode uses CSS variables, no overrides needed */
 
 .model-toggle-wrap {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     color: var(--muted);
     font-size: 0.85rem;
     font-weight: 600;
@@ -166,7 +150,7 @@ body.dark .model-status-text.ready {
 .theme-toggle-wrap {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     color: var(--accent);
     font-weight: 600;
 }
@@ -448,6 +432,51 @@ body.dark #placeholder-text {
     margin: 0;
     font-size: 1rem;
     line-height: 1.35;
+}
+
+.loading-state {
+    display: grid;
+    place-content: center;
+    min-height: 100%;
+    padding: 40px 20px;
+}
+
+.loading-dots {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+}
+
+.loading-dots span {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes dotPulse {
+
+    0%,
+    80%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    40% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
 }
 
 .results {
