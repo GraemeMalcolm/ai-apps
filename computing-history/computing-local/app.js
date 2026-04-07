@@ -602,22 +602,30 @@ function scrollToBottom() {
 /**
  * Animates typing text into a bubble character by character
  * @param {HTMLElement} bubble - The bubble element to type into
- * @param {string} text - The HTML text to animate
+ * @param {string} text - The complete HTML text (including any starting text)
  * @param {number} speed - Milliseconds per character (default: 20)
+ * @param {string} startingText - Text that's already displayed (won't be animated)
  * @returns {Promise<void>} Resolves when animation completes or is stopped
  */
-async function typeTextInBubble(bubble, text, speed = 20) {
+async function typeTextInBubble(bubble, text, speed = 20, startingText = '') {
     return new Promise((resolve) => {
         let currentIndex = 0;
-        let displayText = '';
+        let displayText = startingText;
 
-        // Parse HTML to handle tags properly
+        // If starting text equals full text, nothing to type
+        if (startingText === text) {
+            resolve();
+            return;
+        }
+
+        // Parse only the new text that comes after startingText
+        const newText = text.substring(startingText.length);
         const htmlChunks = [];
         let inTag = false;
         let currentChunk = '';
 
-        for (let i = 0; i < text.length; i++) {
-            const char = text[i];
+        for (let i = 0; i < newText.length; i++) {
+            const char = newText[i];
 
             if (char === '<') {
                 if (currentChunk && !inTag) {
@@ -1247,7 +1255,7 @@ async function performClassification(imgEl, userText = "") {
 
                 // Type only the OCR results below the confidence message
                 const ocrResults = `<br><br>${ocrMessage}<br><br>${boardIdMessage}`;
-                await typeTextInBubble(bubble, baseReply + ocrResults, 20);
+                await typeTextInBubble(bubble, baseReply + ocrResults, 20, baseReply);
 
                 if (isVoiceInput) {
                     speakText(bubble);
@@ -1267,7 +1275,7 @@ async function performClassification(imgEl, userText = "") {
 
                     // Type only the error message and identification
                     const errorResults = `<br><br>I couldn't extract any text from the board.<br><br>${getBoardIdentificationMessage('')}`;
-                    await typeTextInBubble(bubble, baseReply + errorResults, 20);
+                    await typeTextInBubble(bubble, baseReply + errorResults, 20, baseReply);
 
                     if (isVoiceInput) {
                         speakText(bubble);
