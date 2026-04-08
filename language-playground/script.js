@@ -134,25 +134,30 @@ import { Wllama } from '@wllama/wllama';
         // Set up progressive loading messages
         const messageEl = elements.results.querySelector('.loading-message');
         if (messageEl) {
-            // After 1 second: "Analyzing"
+            // After 5 seconds: "Analyzing"
             loadingTimers.push(setTimeout(function() {
                 messageEl.textContent = "Analyzing";
-            }, 1000));
+            }, 5000));
             
-            // After 10 seconds: "Still analyzing"
+            // After 20 seconds: "Still analyzing"
             loadingTimers.push(setTimeout(function() {
                 messageEl.textContent = "Still analyzing";
-            }, 10000));
-            
-            // After 20 seconds: "Almost there"
-            loadingTimers.push(setTimeout(function() {
-                messageEl.textContent = "Almost there";
             }, 20000));
             
-            // After 30 seconds: "Hold tight"
+            // After 35 seconds: "Almost there"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Almost there";
+            }, 35000));
+            
+            // After 50 seconds: "Hold tight"
             loadingTimers.push(setTimeout(function() {
                 messageEl.textContent = "Hold tight";
-            }, 30000));
+            }, 50000));
+
+            // After 65 seconds: "Nearly done"
+            loadingTimers.push(setTimeout(function() {
+                messageEl.textContent = "Nearly done";
+            }, 65000));
         }
     }
     
