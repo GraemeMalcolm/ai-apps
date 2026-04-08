@@ -368,13 +368,13 @@ import { Wllama } from '@wllama/wllama';
     async function switchModel(useGPU) {
         // Clear UI and reset state when switching models
         resetUi();
-        
+
         // Switch to Language Detection mode and disable PII until new model loads
         state.mode = "language";
         elements.analyzerSelect.value = "language";
         populateSamples();
         updatePlaceholder();
-        
+
         disableUI();
         aiModelReady = false;
 
