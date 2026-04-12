@@ -1582,6 +1582,11 @@ class ChatPlayground {
         return [...new Set(words)];
     }
 
+    // Strip punctuation from text, keeping only alphanumeric and whitespace
+    stripPunctuation(text) {
+        return text.replace(/[^a-z0-9\s]/g, ' ');
+    }
+
     // Extract relevant lines from file content based on keywords
     extractRelevantLines(fileContent, keywords) {
         if (!fileContent || !keywords || keywords.length === 0) {
@@ -1593,8 +1598,9 @@ class ChatPlayground {
         let bestCount = 0;
 
         for (const line of lines) {
-            const lineLower = line.toLowerCase();
-            const count = keywords.filter(keyword => lineLower.includes(keyword)).length;
+            // Strip punctuation and lowercase for comparison
+            const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
+            const count = keywords.filter(keyword => lineWords.includes(keyword)).length;
             if (count > bestCount) {
                 bestCount = count;
                 bestLine = line.trim();
