@@ -1567,7 +1567,9 @@ class ChatPlayground {
             'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'how',
             'do', 'does', 'did', 'can', 'could', 'would', 'should', 'may', 'might',
             'this', 'these', 'those', 'i', 'you', 'we', 'they', 'my', 'your',
-            'am', 'been', 'being', 'have', 'had', 'were', 'there', 'their'
+            'am', 'been', 'being', 'have', 'had', 'were', 'there', 'their', 'tell',
+            'show', 'give', 'provide', 'explain', 'describe', 'define', 'what\'s',
+            'whats', 'which', 'who\'s', 'whos', 'how\'s', 'hows'
         ]);
 
         // Extract words, convert to lowercase, filter stopwords and short words
