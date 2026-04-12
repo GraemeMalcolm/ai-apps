@@ -1587,17 +1587,19 @@ class ChatPlayground {
         }
 
         const lines = fileContent.split('\n');
-        const matchingLines = [];
+        let bestLine = '';
+        let bestCount = 0;
 
         for (const line of lines) {
             const lineLower = line.toLowerCase();
-            // Check if line contains any keyword
-            if (keywords.some(keyword => lineLower.includes(keyword))) {
-                matchingLines.push(line.trim());
+            const count = keywords.filter(keyword => lineLower.includes(keyword)).length;
+            if (count > bestCount) {
+                bestCount = count;
+                bestLine = line.trim();
             }
         }
 
-        return matchingLines.length > 0 ? matchingLines.join('\n') : '';
+        return bestLine;
     }
 
     async handleSendMessage() {
@@ -1706,7 +1708,7 @@ class ChatPlayground {
             if (this.config.fileUpload.content) {
                 // For Phi-3 (WebLLM/GPU mode), use entire file content for best accuracy
                 console.log('Using entire file content for Phi-3 (WebLLM mode) - ' + this.config.fileUpload.content.split('\n').length + ' lines');
-                finalUserMessage = 'Use the following information to answer the question:\n\n' + this.config.fileUpload.content + '\n\nQuestion: ' + userMessage;
+                finalUserMessage = 'Use ONLY the following information to answer the question:\n\n' + this.config.fileUpload.content + '\n\nQuestion: ' + userMessage;
             }
 
             messages.push({ role: "user", content: finalUserMessage });
@@ -2001,17 +2003,14 @@ class ChatPlayground {
         } else if (fileContent) {
             // Format for file grounding
             prompt = '<|im_start|>system\n';
-            prompt += 'You are a rules‑driven assistant. Your highest priority is to follow the instructions exactly as written, and answer questions based only on the information provided.\n\n';
-            prompt += 'Instructions:\n';
             prompt += this.currentSystemMessage + '\n\n';
-            prompt += 'IMPORTANT: You must answer the user\'s specific question concisely, based only on the following information.\n\n';
-            prompt += 'Information:\n';
-            prompt += fileContent + '\n\n';
-            prompt += 'Base your answer on the information above ONLY. Do NOT include any details that are not present in the information above.\n\n';
             prompt += '<|im_end|>\n\n';
 
             // Add current user message
-            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>user\n' + userMessage + '\n';
+            prompt += 'Respond ONLY by summarizing the following informatation as a single sentence:\n---\n';
+            prompt += fileContent + '\n\n';
+            prompt += '<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
 
         } else {
