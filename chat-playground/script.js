@@ -1707,6 +1707,7 @@ class ChatPlayground {
             }
 
             // If file is uploaded, extract the most relevant line and append to user message
+            this.fileContentUsedInPrompt = false;
             if (this.config.fileUpload.content) {
                 const keywords = this.extractKeywords(userMessage);
                 console.log('Extracted keywords from user prompt (Phi-3 GPU):', keywords);
@@ -1716,9 +1717,9 @@ class ChatPlayground {
                 if (relevantLine) {
                     console.log('Found most relevant line from file:', relevantLine);
                     finalUserMessage += '\nRespond based only on the following information:\n' + relevantLine;
+                    this.fileContentUsedInPrompt = true;
                 } else {
-                    console.log('No relevant lines found in file for the given keywords');
-                    finalUserMessage += '\nRespond based only on the following information:\n' + this.config.fileUpload.content;
+                    console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
                 }
             }
 
@@ -1816,9 +1817,9 @@ class ChatPlayground {
             }
         }
 
-        // Append file attribution if a file is uploaded (for display only, after streaming completes)
+        // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
         let displayResponse = fullResponse;
-        if (hasStartedOutput && this.config.fileUpload.fileName && fullResponse.trim()) {
+        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
             const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
             displayResponse = fullResponse + attribution;
             // Update the typing content to include attribution
@@ -1831,9 +1832,9 @@ class ChatPlayground {
             thinkingIndicator.remove();
 
             if (fullResponse.trim()) {
-                // Append file attribution if a file is uploaded (for display only)
+                // Append file attribution if a file is uploaded and relevant content was used (for display only)
                 displayResponse = fullResponse;
-                if (this.config.fileUpload.fileName) {
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
 
@@ -2070,6 +2071,7 @@ class ChatPlayground {
         let fileContentForPrompt = '';
 
         // If file is uploaded, extract relevant lines
+        this.fileContentUsedInPrompt = false;
         if (this.config.fileUpload.content) {
             const keywords = this.extractKeywords(userMessage);
             console.log('Extracted keywords from user prompt (wllama):', keywords);
@@ -2077,11 +2079,11 @@ class ChatPlayground {
             const relevantLines = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
             if (relevantLines) {
-                console.log('Found relevant lines from file (' + relevantLines.split('\n').length + ' lines)');
+                console.log('Found relevant line from file:', relevantLines);
                 fileContentForPrompt = relevantLines;
+                this.fileContentUsedInPrompt = true;
             } else {
-                console.log('No relevant lines found in file for the given keywords');
-                fileContentForPrompt = this.config.fileUpload.content;
+                console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
             }
         }
 
@@ -2172,9 +2174,9 @@ class ChatPlayground {
                     return;
                 }
 
-                // Append file attribution if a file is uploaded
+                // Append file attribution if a file is uploaded and relevant content was used
                 let displayResponse = cleanedResponse;
-                if (this.config.fileUpload.fileName) {
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse = cleanedResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
 
@@ -2192,7 +2194,7 @@ class ChatPlayground {
             } else if (this.stopRequested && fullResponse.trim()) {
                 // Response was stopped - display it but don't add to history
                 let displayResponse = fullResponse;
-                if (this.config.fileUpload.fileName) {
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                     displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
                 displayResponse += '\n\n[Response stopped by user - not saved to history]';
@@ -2214,7 +2216,7 @@ class ChatPlayground {
                 // Display stopped response but don't add to history
                 if (fullResponse.trim()) {
                     let displayResponse = fullResponse;
-                    if (this.config.fileUpload.fileName) {
+                    if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
                         displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                     }
                     displayResponse += '\n\n[Response stopped by user - not saved to history]';
