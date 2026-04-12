@@ -1706,11 +1706,20 @@ class ChatPlayground {
                 finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
             }
 
-            // If file is uploaded, prepend file content to user message
+            // If file is uploaded, extract the most relevant line and append to user message
             if (this.config.fileUpload.content) {
-                // For Phi-3 (WebLLM/GPU mode), use entire file content for best accuracy
-                console.log('Using entire file content for Phi-3 (WebLLM mode) - ' + this.config.fileUpload.content.split('\n').length + ' lines');
-                finalUserMessage = 'Use ONLY the following information to answer the question:\n\n' + this.config.fileUpload.content + '\n\nQuestion: ' + userMessage;
+                const keywords = this.extractKeywords(userMessage);
+                console.log('Extracted keywords from user prompt (Phi-3 GPU):', keywords);
+
+                const relevantLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
+
+                if (relevantLine) {
+                    console.log('Found most relevant line from file:', relevantLine);
+                    finalUserMessage += '\nRespond based only on the following information:\n' + relevantLine;
+                } else {
+                    console.log('No relevant lines found in file for the given keywords');
+                    finalUserMessage += '\nRespond based only on the following information:\n' + this.config.fileUpload.content;
+                }
             }
 
             messages.push({ role: "user", content: finalUserMessage });
