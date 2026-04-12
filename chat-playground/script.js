@@ -2047,7 +2047,8 @@ class ChatPlayground {
             }
 
             // Add current user message
-            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += '<|im_start|>user\n' + userMessage + '\n\n';
+            prompt += 'Respond concisely and accurately. IMPORTANT: Do not invent facts or make details up.\n<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
         }
 
