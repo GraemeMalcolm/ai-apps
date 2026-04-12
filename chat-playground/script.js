@@ -2025,8 +2025,8 @@ class ChatPlayground {
             prompt += '<|im_end|>\n\n';
 
             // Add current user message
-            prompt += '<|im_start|>user\n' + userMessage + '\n';
-            prompt += 'Respond ONLY by summarizing the following informatation as a single sentence:\n---\n';
+            prompt += '<|im_start|>user\n';
+            prompt += 'Summarize the following text as a single sentence:\n---\n';
             prompt += fileContent + '\n\n';
             prompt += '<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
