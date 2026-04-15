@@ -8,6 +8,8 @@
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
     <link rel="stylesheet" href="styles.css">
+    <!-- MSAL.js library for Entra ID authentication -->
+    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
 </head>
 
 <body>
@@ -187,17 +189,55 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="foundry-key">API Key:</label>
-                        <input type="password" id="foundry-key" placeholder="Enter your API key" autocomplete="off"
-                            aria-describedby="key-help">
-                        <small id="key-help" class="form-help">Your Foundry project API key</small>
-                    </div>
-
-                    <div class="form-group">
                         <label for="foundry-deployment">Model Deployment:</label>
                         <input type="text" id="foundry-deployment" placeholder="e.g., gpt-4.1-mini" autocomplete="off"
                             aria-describedby="deployment-help">
                         <small id="deployment-help" class="form-help">Your model deployment name</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="auth-mode-toggle">Authentication Mode:</label>
+                        <div class="toggle-container">
+                            <span class="toggle-label" id="auth-mode-label-key">Key</span>
+                            <label class="toggle-switch" for="auth-mode-toggle" aria-label="Switch authentication mode">
+                                <input type="checkbox" id="auth-mode-toggle" role="switch" aria-checked="false">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label" id="auth-mode-label-entra">Entra ID</span>
+                        </div>
+                    </div>
+
+                    <!-- Key Authentication Fields -->
+                    <div id="key-auth-fields">
+                        <div class="form-group">
+                            <label for="foundry-key">API Key:</label>
+                            <input type="password" id="foundry-key" placeholder="Enter your API key" autocomplete="off"
+                                aria-describedby="key-help">
+                            <small id="key-help" class="form-help">Your Foundry project API key</small>
+                        </div>
+                    </div>
+
+                    <!-- Entra ID Authentication Fields -->
+                    <div id="entra-auth-fields" style="display: none;">
+                        <div class="form-group">
+                            <label for="entra-client-id">Application (client) ID:</label>
+                            <input type="text" id="entra-client-id" placeholder="Enter your app client ID"
+                                autocomplete="off" aria-describedby="client-help">
+                            <small id="client-help" class="form-help">Your Entra ID application (client) ID</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="entra-tenant-id">Directory (tenant) ID:</label>
+                            <input type="text" id="entra-tenant-id" placeholder="Enter your tenant ID"
+                                autocomplete="off" aria-describedby="tenant-help">
+                            <small id="tenant-help" class="form-help">Your Entra ID directory (tenant) ID</small>
+                        </div>
+
+                        <div class="form-group">
+                            <button class="modal-btn modal-btn-primary" id="entra-signin-btn" disabled
+                                aria-label="Sign in with Entra ID" type="button">Sign In</button>
+                            <small id="signin-status" class="form-help"></small>
+                        </div>
                     </div>
 
                     <div class="config-status" id="config-status" role="status" aria-live="polite"></div>

@@ -13,8 +13,13 @@ class AskAnton {
         this.config = {
             endpoint: '',
             apiKey: '',
-            deployment: ''
+            deployment: '',
+            authMode: 'key', // 'key' or 'entra'
+            clientId: '',
+            tenantId: ''
         };
+        this.msalInstance = null;
+        this.msalAccount = null;
         this.previousResponseId = null;
         this.recognition = null;
         this.isListening = false;
@@ -43,7 +48,14 @@ class AskAnton {
             foundryEndpoint: document.getElementById('foundry-endpoint'),
             foundryKey: document.getElementById('foundry-key'),
             foundryDeployment: document.getElementById('foundry-deployment'),
-            configStatus: document.getElementById('config-status')
+            configStatus: document.getElementById('config-status'),
+            authModeToggle: document.getElementById('auth-mode-toggle'),
+            keyAuthFields: document.getElementById('key-auth-fields'),
+            entraAuthFields: document.getElementById('entra-auth-fields'),
+            entraClientId: document.getElementById('entra-client-id'),
+            entraTenantId: document.getElementById('entra-tenant-id'),
+            entraSigninBtn: document.getElementById('entra-signin-btn'),
+            signinStatus: document.getElementById('signin-status')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -93,15 +105,39 @@ IMPORTANT: Follow these guidelines when responding:
                 // Load non-sensitive config from storage
                 this.config.endpoint = savedConfig.endpoint || '';
                 this.config.deployment = savedConfig.deployment || '';
-                // Note: apiKey is NOT loaded from storage for security reasons
+                this.config.authMode = savedConfig.authMode || 'key';
+                this.config.clientId = savedConfig.clientId || '';
+                this.config.tenantId = savedConfig.tenantId || '';
 
                 this.elements.foundryEndpoint.value = this.config.endpoint;
                 this.elements.foundryKey.value = ''; // API key must be re-entered each session
                 this.elements.foundryDeployment.value = this.config.deployment;
+                this.elements.entraClientId.value = this.config.clientId;
+                this.elements.entraTenantId.value = this.config.tenantId;
 
-                // Only mark as configured if API key is present in memory
-                if (this.config.endpoint && this.config.apiKey && this.config.deployment) {
-                    this.isConfigured = true;
+                // Set toggle state
+                if (this.config.authMode === 'entra') {
+                    this.elements.authModeToggle.checked = true;
+                    this.elements.keyAuthFields.style.display = 'none';
+                    this.elements.entraAuthFields.style.display = 'block';
+                } else {
+                    this.elements.authModeToggle.checked = false;
+                    this.elements.keyAuthFields.style.display = 'block';
+                    this.elements.entraAuthFields.style.display = 'none';
+                }
+
+                // Initialize MSAL if in Entra ID mode and we have clientId and tenantId
+                if (this.config.authMode === 'entra' && this.config.clientId && this.config.tenantId) {
+                    this.initializeMSAL();
+                }
+
+                // Only mark as configured if required fields are present
+                if (this.config.endpoint && this.config.deployment) {
+                    if (this.config.authMode === 'key' && this.config.apiKey) {
+                        this.isConfigured = true;
+                    } else if (this.config.authMode === 'entra' && this.msalAccount) {
+                        this.isConfigured = true;
+                    }
                 }
             } catch (e) {
                 console.error('Error loading config:', e);
@@ -110,14 +146,203 @@ IMPORTANT: Follow these guidelines when responding:
         this.updateUIState();
     }
 
+    initializeMSAL() {
+        if (!this.config.clientId || !this.config.tenantId) {
+            console.error('Cannot initialize MSAL: missing client ID or tenant ID');
+            return;
+        }
+
+        try {
+            const msalConfig = {
+                auth: {
+                    clientId: this.config.clientId,
+                    authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
+                    redirectUri: window.location.href.split('?')[0].split('#')[0]
+                },
+                cache: {
+                    cacheLocation: 'localStorage',
+                    storeAuthStateInCookie: false
+                },
+                system: {
+                    allowRedirectInIframe: false,
+                    windowHashTimeout: 60000,
+                    iframeHashTimeout: 6000,
+                    loadFrameTimeout: 0
+                }
+            };
+
+            this.msalInstance = new msal.PublicClientApplication(msalConfig);
+
+            // Initialize MSAL and handle any redirect responses
+            this.msalInstance.initialize().then(() => {
+                // Handle redirect response (important for popup flows)
+                return this.msalInstance.handleRedirectPromise();
+            }).then((response) => {
+                // If response exists, user just logged in via redirect
+                if (response && response.account) {
+                    this.msalAccount = response.account;
+                    this.msalInstance.setActiveAccount(this.msalAccount);
+                } else {
+                    // Check if user is already signed in
+                    const accounts = this.msalInstance.getAllAccounts();
+                    if (accounts.length > 0) {
+                        this.msalAccount = accounts[0];
+                        this.msalInstance.setActiveAccount(this.msalAccount);
+                    }
+                }
+
+                if (this.msalAccount) {
+                    this.updateSigninStatus(`Signed in as ${this.msalAccount.username}`);
+                    this.isConfigured = true;
+                    this.updateUIState();
+                }
+            }).catch((error) => {
+                console.error('Error handling MSAL redirect:', error);
+            });
+        } catch (error) {
+            console.error('Error initializing MSAL:', error);
+        }
+    }
+
+    updateSigninStatus(message, isError = false) {
+        if (this.elements.signinStatus) {
+            this.elements.signinStatus.textContent = message;
+            this.elements.signinStatus.style.color = isError ? '#721c24' : '#155724';
+        }
+    }
+
+    handleAuthModeToggle() {
+        const isEntraMode = this.elements.authModeToggle.checked;
+
+        if (isEntraMode) {
+            // Switch to Entra ID mode
+            this.elements.keyAuthFields.style.display = 'none';
+            this.elements.entraAuthFields.style.display = 'block';
+            this.elements.authModeToggle.setAttribute('aria-checked', 'true');
+        } else {
+            // Switch to Key mode
+            this.elements.keyAuthFields.style.display = 'block';
+            this.elements.entraAuthFields.style.display = 'none';
+            this.elements.authModeToggle.setAttribute('aria-checked', 'false');
+        }
+
+        // Clear status messages
+        this.elements.configStatus.textContent = '';
+        this.elements.configStatus.className = 'config-status';
+        this.updateSigninStatus('');
+    }
+
+    async signInWithEntraID() {
+        const clientId = this.elements.entraClientId.value.trim();
+        const tenantId = this.elements.entraTenantId.value.trim();
+        const endpoint = this.elements.foundryEndpoint.value.trim();
+
+        if (!clientId || !tenantId) {
+            this.updateSigninStatus('Please enter both Client ID and Tenant ID', true);
+            return;
+        }
+
+        if (!endpoint) {
+            this.updateSigninStatus('Please enter an endpoint URL first', true);
+            return;
+        }
+
+        // Validate and extract base endpoint (same logic as saveConfig)
+        let baseEndpoint = endpoint;
+        try {
+            const url = new URL(endpoint);
+            if (url.protocol !== 'https:') {
+                this.updateSigninStatus('Endpoint must use HTTPS', true);
+                return;
+            }
+
+            const comIndex = endpoint.indexOf('.com');
+            if (comIndex !== -1) {
+                baseEndpoint = endpoint.substring(0, comIndex + 4);
+            }
+        } catch (e) {
+            this.updateSigninStatus('Invalid endpoint URL', true);
+            return;
+        }
+
+        // Update config with new values before initializing MSAL
+        this.config.clientId = clientId;
+        this.config.tenantId = tenantId;
+
+        // Initialize MSAL with current credentials
+        this.initializeMSAL();
+
+        if (!this.msalInstance) {
+            this.updateSigninStatus('Failed to initialize authentication', true);
+            return;
+        }
+
+        try {
+            this.updateSigninStatus('Opening sign-in window...');
+
+            // Use standard Azure Cognitive Services scope
+            const loginRequest = {
+                scopes: ['https://cognitiveservices.azure.com/.default'],
+                prompt: 'select_account',
+                redirectUri: window.location.href.split('?')[0].split('#')[0]
+            };
+
+            const response = await this.msalInstance.loginPopup(loginRequest);
+
+            if (response && response.account) {
+                this.msalAccount = response.account;
+                this.msalInstance.setActiveAccount(this.msalAccount);
+                this.updateSigninStatus(`Signed in as ${this.msalAccount.username}`);
+                console.log('Successfully signed in with Entra ID');
+            } else {
+                this.updateSigninStatus('Sign-in failed', true);
+            }
+        } catch (error) {
+            console.error('Error during sign-in:', error);
+            this.updateSigninStatus(`Sign-in error: ${error.message}`, true);
+        }
+    }
+
+    async getAccessToken() {
+        if (!this.msalInstance || !this.msalAccount) {
+            throw new Error('Not signed in with Entra ID');
+        }
+
+        try {
+            // Use standard Azure Cognitive Services scope
+            const tokenRequest = {
+                scopes: ['https://cognitiveservices.azure.com/.default'],
+                account: this.msalAccount
+            };
+
+            const response = await this.msalInstance.acquireTokenSilent(tokenRequest);
+            return response.accessToken;
+        } catch (error) {
+            console.error('Silent token acquisition failed, attempting interactive:', error);
+
+            // If silent acquisition fails, try interactive
+            try {
+                const tokenRequest = {
+                    scopes: ['https://cognitiveservices.azure.com/.default'],
+                    account: this.msalAccount
+                };
+                const response = await this.msalInstance.acquireTokenPopup(tokenRequest);
+                return response.accessToken;
+            } catch (interactiveError) {
+                console.error('Interactive token acquisition failed:', interactiveError);
+                throw new Error('Failed to acquire access token');
+            }
+        }
+    }
+
     saveConfig() {
         const endpoint = this.elements.foundryEndpoint.value.trim();
-        const apiKey = this.elements.foundryKey.value.trim();
         const deployment = this.elements.foundryDeployment.value.trim();
         const statusDiv = this.elements.configStatus;
+        const authMode = this.elements.authModeToggle.checked ? 'entra' : 'key';
 
-        if (!endpoint || !apiKey || !deployment) {
-            statusDiv.textContent = 'Please fill in all fields';
+        if (!endpoint || !deployment) {
+            statusDiv.textContent = 'Please fill in endpoint and deployment';
             statusDiv.className = 'config-status error';
             return;
         }
@@ -144,13 +369,50 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         this.config.endpoint = baseEndpoint;
-        this.config.apiKey = apiKey;
         this.config.deployment = deployment;
+        this.config.authMode = authMode;
 
-        // Save non-sensitive config to localStorage (do not persist apiKey)
+        // Validate based on authentication mode
+        if (authMode === 'key') {
+            const apiKey = this.elements.foundryKey.value.trim();
+            if (!apiKey) {
+                statusDiv.textContent = 'Please enter an API key';
+                statusDiv.className = 'config-status error';
+                return;
+            }
+            this.config.apiKey = apiKey;
+            this.config.clientId = '';
+            this.config.tenantId = '';
+            this.msalInstance = null;
+            this.msalAccount = null;
+        } else {
+            const clientId = this.elements.entraClientId.value.trim();
+            const tenantId = this.elements.entraTenantId.value.trim();
+
+            if (!clientId || !tenantId) {
+                statusDiv.textContent = 'Please enter both Client ID and Tenant ID';
+                statusDiv.className = 'config-status error';
+                return;
+            }
+
+            if (!this.msalAccount) {
+                statusDiv.textContent = 'Please sign in with Entra ID before saving';
+                statusDiv.className = 'config-status error';
+                return;
+            }
+
+            this.config.clientId = clientId;
+            this.config.tenantId = tenantId;
+            this.config.apiKey = '';
+        }
+
+        // Save config to localStorage (do not persist apiKey)
         const configToPersist = {
             endpoint: this.config.endpoint,
-            deployment: this.config.deployment
+            deployment: this.config.deployment,
+            authMode: this.config.authMode,
+            clientId: this.config.clientId,
+            tenantId: this.config.tenantId
         };
         localStorage.setItem('askAntonFoundryConfig', JSON.stringify(configToPersist));
 
@@ -453,11 +715,19 @@ IMPORTANT: Follow these guidelines when responding:
     async transcribeAudio(audioBlob) {
         try {
             const speechEndpoint = this.getSpeechEndpointBase();
+
+            // Build headers based on authentication mode
             const requestHeaders = {
-                'Ocp-Apim-Subscription-Key': this.config.apiKey,
                 'Content-Type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
                 'Accept': 'application/json'
             };
+
+            if (this.config.authMode === 'entra') {
+                const accessToken = await this.getAccessToken();
+                requestHeaders['Authorization'] = `Bearer ${accessToken}`;
+            } else {
+                requestHeaders['Ocp-Apim-Subscription-Key'] = this.config.apiKey;
+            }
 
             const candidateUrls = [
                 `${speechEndpoint}/stt/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`,
@@ -628,6 +898,26 @@ IMPORTANT: Follow these guidelines when responding:
 
         this.elements.configSave.addEventListener('click', () => {
             this.saveConfig();
+        });
+
+        // Auth mode toggle
+        this.elements.authModeToggle.addEventListener('change', () => {
+            this.handleAuthModeToggle();
+        });
+
+        // Entra ID input fields - enable sign-in button when both are filled
+        const checkEntraFields = () => {
+            const clientId = this.elements.entraClientId.value.trim();
+            const tenantId = this.elements.entraTenantId.value.trim();
+            this.elements.entraSigninBtn.disabled = !clientId || !tenantId;
+        };
+
+        this.elements.entraClientId.addEventListener('input', checkEntraFields);
+        this.elements.entraTenantId.addEventListener('input', checkEntraFields);
+
+        // Entra ID Sign-in button
+        this.elements.entraSigninBtn.addEventListener('click', () => {
+            this.signInWithEntraID();
         });
 
         // Close config modal on overlay click
@@ -1084,12 +1374,23 @@ IMPORTANT: Follow these guidelines when responding:
             requestBody.previous_response_id = this.previousResponseId;
         }
 
+        // Build headers based on authentication mode
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (this.config.authMode === 'entra') {
+            // Use Bearer token for Entra ID authentication
+            const accessToken = await this.getAccessToken();
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        } else {
+            // Use API key authentication
+            headers['api-key'] = this.config.apiKey;
+        }
+
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': this.config.apiKey
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         });
 
@@ -1286,15 +1587,24 @@ IMPORTANT: Follow these guidelines when responding:
                 </voice>
                 </speak>`;
 
+            // Build headers based on authentication mode
+            const headers = {
+                'Content-Type': 'application/ssml+xml',
+                'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
+            };
+
+            if (this.config.authMode === 'entra') {
+                const accessToken = await this.getAccessToken();
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            } else {
+                headers['Ocp-Apim-Subscription-Key'] = this.config.apiKey;
+            }
+
             let response;
             try {
                 response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Ocp-Apim-Subscription-Key': this.config.apiKey,
-                        'Content-Type': 'application/ssml+xml',
-                        'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
-                    },
+                    headers: headers,
                     body: ssml
                 });
             } catch (fetchError) {
