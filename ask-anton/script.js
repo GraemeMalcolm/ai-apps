@@ -144,7 +144,7 @@ IMPORTANT: Follow these guidelines when responding:
     async loadIndex() {
         try {
             this.updateProgress(5, 'Loading knowledge base...');
-            const response = await fetch('index.json');
+            const response = await fetch('index.json', { cache: 'no-store' });
             if (!response.ok) throw new Error('Failed to load index');
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
@@ -1319,6 +1319,42 @@ IMPORTANT: Follow these guidelines when responding:
         return text.substring(0, 30).trim();
     }
 
+    truncateParagraphsForCPU(context) {
+        if (!context) return context;
+
+        // Split context into paragraphs (by newlines)
+        const paragraphs = context.split('\n');
+
+        const truncatedParagraphs = paragraphs.map(paragraph => {
+            // Skip empty paragraphs
+            if (!paragraph.trim()) return paragraph;
+
+            // If paragraph is <= 600 chars, keep it as is
+            if (paragraph.length <= 600) return paragraph;
+
+            // Find first sentence ending (., !, ?) after position 600
+            const searchFrom = 600;
+            let endPos = -1;
+
+            for (let i = searchFrom; i < paragraph.length; i++) {
+                if (paragraph[i] === '.' || paragraph[i] === '!' || paragraph[i] === '?') {
+                    endPos = i + 1; // Include the punctuation
+                    break;
+                }
+            }
+
+            // If found a sentence ending, truncate there
+            if (endPos > 0) {
+                return paragraph.substring(0, endPos);
+            }
+
+            // Otherwise, truncate at 600 chars with ellipsis
+            return paragraph.substring(0, 600) + '...';
+        });
+
+        return truncatedParagraphs.join('\n');
+    }
+
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         // Ensure wllama is loaded
         if (!this.wllama) {
@@ -1332,6 +1368,7 @@ IMPORTANT: Follow these guidelines when responding:
         chatMLPrompt += '- Discuss AI and computing topics only\n';
         chatMLPrompt += '- Do not provide specific steps or instructions\n\n';
         chatMLPrompt += '- Provide factual and accurate information\n\n';
+        chatMLPrompt += '- Follow all instructions exactly\n\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1355,19 +1392,17 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
-        // Add context from index.json if available (truncate to prevent context overflow)
-        if (context) {
-            const maxContextLength = 400;
-            const truncatedContext = context.length > maxContextLength
-                ? context.substring(0, maxContextLength) + '...'
-                : context;
-            chatMLPrompt += 'Respond by summarizing the following information:\n---\n' + truncatedContext + '\n';
-        }
         chatMLPrompt += userMessage + '\n';
+        // Add context from index.json if available (truncate paragraphs to prevent context overflow)
+        if (context) {
+            const truncatedContext = this.truncateParagraphsForCPU(context);
+            chatMLPrompt += 'Respond with a short summary of each of the paragraphs in the following text:\n' + truncatedContext + '\n';
+        }
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
         console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
+        console.log('ChatML Prompt:', chatMLPrompt);
 
         let assistantMessage = '';
         let audioPlayed = false;
@@ -1387,9 +1422,9 @@ IMPORTANT: Follow these guidelines when responding:
         // Use streaming with proper abort support
         try {
             const completion = await this.wllama.createCompletion(chatMLPrompt, {
-                nPredict: 150,
+                nPredict: 200,
                 sampling: {
-                    temp: 0.7,
+                    temp: 0.2,
                     top_k: 40,
                     top_p: 0.9,
                     penalty_repeat: 1.1
