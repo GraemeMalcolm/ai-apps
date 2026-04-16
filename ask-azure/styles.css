@@ -719,6 +719,36 @@ footer {
     font-size: 0.9em;
 }
 
+.modal-body h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 1.3em;
+}
+
+.modal-body h4 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: #0078d4;
+    font-size: 1.1em;
+}
+
+.modal-body ol,
+.modal-body ul {
+    margin-left: 20px;
+    margin-bottom: 15px;
+}
+
+.modal-body li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.modal-body strong {
+    color: #333;
+    font-weight: 600;
+}
+
 .modal-body .warning {
     background: #fff3cd;
     border-left: 4px solid #ffc107;
@@ -885,6 +915,36 @@ footer {
     box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
 }
 
+/* Entra ID Help Button */
+.entra-help-btn {
+    background: #0078d4;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.entra-help-btn:hover {
+    background: #005a9e;
+    transform: scale(1.1);
+}
+
+.entra-help-btn:focus {
+    outline: 2px solid #0078d4;
+    outline-offset: 2px;
+}
+
 .config-status {
     margin-top: 15px;
     padding: 12px 15px;
@@ -929,6 +989,20 @@ footer {
 .modal-btn-primary:focus {
     outline: 3px solid #0078d4;
     outline-offset: 3px;
+}
+
+.modal-btn-primary:disabled {
+    background: #e0e0e0;
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+
+.modal-btn-primary:disabled:hover {
+    transform: none;
+    box-shadow: none;
 }
 
 .modal-btn-secondary {

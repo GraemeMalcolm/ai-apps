@@ -20,6 +20,7 @@ class AskAnton {
         };
         this.msalInstance = null;
         this.msalAccount = null;
+        this.initialConfigState = null; // Track initial state when config modal opens
         this.previousResponseId = null;
         this.recognition = null;
         this.isListening = false;
@@ -42,7 +43,6 @@ class AskAnton {
             aboutModalClose: document.getElementById('about-modal-close'),
             aboutModalOk: document.getElementById('about-modal-ok'),
             configModal: document.getElementById('config-modal'),
-            configModalClose: document.getElementById('config-modal-close'),
             configCancel: document.getElementById('config-cancel'),
             configSave: document.getElementById('config-save'),
             foundryEndpoint: document.getElementById('foundry-endpoint'),
@@ -55,7 +55,11 @@ class AskAnton {
             entraClientId: document.getElementById('entra-client-id'),
             entraTenantId: document.getElementById('entra-tenant-id'),
             entraSigninBtn: document.getElementById('entra-signin-btn'),
-            signinStatus: document.getElementById('signin-status')
+            signinStatus: document.getElementById('signin-status'),
+            entraHelpBtn: document.getElementById('entra-help-btn'),
+            entraHelpModal: document.getElementById('entra-help-modal'),
+            entraHelpModalClose: document.getElementById('entra-help-modal-close'),
+            entraHelpModalOk: document.getElementById('entra-help-modal-ok')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -192,9 +196,9 @@ IMPORTANT: Follow these guidelines when responding:
                 }
 
                 if (this.msalAccount) {
-                    this.updateSigninStatus(`Signed in as ${this.msalAccount.username}`);
                     this.isConfigured = true;
                     this.updateUIState();
+                    // Don't update sign-in status here - it will be updated when modal is opened
                 }
             }).catch((error) => {
                 console.error('Error handling MSAL redirect:', error);
@@ -211,6 +215,27 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    updateSignInButtonState() {
+        if (this.msalAccount) {
+            // User is signed in - show Sign Out button
+            this.elements.entraSigninBtn.textContent = 'Sign Out';
+            this.elements.entraSigninBtn.disabled = false;
+            this.elements.entraSigninBtn.setAttribute('aria-label', 'Sign out of Entra ID');
+            this.updateSigninStatus(`Signed in as ${this.msalAccount.username}`);
+        } else {
+            // User is not signed in - show Sign In button
+            this.elements.entraSigninBtn.textContent = 'Sign In';
+            this.elements.entraSigninBtn.setAttribute('aria-label', 'Sign in with Entra ID');
+
+            // Enable/disable based on whether credentials are entered
+            const clientId = this.elements.entraClientId.value.trim();
+            const tenantId = this.elements.entraTenantId.value.trim();
+            this.elements.entraSigninBtn.disabled = !clientId || !tenantId;
+
+            this.updateSigninStatus('');
+        }
+    }
+
     handleAuthModeToggle() {
         const isEntraMode = this.elements.authModeToggle.checked;
 
@@ -219,17 +244,24 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.keyAuthFields.style.display = 'none';
             this.elements.entraAuthFields.style.display = 'block';
             this.elements.authModeToggle.setAttribute('aria-checked', 'true');
+            this.elements.entraHelpBtn.style.display = 'inline-flex';
+
+            // Update sign-in button state if already signed in
+            this.updateSignInButtonState();
         } else {
             // Switch to Key mode
             this.elements.keyAuthFields.style.display = 'block';
             this.elements.entraAuthFields.style.display = 'none';
             this.elements.authModeToggle.setAttribute('aria-checked', 'false');
+            this.elements.entraHelpBtn.style.display = 'none';
         }
 
-        // Clear status messages
+        // Clear config status but preserve sign-in status in Entra mode
         this.elements.configStatus.textContent = '';
         this.elements.configStatus.className = 'config-status';
-        this.updateSigninStatus('');
+        if (!isEntraMode) {
+            this.updateSigninStatus('');
+        }
     }
 
     async signInWithEntraID() {
@@ -292,7 +324,7 @@ IMPORTANT: Follow these guidelines when responding:
             if (response && response.account) {
                 this.msalAccount = response.account;
                 this.msalInstance.setActiveAccount(this.msalAccount);
-                this.updateSigninStatus(`Signed in as ${this.msalAccount.username}`);
+                this.updateSignInButtonState();
                 console.log('Successfully signed in with Entra ID');
             } else {
                 this.updateSigninStatus('Sign-in failed', true);
@@ -300,6 +332,33 @@ IMPORTANT: Follow these guidelines when responding:
         } catch (error) {
             console.error('Error during sign-in:', error);
             this.updateSigninStatus(`Sign-in error: ${error.message}`, true);
+        }
+    }
+
+    async signOutEntraID() {
+        if (!this.msalInstance || !this.msalAccount) {
+            return;
+        }
+
+        try {
+            this.updateSigninStatus('Signing out...');
+
+            const logoutRequest = {
+                account: this.msalAccount,
+                postLogoutRedirectUri: window.location.href.split('?')[0].split('#')[0]
+            };
+
+            await this.msalInstance.logoutPopup(logoutRequest);
+
+            this.msalAccount = null;
+            this.isConfigured = false;
+            this.updateSignInButtonState();
+            this.updateUIState();
+
+            console.log('Successfully signed out');
+        } catch (error) {
+            console.error('Error during sign-out:', error);
+            this.updateSigninStatus(`Sign-out error: ${error.message}`, true);
         }
     }
 
@@ -887,22 +946,34 @@ IMPORTANT: Follow these guidelines when responding:
             }
         });
 
-        // Config modal handlers
-        this.elements.configModalClose.addEventListener('click', () => {
-            this.hideConfigModal();
+        // Entra ID Help button
+        this.elements.entraHelpBtn.addEventListener('click', () => {
+            this.showEntraHelpModal();
         });
 
+        // Entra ID Help modal handlers
+        this.elements.entraHelpModalClose.addEventListener('click', () => {
+            this.hideEntraHelpModal();
+        });
+
+        this.elements.entraHelpModalOk.addEventListener('click', () => {
+            this.hideEntraHelpModal();
+        });
+
+        // Close Entra help modal on overlay click
+        this.elements.entraHelpModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.entraHelpModal || e.target.classList.contains('modal-overlay')) {
+                this.hideEntraHelpModal();
+            }
+        });
+
+        // Config modal handlers
         this.elements.configCancel.addEventListener('click', () => {
             this.hideConfigModal();
         });
 
         this.elements.configSave.addEventListener('click', () => {
             this.saveConfig();
-        });
-
-        // Auth mode toggle
-        this.elements.authModeToggle.addEventListener('change', () => {
-            this.handleAuthModeToggle();
         });
 
         // Entra ID input fields - enable sign-in button when both are filled
@@ -912,29 +983,49 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.entraSigninBtn.disabled = !clientId || !tenantId;
         };
 
-        this.elements.entraClientId.addEventListener('input', checkEntraFields);
-        this.elements.entraTenantId.addEventListener('input', checkEntraFields);
-
-        // Entra ID Sign-in button
-        this.elements.entraSigninBtn.addEventListener('click', () => {
-            this.signInWithEntraID();
+        this.elements.entraClientId.addEventListener('input', () => {
+            checkEntraFields();
+            this.checkConfigChanges();
+        });
+        this.elements.entraTenantId.addEventListener('input', () => {
+            checkEntraFields();
+            this.checkConfigChanges();
         });
 
-        // Close config modal on overlay click
-        this.elements.configModal.addEventListener('click', (e) => {
-            if (e.target === this.elements.configModal || e.target.classList.contains('modal-overlay')) {
-                this.hideConfigModal();
+        // Config field change detection for other fields
+        [this.elements.foundryEndpoint, this.elements.foundryKey, this.elements.foundryDeployment].forEach(field => {
+            field.addEventListener('input', () => this.checkConfigChanges());
+        });
+
+        // Auth mode toggle
+        this.elements.authModeToggle.addEventListener('change', () => {
+            this.handleAuthModeToggle();
+            this.checkConfigChanges();
+        });
+
+        // Entra ID Sign-in/Sign-out button
+        this.elements.entraSigninBtn.addEventListener('click', () => {
+            if (this.msalAccount) {
+                this.signOutEntraID();
+            } else {
+                this.signInWithEntraID();
             }
         });
 
-        // Close modals on Escape key
+        // Prevent closing config modal on overlay click (user must click Cancel or Save)
+        this.elements.configModal.addEventListener('click', (e) => {
+            // Do nothing - require explicit Cancel or Save
+        });
+
+        // Close modals on Escape key (except config modal)
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                if (this.elements.configModal.style.display === 'flex') {
-                    this.hideConfigModal();
+                if (this.elements.entraHelpModal.style.display === 'flex') {
+                    this.hideEntraHelpModal();
                 } else if (this.elements.aboutModal.style.display === 'flex') {
                     this.hideAboutModal();
                 }
+                // Config modal cannot be closed with Escape - must use Cancel or Save
             }
         });
 
@@ -1713,6 +1804,32 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    checkConfigChanges() {
+        if (!this.initialConfigState) {
+            return; // Modal not open or initial state not captured
+        }
+
+        const currentState = {
+            endpoint: this.elements.foundryEndpoint.value.trim(),
+            deployment: this.elements.foundryDeployment.value.trim(),
+            authMode: this.elements.authModeToggle.checked ? 'entra' : 'key',
+            apiKey: this.elements.foundryKey.value.trim(),
+            clientId: this.elements.entraClientId.value.trim(),
+            tenantId: this.elements.entraTenantId.value.trim()
+        };
+
+        // Check if anything has changed
+        const hasChanges =
+            currentState.endpoint !== this.initialConfigState.endpoint ||
+            currentState.deployment !== this.initialConfigState.deployment ||
+            currentState.authMode !== this.initialConfigState.authMode ||
+            currentState.apiKey !== this.initialConfigState.apiKey ||
+            currentState.clientId !== this.initialConfigState.clientId ||
+            currentState.tenantId !== this.initialConfigState.tenantId;
+
+        this.elements.configSave.disabled = !hasChanges;
+    }
+
     showConfigModal() {
         this.elements.configModal.style.display = 'flex';
         this.currentModal = this.elements.configModal;
@@ -1720,6 +1837,28 @@ IMPORTANT: Follow these guidelines when responding:
         // Clear any previous status
         this.elements.configStatus.textContent = '';
         this.elements.configStatus.className = 'config-status';
+
+        // Capture initial state for change detection
+        this.initialConfigState = {
+            endpoint: this.elements.foundryEndpoint.value.trim(),
+            deployment: this.elements.foundryDeployment.value.trim(),
+            authMode: this.elements.authModeToggle.checked ? 'entra' : 'key',
+            apiKey: this.elements.foundryKey.value.trim(),
+            clientId: this.elements.entraClientId.value.trim(),
+            tenantId: this.elements.entraTenantId.value.trim()
+        };
+
+        // Disable Save button initially (no changes yet)
+        this.elements.configSave.disabled = true;
+
+        // Update sign-in button state and help button visibility if in Entra ID mode
+        if (this.elements.authModeToggle.checked) {
+            this.updateSignInButtonState();
+            this.elements.entraHelpBtn.style.display = 'inline-flex';
+        } else {
+            this.elements.entraHelpBtn.style.display = 'none';
+        }
+
         // Set focus to first input
         setTimeout(() => {
             this.elements.foundryEndpoint.focus();
@@ -1732,6 +1871,10 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.configModal.setAttribute('aria-hidden', 'true');
         this.removeModalFocusTrap();
         this.currentModal = null;
+
+        // Clear initial config state
+        this.initialConfigState = null;
+
         // Restore focus
         if (this.lastFocusedElement) {
             this.lastFocusedElement.focus();
@@ -1757,6 +1900,33 @@ IMPORTANT: Follow these guidelines when responding:
     hideAboutModal() {
         this.elements.aboutModal.style.display = 'none';
         this.elements.aboutModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+        // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showEntraHelpModal() {
+        this.elements.entraHelpModal.style.display = 'flex';
+        this.currentModal = this.elements.entraHelpModal;
+        // Store the previously focused element
+        this.lastFocusedElement = document.activeElement;
+        // Announce modal to screen readers
+        this.elements.entraHelpModal.setAttribute('aria-hidden', 'false');
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.entraHelpModalClose.focus();
+            this.setupModalFocusTrap(this.elements.entraHelpModal);
+        }, 100);
+    }
+
+    hideEntraHelpModal() {
+        this.elements.entraHelpModal.style.display = 'none';
+        this.elements.entraHelpModal.setAttribute('aria-hidden', 'true');
         this.removeModalFocusTrap();
         this.currentModal = null;
         // Restore focus to the element that opened the modal
