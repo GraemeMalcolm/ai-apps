@@ -909,8 +909,8 @@ async function synthesizeSpeech(text) {
         }
 
         // Replace URLs with "this website" for better speech output
-        plainText = plainText.replace(/https?:\/\/[^\s]+/gi, 'this website');
-        plainText = plainText.replace(/www\.[^\s]+/gi, 'this website');
+        plainText = plainText.replace(/https?:\/\/[^\s]+/gi, 'check out this website');
+        plainText = plainText.replace(/www\.[^\s]+/gi, 'check out this website');
 
         const speechEndpoint = getSpeechEndpointBase();
         const url = `${speechEndpoint}/tts/cognitiveservices/v1`;
