@@ -284,11 +284,11 @@ async function loadVoskModel() {
         };
         window.addEventListener('error', errorHandler);
 
-        // Wrap in a promise with shorter timeout to catch errors
+        // Wrap in a promise with timeout to catch errors
         const loadPromise = Promise.race([
             Vosk.createModel(speechModelUrl),
             new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Model loading timeout')), 5000)
+                setTimeout(() => reject(new Error('Model loading timeout')), 30000)
             ),
             // Also check periodically if a worker error was detected or flag was set globally
             new Promise((_, reject) => {
@@ -298,8 +298,8 @@ async function loadVoskModel() {
                         reject(new Error('Vosk loading failed (detected via error handler)'));
                     }
                 }, 100);
-                // Clean up interval after 5 seconds
-                setTimeout(() => clearInterval(checkInterval), 5000);
+                // Clean up interval after timeout
+                setTimeout(() => clearInterval(checkInterval), 30000);
             })
         ]);
 
