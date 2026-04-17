@@ -1581,7 +1581,9 @@ async function performClassification(imgEl, userText = "") {
             startResponse();
 
             if (isVoiceInput) {
-                const plainText = reply.replace(/<br\s*\/?>(\s*)/gi, ' ').replace(/<[^>]+>/g, '').trim();
+                const tempEl = document.createElement('div');
+                tempEl.innerHTML = reply;
+                const plainText = (tempEl.textContent || '').replace(/\s+/g, ' ').trim();
                 speakTextContent(plainText);
                 isVoiceInput = false;
             }
