@@ -285,8 +285,13 @@
                 <ol>
                     <li>In your app registration, click <strong>Authentication</strong> in the left menu</li>
                     <li>Click <strong>Add Redirect URI</strong> &rarr; <strong>Single-page application</strong></li>
-                    <li>Add Redirect URI (production): <code>https://microsoftlearning.github.io/ai-apps/ask-azure/</code></li>
-                    <li>Add Redirect URI (local development): <code>http://localhost:8000/</code></li>
+                    <li>Add Redirect URI: <code>https://microsoftlearning.github.io/ai-apps/ask-azure/</code></li>
+                    <li>Under <strong>Implicit grant and hybrid flows</strong>, check:
+                        <ul>
+                            <li>☑ Access tokens</li>
+                            <li>☑ ID tokens</li>
+                        </ul>
+                    </li>
                     <li>Click <strong>Configure</strong></li>
                 </ol>
 
