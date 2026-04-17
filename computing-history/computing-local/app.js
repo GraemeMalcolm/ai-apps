@@ -274,44 +274,8 @@ async function loadVoskModel() {
         textInput.disabled = true;
         micBtn.disabled = true;
 
-        // Set a flag to detect if Vosk errors occur during loading
-        let voskErrorDetected = false;
-        const errorHandler = (event) => {
-            if (event.message && (event.message.includes('HTTP error') || event.message.includes('404'))) {
-                console.error('Detected Vosk worker error:', event.message);
-                voskErrorDetected = true;
-            }
-        };
-        window.addEventListener('error', errorHandler);
-
-        // Wrap in a promise with timeout to catch errors
-        const loadPromise = Promise.race([
-            Vosk.createModel(speechModelUrl),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Model loading timeout')), 30000)
-            ),
-            // Also check periodically if a worker error was detected or flag was set globally
-            new Promise((_, reject) => {
-                const checkInterval = setInterval(() => {
-                    if (voskErrorDetected || voskLoadingFailed) {
-                        clearInterval(checkInterval);
-                        reject(new Error('Vosk loading failed (detected via error handler)'));
-                    }
-                }, 100);
-                // Clean up interval after timeout
-                setTimeout(() => clearInterval(checkInterval), 30000);
-            })
-        ]);
-
-        try {
-            voskModel = await loadPromise;
-            // Clean up error handler after successful load
-            window.removeEventListener('error', errorHandler);
-        } catch (err) {
-            window.removeEventListener('error', errorHandler);
-            console.error('Vosk.createModel failed:', err);
-            throw err;
-        }
+        // Load the model - no timeout, just let it load
+        voskModel = await Vosk.createModel(speechModelUrl);
 
         // Validate that the model loaded
         if (!voskModel || typeof voskModel.KaldiRecognizer !== 'function') {
@@ -2086,16 +2050,16 @@ async function handleVoiceInput() {
                 const loaded = await loadVoskModel();
                 console.log('loadVoskModel returned:', loaded);
                 if (!loaded) {
-                    // Vosk also failed - inform user and disable voice input
-                    console.log('Vosk fallback unavailable, voice input disabled');
+                    // Vosk genuinely failed - inform user and permanently disable voice input
+                    console.log('Vosk fallback failed to load, disabling voice input');
                     addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
                     micBtn.disabled = true;
                     micBtn.title = 'Voice input unavailable';
                     return;
                 }
             } else if (voskLoadingFailed) {
-                // Previously failed to load Vosk - inform user and disable voice input
-                console.log('Vosk previously failed, disabling voice input');
+                // Previously failed - voice input unavailable
+                console.log('Vosk previously failed, voice input disabled');
                 addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
                 micBtn.disabled = true;
                 micBtn.title = 'Voice input unavailable';
