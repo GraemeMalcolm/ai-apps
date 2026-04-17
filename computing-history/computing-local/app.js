@@ -1551,7 +1551,7 @@ async function performClassification(imgEl, userText = "") {
                             return;
                         }
                         if (summary) {
-                            reply += `<br>${summary}`;
+                            reply += `<br>${escapeHtml(summary)}`;
                             hasGeneratedInfoSummary = true;
                             conversationHistory.push({
                                 user: historyUserPrompt,
