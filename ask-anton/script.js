@@ -3,6 +3,9 @@ import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/in
 
 class AskAnton {
     constructor() {
+        // Debug flags for testing failover (can be set via URL params or console)
+        this.debugConfig = this.parseDebugConfig();
+
         this.engine = null;      // WebLLM engine
         this.wllama = null;      // Wllama engine (fallback)
         this.conversationHistory = [];
@@ -91,6 +94,26 @@ IMPORTANT: Follow these guidelines when responding:
     // ============================================================================
     // INITIALIZATION
     // ============================================================================
+
+    parseDebugConfig() {
+        // Parse URL parameters for debug flags
+        // Usage: ?debug=true&forceWebGPUFail=true&forceWllamaFail=true
+        const params = new URLSearchParams(window.location.search);
+        const config = {
+            enabled: params.has('debug'),
+            forceWebGPUFail: params.has('forceWebGPUFail') || params.get('forceWebGPUFail') === 'true',
+            forceWllamaFail: params.has('forceWllamaFail') || params.get('forceWllamaFail') === 'true',
+            forceBasicMode: params.has('forceBasicMode') || params.get('forceBasicMode') === 'true'
+        };
+
+        if (config.enabled) {
+            console.log('🧪 Debug mode enabled:', config);
+            console.log('💡 To force failures, add URL params: ?debug=true&forceWebGPUFail=true&forceWllamaFail=true');
+            console.log('💡 Or use console: window.askAnton.debugConfig.forceWebGPUFail = true');
+        }
+
+        return config;
+    }
 
     async initialize() {
         try {
@@ -269,6 +292,16 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async initializeEngine() {
+        // 🧪 DEBUG: Force Basic mode for testing
+        if (this.debugConfig.enabled && this.debugConfig.forceBasicMode) {
+            console.log('🧪 DEBUG: Forcing Basic mode');
+            this.initializeBasicMode(
+                'Ready to chat! (Basic mode)',
+                '🧪 DEBUG: Running in forced Basic mode for testing.'
+            );
+            return;
+        }
+
         const hasWebGPU = this.checkWebGPUSupport();
         this.availableModes.gpu = hasWebGPU;
 
@@ -303,6 +336,13 @@ IMPORTANT: Follow these guidelines when responding:
     async initializeWebLLM() {
         try {
             this.updateProgress(15, 'Loading AI model (WebGPU)...');
+
+            // 🧪 DEBUG: Force WebGPU initialization failure for testing error handling
+            if (this.debugConfig.enabled && this.debugConfig.forceWebGPUFail) {
+                console.log('🧪 DEBUG: Forcing WebGPU initialization to fail (testing error handling)');
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate some initialization time
+                throw new Error('DEBUG: Forced WebGPU initialization failure');
+            }
 
             const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
 
@@ -355,6 +395,16 @@ IMPORTANT: Follow these guidelines when responding:
             }
 
             const isLazyLoad = progressCallback !== null || !showChatInterface;
+
+            // 🧪 DEBUG: Force Wllama initialization failure for testing error handling
+            if (this.debugConfig.enabled && this.debugConfig.forceWllamaFail) {
+                console.log('🧪 DEBUG: Forcing Wllama initialization to fail (testing error handling)');
+                if (!isLazyLoad) {
+                    this.updateProgress(15, 'Loading AI model (CPU mode)...');
+                }
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate some initialization time
+                throw new Error('DEBUG: Forced Wllama initialization failure');
+            }
 
             if (!isLazyLoad) {
                 this.updateProgress(15, 'Loading AI model (CPU mode)...');
