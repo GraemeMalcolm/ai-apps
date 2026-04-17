@@ -53,10 +53,10 @@ In addition to WebLLM and the Microsoft Phi model described above for generative
 
 - [MobileNet-V3](https://huggingface.co/docs/timm/en/models/mobilenet-v3) running in [Tensorflow.js](https://www.npmjs.com/package/@tensorflow/tfjs) used by Chat Playground and Computing History (browser-based version) to predict image classifications.
 - [Web Speech API](https://webaudio.github.io/web-speech-api/) used by Ask Anton, Computing History (browser-based version), and Speech Playground for speech recognition and synthesis.
-- [retext-keywords](https://github.com/retextjs/retext-keywords) used by Text Analyzer to extract key words and phrases.
-- [Compromise.js](https://www.npmjs.com/package/compromise) used by Computing History (browser-based version) and Language Playground to support named entity recognition.
+- [Vosk Speech Recognition](https://github.com/alphacep/vosk-api) is used as a fallback speech-to-text solution when WebSpeech speech recognition is unavailable.
+- [Compromise.js](https://www.npmjs.com/package/compromise) used by Computing History (browser-based version) to support named entity recognition.
 - [TextRank.js](https://www.jsdelivr.com/package/npm/textrank) used by Computing History (browser-based version) for text summarization.
 - [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/README.md) used by Computing History (browser-based version) and Information Extractor to perform OCR analysis.
 - [PyScript](https://pyscript.net/) used by Model Coder, ML Lite, and ScriptBook to provide an in-browser Python runtime. Imported libraries include numpy, pandas, matplotLib, and scikit-learn.
 
-The "OpenAI" library provided in the **Model Coder** app is not the *real* OpenAI Python library. Instead, it's a set of Python classes that expose commonly used objects and methods of the OpenAI API as abstractions over a local JavaScript layer that handles prompt submission to the smollm2 model in the local WLLAMA environment. From the learner's perspective, you'll write and run real Python code using the same syntax as you would with the OpenAI library, and interact with a real LLM back-end.
+The "OpenAI" library provided in the **Model Coder** app is not the *real* OpenAI Python library. Instead, it's a set of Python classes that expose commonly used objects and methods of the OpenAI API as abstractions over a local JavaScript layer that handles prompt submission to a model in the local browser environment. From the learner's perspective, you'll write and run real Python code using the same syntax as you would with the OpenAI library, and interact with a real LLM back-end.
