@@ -20,6 +20,7 @@ class AskAnton {
         };
         this.msalInstance = null;
         this.msalAccount = null;
+        this.msalInitPromise = null;
         this.initialConfigState = null; // Track initial state when config modal opens
         this.previousResponseId = null;
         this.recognition = null;
@@ -150,18 +151,24 @@ IMPORTANT: Follow these guidelines when responding:
         this.updateUIState();
     }
 
+    getMsalRedirectUri() {
+        return window.location.href.split('?')[0].split('#')[0];
+    }
+
     initializeMSAL() {
         if (!this.config.clientId || !this.config.tenantId) {
             console.error('Cannot initialize MSAL: missing client ID or tenant ID');
-            return;
+            return Promise.resolve();
         }
 
         try {
+            const redirectUri = this.getMsalRedirectUri();
             const msalConfig = {
                 auth: {
                     clientId: this.config.clientId,
                     authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
-                    redirectUri: window.location.href.split('?')[0].split('#')[0]
+                    redirectUri: redirectUri,
+                    navigateToLoginRequestUrl: false
                 },
                 cache: {
                     cacheLocation: 'localStorage',
@@ -171,40 +178,48 @@ IMPORTANT: Follow these guidelines when responding:
                     allowRedirectInIframe: false,
                     windowHashTimeout: 60000,
                     iframeHashTimeout: 6000,
-                    loadFrameTimeout: 0
+                    loadFrameTimeout: 0,
+                    // Disable reliance on window.closed checks due to COOP header restrictions
+                    // MSAL will detect popup completion through hash/state instead
+                    preventCorsFallback: false
                 }
             };
 
             this.msalInstance = new msal.PublicClientApplication(msalConfig);
 
-            // Initialize MSAL and handle any redirect responses
-            this.msalInstance.initialize().then(() => {
-                // Handle redirect response (important for popup flows)
+            // Initialize MSAL and handle redirect responses
+            this.msalInitPromise = this.msalInstance.initialize().then(() => {
+                // Handle redirect response from authentication server
                 return this.msalInstance.handleRedirectPromise();
             }).then((response) => {
-                // If response exists, user just logged in via redirect
+                // If we got a response from redirect, account is now active
                 if (response && response.account) {
                     this.msalAccount = response.account;
                     this.msalInstance.setActiveAccount(this.msalAccount);
+                    this.isConfigured = true;
+                    this.updateUIState();
+                    console.log('Successfully signed in via redirect');
                 } else {
-                    // Check if user is already signed in
+                    // Check if user is already signed in (cached)
                     const accounts = this.msalInstance.getAllAccounts();
                     if (accounts.length > 0) {
                         this.msalAccount = accounts[0];
                         this.msalInstance.setActiveAccount(this.msalAccount);
                     }
-                }
-
-                if (this.msalAccount) {
-                    this.isConfigured = true;
-                    this.updateUIState();
-                    // Don't update sign-in status here - it will be updated when modal is opened
+                    if (this.msalAccount) {
+                        this.isConfigured = true;
+                        this.updateUIState();
+                    }
                 }
             }).catch((error) => {
-                console.error('Error handling MSAL redirect:', error);
+                console.error('Error initializing MSAL:', error);
+                throw error;
             });
+
+            return this.msalInitPromise;
         } catch (error) {
             console.error('Error initializing MSAL:', error);
+            return Promise.reject(error);
         }
     }
 
@@ -268,6 +283,7 @@ IMPORTANT: Follow these guidelines when responding:
         const clientId = this.elements.entraClientId.value.trim();
         const tenantId = this.elements.entraTenantId.value.trim();
         const endpoint = this.elements.foundryEndpoint.value.trim();
+        const deployment = this.elements.foundryDeployment.value.trim();
 
         if (!clientId || !tenantId) {
             this.updateSigninStatus('Please enter both Client ID and Tenant ID', true);
@@ -276,6 +292,11 @@ IMPORTANT: Follow these guidelines when responding:
 
         if (!endpoint) {
             this.updateSigninStatus('Please enter an endpoint URL first', true);
+            return;
+        }
+
+        if (!deployment) {
+            this.updateSigninStatus('Please enter a model deployment name', true);
             return;
         }
 
@@ -300,9 +321,25 @@ IMPORTANT: Follow these guidelines when responding:
         // Update config with new values before initializing MSAL
         this.config.clientId = clientId;
         this.config.tenantId = tenantId;
+        this.config.endpoint = baseEndpoint;
+        this.config.deployment = deployment;
+        this.config.authMode = 'entra';
 
-        // Initialize MSAL with current credentials
-        this.initializeMSAL();
+        // Persist config to localStorage before redirect, so it survives the page reload
+        const configToPersist = {
+            endpoint: this.config.endpoint,
+            deployment: this.config.deployment,
+            authMode: this.config.authMode,
+            clientId: this.config.clientId,
+            tenantId: this.config.tenantId
+        };
+        localStorage.setItem('askAntonFoundryConfig', JSON.stringify(configToPersist));
+
+        // Initialize MSAL only if not already initialized
+        // (MSAL may already be set up from loadConfig during page init)
+        if (!this.msalInstance) {
+            await this.initializeMSAL();
+        }
 
         if (!this.msalInstance) {
             this.updateSigninStatus('Failed to initialize authentication', true);
@@ -310,27 +347,20 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         try {
-            this.updateSigninStatus('Opening sign-in window...');
+            this.updateSigninStatus('Redirecting to sign-in...');
 
             // Use standard Azure Cognitive Services scope
             const loginRequest = {
                 scopes: ['https://cognitiveservices.azure.com/.default'],
-                prompt: 'select_account',
-                redirectUri: window.location.href.split('?')[0].split('#')[0]
+                prompt: 'select_account'
             };
 
-            const response = await this.msalInstance.loginPopup(loginRequest);
-
-            if (response && response.account) {
-                this.msalAccount = response.account;
-                this.msalInstance.setActiveAccount(this.msalAccount);
-                this.updateSignInButtonState();
-                console.log('Successfully signed in with Entra ID');
-            } else {
-                this.updateSigninStatus('Sign-in failed', true);
-            }
+            // loginRedirect navigates the page to the authentication server.
+            // This avoids popup flow and COOP header issues.
+            // User will be redirected back to redirectUri after authentication.
+            await this.msalInstance.loginRedirect(loginRequest);
         } catch (error) {
-            console.error('Error during sign-in:', error);
+            console.error('Error during sign-in redirect:', error);
             this.updateSigninStatus(`Sign-in error: ${error.message}`, true);
         }
     }
@@ -345,10 +375,11 @@ IMPORTANT: Follow these guidelines when responding:
 
             const logoutRequest = {
                 account: this.msalAccount,
-                postLogoutRedirectUri: window.location.href.split('?')[0].split('#')[0]
+                postLogoutRedirectUri: this.getMsalRedirectUri()
             };
 
-            await this.msalInstance.logoutPopup(logoutRequest);
+            // Use redirect flow for logout to avoid COOP issues
+            await this.msalInstance.logoutRedirect(logoutRequest);
 
             this.msalAccount = null;
             this.isConfigured = false;
@@ -383,7 +414,8 @@ IMPORTANT: Follow these guidelines when responding:
             try {
                 const tokenRequest = {
                     scopes: ['https://cognitiveservices.azure.com/.default'],
-                    account: this.msalAccount
+                    account: this.msalAccount,
+                    navigateToLoginRequestUrl: false
                 };
                 const response = await this.msalInstance.acquireTokenPopup(tokenRequest);
                 return response.accessToken;
