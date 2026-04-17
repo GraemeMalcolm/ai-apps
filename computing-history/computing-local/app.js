@@ -46,6 +46,7 @@ let hasSpeech = false;
 const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
 const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
+let voskLoadingMessage = null; // Track the loading message for Vosk
 
 // Calculate speech model path dynamically based on current location
 // This works both locally and on GitHub Pages
@@ -54,6 +55,43 @@ const basePath = window.location.pathname.substring(0, window.location.pathname.
 const parentPath = basePath.substring(0, basePath.lastIndexOf('/'));
 const rootPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
 const speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+
+// Global error handler for unhandled promise rejections (e.g., from Vosk library)
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+
+    // Check if this is a Vosk model loading error
+    if (!voskLoaded && !voskLoadingFailed && event.reason) {
+        const errorMsg = String(event.reason);
+        const errorStack = event.reason?.stack || '';
+        // Check for Vosk-related errors
+        if (errorMsg.includes('404') ||
+            errorMsg.includes('HTTP error') ||
+            errorMsg.includes('model') ||
+            errorMsg.includes('Cannot read properties of undefined') ||
+            errorStack.includes('vosk')) {
+            console.log('Detected Vosk model loading failure from unhandled rejection');
+            voskLoadingFailed = true;
+
+            // Remove the loading message if it exists
+            if (voskLoadingMessage && voskLoadingMessage.message) {
+                voskLoadingMessage.message.remove();
+                voskLoadingMessage = null;
+            }
+
+            // Add error message to chat
+            addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
+            micBtn.disabled = true;
+            micBtn.title = 'Voice input unavailable';
+
+            // Re-enable buttons
+            sendBtn.disabled = false;
+            textInput.disabled = false;
+
+            event.preventDefault(); // Prevent the error from being logged again
+        }
+    }
+});
 
 // Vision model paths
 const MODEL_URL = './image_model/retro-classifier-model.json'; // Path to your exported model
@@ -231,19 +269,53 @@ async function loadVoskModel() {
             return false;
         }
 
-        const loadingMsg = addMessage('Loading offline speech model... This may take a moment.', 'bot');
+        voskLoadingMessage = addMessage('Loading offline speech model... This may take a moment.', 'bot');
         sendBtn.disabled = true;
         textInput.disabled = true;
         micBtn.disabled = true;
 
-        try {
-            voskModel = await Vosk.createModel(speechModelUrl);
-        } catch (modelError) {
-            // Remove the loading message since we failed
-            if (loadingMsg && loadingMsg.message) {
-                loadingMsg.message.remove();
+        // Set a flag to detect if Vosk errors occur during loading
+        let voskErrorDetected = false;
+        const errorHandler = (event) => {
+            if (event.message && (event.message.includes('HTTP error') || event.message.includes('404'))) {
+                console.error('Detected Vosk worker error:', event.message);
+                voskErrorDetected = true;
             }
-            throw modelError; // Re-throw to be caught by outer catch
+        };
+        window.addEventListener('error', errorHandler);
+
+        // Wrap in a promise with shorter timeout to catch errors
+        const loadPromise = Promise.race([
+            Vosk.createModel(speechModelUrl),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Model loading timeout')), 5000)
+            ),
+            // Also check periodically if a worker error was detected or flag was set globally
+            new Promise((_, reject) => {
+                const checkInterval = setInterval(() => {
+                    if (voskErrorDetected || voskLoadingFailed) {
+                        clearInterval(checkInterval);
+                        reject(new Error('Vosk loading failed (detected via error handler)'));
+                    }
+                }, 100);
+                // Clean up interval after 5 seconds
+                setTimeout(() => clearInterval(checkInterval), 5000);
+            })
+        ]);
+
+        try {
+            voskModel = await loadPromise;
+            // Clean up error handler after successful load
+            window.removeEventListener('error', errorHandler);
+        } catch (err) {
+            window.removeEventListener('error', errorHandler);
+            console.error('Vosk.createModel failed:', err);
+            throw err;
+        }
+
+        // Validate that the model loaded
+        if (!voskModel || typeof voskModel.KaldiRecognizer !== 'function') {
+            throw new Error('Vosk model did not load properly');
         }
 
         voskRecognizer = new voskModel.KaldiRecognizer(16000);
@@ -286,10 +358,11 @@ async function loadVoskModel() {
         console.log('Vosk speech model loaded successfully');
 
         // Update the loading message
-        const msgBubble = loadingMsg.bubble;
+        const msgBubble = voskLoadingMessage.bubble;
         if (msgBubble) {
             setBubbleContent(msgBubble, 'Offline speech model ready! Please try your voice input again.');
         }
+        voskLoadingMessage = null;
 
         sendBtn.disabled = false;
         textInput.disabled = false;
@@ -299,7 +372,13 @@ async function loadVoskModel() {
     } catch (error) {
         console.error('Failed to load Vosk model:', error);
         voskLoadingFailed = true;
-        // Don't add another error message here - handleVoiceInput will inform the user
+
+        // Remove the loading message if it exists
+        if (voskLoadingMessage && voskLoadingMessage.message) {
+            voskLoadingMessage.message.remove();
+            voskLoadingMessage = null;
+        }
+
         sendBtn.disabled = false;
         textInput.disabled = false;
         micBtn.disabled = false;
@@ -1977,7 +2056,7 @@ function updateModeSelect() {
     // Update tooltip to reflect current mode
     const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
         : currentMode === 'cpu' ? 'CPU (SmolLM2)'
-        : 'Basic (Wikipedia)';
+            : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
 }
@@ -1995,16 +2074,23 @@ async function handleVoiceInput() {
 
             // Load Vosk model if not already loaded
             if (!voskLoaded && !voskLoadingFailed) {
+                console.log('Attempting to load Vosk model...');
                 const loaded = await loadVoskModel();
+                console.log('loadVoskModel returned:', loaded);
                 if (!loaded) {
-                    // Vosk also failed - inform user and stay on Web Speech
+                    // Vosk also failed - inform user and disable voice input
                     console.log('Vosk fallback unavailable, voice input disabled');
-                    addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model could not be loaded.', 'bot');
+                    addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
+                    micBtn.disabled = true;
+                    micBtn.title = 'Voice input unavailable';
                     return;
                 }
             } else if (voskLoadingFailed) {
-                // Previously failed to load Vosk - inform user
-                addMessage('Voice input is unavailable. The online speech service is not accessible, and the offline speech model is not available.', 'bot');
+                // Previously failed to load Vosk - inform user and disable voice input
+                console.log('Vosk previously failed, disabling voice input');
+                addMessage('I\'m sorry. Voice input is unavailable.', 'bot');
+                micBtn.disabled = true;
+                micBtn.title = 'Voice input unavailable';
                 return;
             }
 
@@ -2049,16 +2135,9 @@ async function tryWebSpeech() {
 
             // Start no-speech timeout
             noSpeechTimer = setTimeout(() => {
-                if (!hasResolved) {
-                    console.log('No speech detected in 5 seconds, cancelling...');
-                    recognition.stop();
-                    if (!hasResolved) {
-                        hasResolved = true;
-                        micBtn.classList.remove('listening');
-                        addMessage('No speech detected. Please try again.', 'bot');
-                        resolve(true); // Don't fallback, just inform user
-                    }
-                }
+                console.log('No speech detected in 5 seconds, cancelling...');
+                recognition.stop();
+                // Don't resolve here - let the error handler or onend handle it
             }, noSpeechTimeout);
 
             recognition.onresult = (event) => {
@@ -2112,6 +2191,14 @@ async function tryWebSpeech() {
                 }
 
                 micBtn.classList.remove('listening');
+
+                // If we haven't resolved yet, it means recognition ended without a result
+                // This can happen with network errors or no speech - fallback to Vosk
+                if (!hasResolved) {
+                    hasResolved = true;
+                    console.log('Web Speech ended without result, falling back to Vosk');
+                    resolve(false);
+                }
             };
 
             recognition.start();
@@ -2281,11 +2368,37 @@ function speakTextContent(text) {
         return;
     }
 
-    const cleanText = (text || '').replace(/\s+/g, ' ').trim();
+    let cleanText = (text || '').replace(/\s+/g, ' ').trim();
     if (!cleanText) {
         endResponse();
         return;
     }
+
+    // Replace URLs with speakable format
+    cleanText = cleanText.replace(/https?:\/\/(?:www\.)?[^\s]+/gi, function (url) {
+        // Remove protocol
+        let cleaned = url.replace(/^https?:\/\//i, '');
+        // Remove www. if present
+        cleaned = cleaned.replace(/^www\./i, '');
+        // Replace dots with " dot "
+        cleaned = cleaned.replace(/\./g, ' dot ');
+        // Replace slashes with " slash "
+        cleaned = cleaned.replace(/\//g, ' slash ');
+        // Replace hyphens with spaces
+        cleaned = cleaned.replace(/-/g, ' ');
+        return cleaned;
+    });
+    cleanText = cleanText.replace(/www\.[^\s]+/gi, function (url) {
+        // Remove www. if present
+        let cleaned = url.replace(/^www\./i, '');
+        // Replace dots with " dot "
+        cleaned = cleaned.replace(/\./g, ' dot ');
+        // Replace slashes with " slash "
+        cleaned = cleaned.replace(/\//g, ' slash ');
+        // Replace hyphens with spaces
+        cleaned = cleaned.replace(/-/g, ' ');
+        return cleaned;
+    });
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
 
