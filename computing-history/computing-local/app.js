@@ -214,7 +214,7 @@ async function init() {
         // Show error but still try to hide overlay after a delay
         setTimeout(() => {
             hideLoadingOverlay();
-            addMessage(`Error loading models: ${e.message}. Some features may be unavailable.`, "bot");
+            addMessage(`Error loading models: ${escapeHtml(e.message)}. Some features may be unavailable.`, "bot");
         }, 2000);
     }
 }
@@ -399,6 +399,12 @@ function shiftWord(text, amount) {
 
 function escapeRegex(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 async function loadInappropriateWords() {
@@ -1021,7 +1027,7 @@ async function handleSend() {
             const summary = await generateComputingInfo(text, (chunk) => {
                 if (bubble && chunk) {
                     const currentText = bubble.textContent || '';
-                    setBubbleContent(bubble, currentText + chunk);
+                    setBubbleContent(bubble, escapeHtml(currentText + chunk));
                     scrollToBottom();
                 }
             });
@@ -1054,7 +1060,7 @@ async function handleSend() {
             }
         } catch (e) {
             if (checkStopResponse()) return;
-            setBubbleContent(bubble, "Sorry, I had trouble searching via text. " + e.message);
+            setBubbleContent(bubble, "Sorry, I had trouble searching via text. " + escapeHtml(e.message));
             endResponse();
         }
     } else {
@@ -1101,7 +1107,7 @@ async function handleSend() {
         } catch (e) {
             removeTyping();
             if (checkStopResponse()) return;
-            addMessage("Sorry, I had trouble searching via text. " + e.message, "bot");
+            addMessage("Sorry, I had trouble searching via text. " + escapeHtml(e.message), "bot");
         }
     }
 }
@@ -1498,7 +1504,7 @@ async function performClassification(imgEl, userText = "") {
                         const summary = await generateComputingInfo(modelQuery, (chunk) => {
                             if (bubble && chunk) {
                                 streamedText += chunk;
-                                setBubbleContent(bubble, reply + `<br>` + streamedText);
+                                setBubbleContent(bubble, reply + `<br>` + escapeHtml(streamedText));
                                 scrollToBottom();
                             }
                         });
