@@ -1,4 +1,4 @@
-﻿[
+[
     {
         "category":  "Get Started with Microsoft 365 Copilot",
         "link":  "https://learn.microsoft.com/en-us/training/paths/get-started-with-microsoft-365-copilot/",
@@ -451,7 +451,7 @@
                                                "action",
                                                "power automate",
                                                "task",
-                                               "tasks",
+                                               "tasks"
                                            ],
                               "content":  "Actions allow an agent to move from conversation into real work, such as creating records, sending approvals, or updating systems. In no-code scenarios, makers often use connectors and Power Automate flows to integrate with business services. Each action should have clear inputs, validation rules, and user confirmations for sensitive operations. Robust action design improves reliability and reduces accidental changes."
                           },
