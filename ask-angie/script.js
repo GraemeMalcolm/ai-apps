@@ -762,7 +762,7 @@ IMPORTANT: Follow these guidelines when responding:
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
             'a', 'an', 'and', 'angie', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
-            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with',
+            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with', 'find', 'search',
             'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
             'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
         ]);
