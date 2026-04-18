@@ -164,22 +164,9 @@
                               "title":  "Document Creation in Word with Copilot",
                               "keywords":  [
                                                "word copilot",
-                                               "word",
+                                               "microsoft word",
                                                "documents",
-                                               "proposal",
-                                               "draft document",
-                                               "write proposal",
-                                               "document creation",
-                                               "proposal writing",
-                                               "policy draft",
-                                               "executive summary",
-                                               "business case",
-                                               "statement work",
-                                               "operating procedure",
-                                               "hr policy",
-                                               "communication pack",
-                                               "legal memo",
-                                               "compliance memo"
+                                               "document"
                                            ],
                               "content":  "Document creation in Word with Copilot is the capability to generate first drafts, restructure text, and produce concise summaries from longer material. For business users, this accelerates proposal writing, policy updates, and communication packs. A strong workflow is to start with structured prompts, then iterate with feedback cycles and source references. Final review should ensure factual accuracy, compliance language, and brand style."
                           },
@@ -244,24 +231,11 @@
                               "title":  "Prompting Fundamentals for Microsoft 365 Copilot",
                               "keywords":  [
                                                "prompting",
-                                               "prompt basics",
+                                               "prompt",
                                                "prompts",
-                                               "better prompts",
-                                               "transform content",
-                                               "rewrite content",
-                                               "effective prompts",
-                                               "write prompts",
-                                               "copilot prompts",
-                                               "prompt structure",
-                                               "prompt examples",
-                                               "prompt template",
-                                               "good questions",
-                                               "better questions",
-                                               "user input",
-                                               "business prompts",
-                                               "hr prompts",
-                                               "sales prompts",
-                                               "finance prompts"
+                                               "questions",
+                                               "question",
+                                               "input"
                                            ],
                               "content":  "Good prompts are clear, contextual, and outcome-oriented. A practical pattern is to specify role, task, context, constraints, and output format. For example, asking for a three-bullet executive summary with risks and recommendations generally produces more useful output than broad requests. Prompt quality is one of the highest leverage skills for business users and no-code builders."
                           },
@@ -479,7 +453,6 @@
                               "id":  22,
                               "title":  "Designing an Agent for Business Processes",
                               "keywords":  [
-                                               "agent",
                                                "design",
                                                "business process",
                                                "specific business process",
@@ -503,7 +476,6 @@
                               "id":  23,
                               "title":  "Copilot Studio Instruction and Behavior Design",
                               "keywords":  [
-                                               "agent",
                                                "agent instructions",
                                                "instructions design",
                                                "good instructions",
@@ -568,22 +540,10 @@
                               "id":  26,
                               "title":  "Testing and Evaluation for No-Code Agents",
                               "keywords":  [
-                                               "agent",
                                                "testing",
                                                "evaluation",
-                                               "agent testing",
-                                               "test agent",
-                                               "no code agent",
-                                               "test no code",
-                                               "test cases",
-                                               "edge cases",
-                                               "failure scenarios",
-                                               "user acceptance testing",
-                                               "uat",
-                                               "scenario testing",
-                                               "task completion",
-                                               "user satisfaction",
-                                               "ambiguous prompts"
+                                               "test",
+                                               "evaluate"
                                            ],
                               "content":  "No-code agents still require disciplined testing across happy paths, edge cases, and failure scenarios. Test sets should include ambiguous prompts, incomplete information, and policy-sensitive requests. Evaluation should measure accuracy, task completion rate, escalation quality, and user satisfaction over time. User acceptance testing with real roles is essential before broad rollout."
                           },
@@ -591,19 +551,15 @@
                               "id":  27,
                               "title":  "Monitoring, Analytics, and Continuous Improvement for Agents",
                               "keywords":  [
-                                               "agent",
                                                "monitoring",
+                                               "monitor",
                                                "analytics",
-                                               "monitor usage",
-                                               "usage analytics",
-                                               "intent analytics",
+                                               "usage",
                                                "continuous improvement",
-                                               "action errors",
-                                               "unresolved intents",
-                                               "feedback signals",
-                                               "support trends",
-                                               "adoption dashboard",
-                                               "optimize agent"
+                                               "errors",
+                                               "optimization",
+                                               "dashboard",
+                                               "optimize"
                                            ],
                               "content":  "After launch, teams should monitor usage patterns, unresolved intents, action errors, and feedback signals to guide improvements. Analytics help identify where knowledge gaps, instruction issues, or process bottlenecks exist. A regular optimization cadence keeps the agent aligned to changing business needs. Mature programs treat launch as the beginning of iterative improvement, not the end."
                           },
