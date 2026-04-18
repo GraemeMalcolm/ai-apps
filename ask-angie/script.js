@@ -762,8 +762,8 @@ IMPORTANT: Follow these guidelines when responding:
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
             'a', 'an', 'and', 'angie', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
-            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with', 'find', 'search',
-            'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
+            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with', 'find', 'search', 'start', 'started',
+            'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose', 'help', 'get',
             'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
         ]);
         const uniqueWords = [];
