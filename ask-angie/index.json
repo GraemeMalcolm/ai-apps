@@ -375,6 +375,8 @@
                               "title":  "What is Microsoft Copilot Studio?",
                               "keywords":  [
                                                "copilot studio",
+                                               "agent",
+                                               "agents",
                                                "copliot studio",
                                                "build agents",
                                                "build agent",
@@ -484,6 +486,7 @@
                               "id":  22,
                               "title":  "Designing an Agent for a Business Process",
                               "keywords":  [
+                                               "agent",
                                                "business process",
                                                "specific business process",
                                                "design agent",
@@ -506,6 +509,7 @@
                               "id":  23,
                               "title":  "Instruction and Behavior Design",
                               "keywords":  [
+                                               "agent",
                                                "agent instructions",
                                                "good instructions",
                                                "write good instructions",
@@ -568,6 +572,7 @@
                               "id":  26,
                               "title":  "Testing and Evaluation for No-Code Agents",
                               "keywords":  [
+                                               "agent",
                                                "agent testing",
                                                "test agent",
                                                "no code agent",
@@ -588,6 +593,7 @@
                               "id":  27,
                               "title":  "Monitoring, Analytics, and Continuous Improvement",
                               "keywords":  [
+                                               "agent",
                                                "monitor usage",
                                                "usage analytics",
                                                "intent analytics",
