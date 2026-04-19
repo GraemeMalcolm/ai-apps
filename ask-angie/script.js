@@ -1520,22 +1520,22 @@ IMPORTANT: Follow these guidelines when responding:
     truncateParagraphsForCPU(context) {
         if (!context) return context;
 
-        // Split context into paragraphs (by newlines)
-        const paragraphs = context.split('\n');
+        // Split context into sections by blank lines, then concatenate into one flow.
+        const sections = context
+            .split(/\n\s*\n+/)
+            .map(section => section.replace(/\s+/g, ' ').trim())
+            .filter(Boolean);
 
-        const truncatedParagraphs = paragraphs.map(paragraph => {
-            // Skip empty paragraphs
-            if (!paragraph.trim()) return paragraph;
-
-            // If paragraph is <= 600 chars, keep it as is
-            if (paragraph.length <= 600) return paragraph;
+        const truncatedSections = sections.map(section => {
+            // If section is <= 600 chars, keep it as is
+            if (section.length <= 600) return section;
 
             // Find first sentence ending (., !, ?) after position 600
             const searchFrom = 600;
             let endPos = -1;
 
-            for (let i = searchFrom; i < paragraph.length; i++) {
-                if (paragraph[i] === '.' || paragraph[i] === '!' || paragraph[i] === '?') {
+            for (let i = searchFrom; i < section.length; i++) {
+                if (section[i] === '.' || section[i] === '!' || section[i] === '?') {
                     endPos = i + 1; // Include the punctuation
                     break;
                 }
@@ -1543,14 +1543,66 @@ IMPORTANT: Follow these guidelines when responding:
 
             // If found a sentence ending, truncate there
             if (endPos > 0) {
-                return paragraph.substring(0, endPos);
+                return section.substring(0, endPos);
             }
 
             // Otherwise, truncate at 600 chars with ellipsis
-            return paragraph.substring(0, 600) + '...';
+            return section.substring(0, 600) + '...';
         });
 
-        return truncatedParagraphs.join('\n');
+        return truncatedSections.reduce((combined, section) => {
+            if (!combined) {
+                return section;
+            }
+
+            const needsSentenceSeparator = !/[.!?]\s*$/.test(combined);
+            return combined + (needsSentenceSeparator ? '. ' : ' ') + section;
+        }, '');
+    }
+
+    trimIncompleteSentenceForCPU(text) {
+        if (!text) return text;
+
+        let trimmedText = text.trim();
+        if (!trimmedText) return trimmedText;
+
+        const hasCompleteSentenceEnding = (value) => /[.!?]["')\]]*\s*$/.test(value);
+
+        if (hasCompleteSentenceEnding(trimmedText)) {
+            return trimmedText;
+        }
+
+        const trailingLeadInPattern = /(?:\b(?:and|or|but|so|because|which|that|who|when|where|while|with|for|to|of|in|on|at|by|as|like|including)\b|\b(?:such as|for example|for instance|for example,|for instance,)\b|[,;:\-–—(]\s*)$/i;
+
+        while (trailingLeadInPattern.test(trimmedText)) {
+            trimmedText = trimmedText.replace(trailingLeadInPattern, '').trim();
+        }
+
+        if (!trimmedText) {
+            return '';
+        }
+
+        if (hasCompleteSentenceEnding(trimmedText)) {
+            return trimmedText;
+        }
+
+        let lastSentenceEnd = -1;
+
+        for (let i = 0; i < trimmedText.length; i++) {
+            if (trimmedText[i] === '.' || trimmedText[i] === '!' || trimmedText[i] === '?') {
+                let endIndex = i + 1;
+                while (endIndex < trimmedText.length && /["')\]]/.test(trimmedText[endIndex])) {
+                    endIndex++;
+                }
+                lastSentenceEnd = endIndex;
+            }
+        }
+
+        if (lastSentenceEnd > 0) {
+            return trimmedText.substring(0, lastSentenceEnd).trim();
+        }
+
+        return trimmedText;
     }
 
     buildBasicResponse(searchResult) {
@@ -1623,13 +1675,13 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += userMessage + '\n';
+        chatMLPrompt += userMessage;
         // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            chatMLPrompt += 'Respond by summarizing ONLY the relevant details in the following text:\n' + truncatedContext + '\n';
+            chatMLPrompt += ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
         }
-        chatMLPrompt += '<|im_end|>\n\n';
+        chatMLPrompt += '\n<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
         console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
@@ -1679,6 +1731,13 @@ IMPORTANT: Follow these guidelines when responding:
                     messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
                     this.scrollToBottom();
                 }
+            }
+
+            const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
+            if (cleanedAssistantMessage !== assistantMessage) {
+                assistantMessage = cleanedAssistantMessage;
+                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                this.scrollToBottom();
             }
 
             // Clear abort controller on successful completion
