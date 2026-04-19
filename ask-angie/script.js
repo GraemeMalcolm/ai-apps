@@ -904,19 +904,9 @@ IMPORTANT: Follow these guidelines when responding:
     searchContext(userQuestion) {
         const { matches, matchedKeywords } = this.performSearch(userQuestion);
 
-        // If no matches, fall back to AI Concepts category
+        // If no matches, return null context
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
-            const aiConceptsCategory = this.indexData.find(cat => cat.category === 'AI Concepts');
-            if (aiConceptsCategory && aiConceptsCategory.documents.length > 0) {
-                const fallbackDoc = aiConceptsCategory.documents[0];
-                return {
-                    context: fallbackDoc.content,
-                    categories: [aiConceptsCategory.category],
-                    links: [aiConceptsCategory.link],
-                    documents: [fallbackDoc]
-                };
-            }
             return { context: null, categories: [], links: [], documents: [] };
         }
 
@@ -1243,6 +1233,10 @@ IMPORTANT: Follow these guidelines when responding:
         messageTextDiv.innerHTML = formattedMessage;
     }
 
+    hasPreviousUserPrompt() {
+        return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
+    }
+
     async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
@@ -1318,6 +1312,8 @@ IMPORTANT: Follow these guidelines when responding:
         const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
         const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
         const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
+        const shouldTryGpuConversationFallback = this.currentMode === 'gpu' && this.hasPreviousUserPrompt();
+        const gpuFallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -1337,6 +1333,29 @@ IMPORTANT: Follow these guidelines when responding:
 
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
+
+            if (shouldTryGpuConversationFallback) {
+                const modelResponse = await this.generateWithWebLLM(userMessage, null, messageTextDiv, usedVoiceInput);
+
+                if (this.stopRequested) {
+                    return;
+                }
+
+                if (modelResponse.trim()) {
+                    const displayedMessage = `${modelResponse.trim()}${gpuFallbackNote}`;
+                    messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
+
+                    this.conversationHistory.push({
+                        role: 'user',
+                        content: userMessage
+                    });
+                    this.conversationHistory.push({
+                        role: 'assistant',
+                        content: modelResponse.trim()
+                    });
+                    return;
+                }
+            }
 
             if (usedVoiceInput) {
                 this.playNoResultsAudio();
@@ -1453,7 +1472,7 @@ IMPORTANT: Follow these guidelines when responding:
     // ============================================================================
 
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
-        let userPrompt = userMessage;
+        let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence at work. For questions outside of these topics, politely decline to answer.)';
         if (context) {
             userPrompt = `${context}\n\nQ: ${userMessage}`;
         }
