@@ -761,7 +761,7 @@ IMPORTANT: Follow these guidelines when responding:
         const normalizedText = this.normalizeSearchText(text);
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
-            'a', 'an', 'and', 'angie', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
+            'a', 'an', 'and', 'anton', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
             'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with',
             'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
             'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
@@ -1505,8 +1505,7 @@ IMPORTANT: Follow these guidelines when responding:
                 break;
             }
 
-            const firstChoice = chunk && chunk.choices && chunk.choices[0] ? chunk.choices[0] : null;
-            const delta = firstChoice && firstChoice.delta ? firstChoice.delta.content : undefined;
+            const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
                 // Play audio on first chunk if voice input was used
                 if (!audioPlayed && usedVoiceInput) {
@@ -1770,8 +1769,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
-            const errorMessage = error && typeof error.message === 'string' ? error.message : '';
-            if (error.name === 'AbortError' || errorMessage.includes('abort')) {
+            if (error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
                 // Clear the partial/corrupted state
                 await this.wllama.kvClear();
