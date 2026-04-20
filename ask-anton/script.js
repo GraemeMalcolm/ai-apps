@@ -1505,7 +1505,8 @@ IMPORTANT: Follow these guidelines when responding:
                 break;
             }
 
-            const delta = chunk.choices[0]?.delta?.content;
+            const firstChoice = chunk && chunk.choices && chunk.choices[0] ? chunk.choices[0] : null;
+            const delta = firstChoice && firstChoice.delta ? firstChoice.delta.content : undefined;
             if (delta) {
                 // Play audio on first chunk if voice input was used
                 if (!audioPlayed && usedVoiceInput) {
@@ -1769,7 +1770,8 @@ IMPORTANT: Follow these guidelines when responding:
 
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
-            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+            const errorMessage = error && typeof error.message === 'string' ? error.message : '';
+            if (error.name === 'AbortError' || errorMessage.includes('abort')) {
                 console.log('Generation aborted by user');
                 // Clear the partial/corrupted state
                 await this.wllama.kvClear();
