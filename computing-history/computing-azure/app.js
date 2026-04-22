@@ -245,7 +245,6 @@ function initializeMSAL() {
             },
             cache: {
                 cacheLocation: 'localStorage',
-                temporaryCacheLocation: 'localStorage',
                 storeAuthStateInCookie: false
             },
             system: {
@@ -409,24 +408,22 @@ async function signInWithEntraID() {
     }
 
     try {
-        updateSigninStatus('Redirecting to sign-in...');
-
-        // Persist config so it survives the redirect
-        const configToPersist = {
-            endpoint: config.endpoint,
-            deployment: config.deployment,
-            authMode: config.authMode,
-            clientId: config.clientId,
-            tenantId: config.tenantId
-        };
-        localStorage.setItem('azureOpenAIConfig', JSON.stringify(configToPersist));
+        updateSigninStatus('Opening sign-in window...');
 
         const loginRequest = {
             scopes: ['https://cognitiveservices.azure.com/.default'],
             prompt: 'select_account'
         };
 
-        await msalInstance.loginRedirect(loginRequest);
+        const response = await msalInstance.loginPopup(loginRequest);
+
+        if (response && response.account) {
+            msalAccount = response.account;
+            msalInstance.setActiveAccount(msalAccount);
+            updateSignInButtonState();
+        } else {
+            updateSigninStatus('Sign-in failed', true);
+        }
     } catch (error) {
         console.error('Error during sign-in:', error);
         updateSigninStatus(`Sign-in error: ${error.message}`, true);
@@ -445,11 +442,15 @@ async function signOutEntraID() {
         updateSigninStatus('Signing out...');
 
         const logoutRequest = {
-            account: msalAccount,
-            postLogoutRedirectUri: window.location.href.split('?')[0].split('#')[0]
+            account: msalAccount
         };
 
-        await msalInstance.logoutRedirect(logoutRequest);
+        await msalInstance.logoutPopup(logoutRequest);
+
+        msalAccount = null;
+        isConfigured = false;
+        updateSignInButtonState();
+        updateUIState();
     } catch (error) {
         console.error('Error during sign-out:', error);
         updateSigninStatus(`Sign-out error: ${error.message}`, true);
@@ -480,8 +481,8 @@ async function getAccessToken() {
                 scopes: ['https://cognitiveservices.azure.com/.default'],
                 account: msalAccount
             };
-            await msalInstance.acquireTokenRedirect(tokenRequest);
-            throw new Error('Redirecting for token acquisition...');
+            const response = await msalInstance.acquireTokenPopup(tokenRequest);
+            return response.accessToken;
         } catch (interactiveError) {
             console.error('Interactive token acquisition failed:', interactiveError);
             throw new Error('Failed to acquire access token');
