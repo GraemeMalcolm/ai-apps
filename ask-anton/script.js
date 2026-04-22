@@ -415,16 +415,18 @@ IMPORTANT: Follow these guidelines when responding:
                 'multi-thread/wllama.wasm': 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm',
             };
 
-            // Try multithreaded (4 threads) first if cross-origin isolated, fall back to single-threaded
+            // Try multithreaded first if cross-origin isolated, fall back to single-threaded
             const useMultiThread = window.crossOriginIsolated === true;
-            const preferredThreads = useMultiThread ? 4 : 1;
-            console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, attempting ${preferredThreads} thread(s)`);
+            const availableThreads = navigator.hardwareConcurrency || 4; // Fallback to 4 if not available
+            const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+            console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
             const modelConfig = {
-                n_ctx: 512,      // Smaller context for faster processing
+                n_ctx: 384,      // Smaller context for faster processing
                 n_threads: preferredThreads,
                 progressCallback: ({ loaded, total }) => {
-                    const percentage = Math.max(15, Math.round((loaded / total) * 85) + 15);
+                    // Cap at 98% to leave room for cache warming message
+                    const percentage = Math.min(98, Math.max(15, Math.round((loaded / total) * 85) + 15));
                     const progress = loaded / total;
 
                     if (!isLazyLoad) {
@@ -453,6 +455,9 @@ IMPORTANT: Follow these guidelines when responding:
                     modelConfig
                 );
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+
+                // Warm the cache with system instruction
+                await this.warmWllamaCache(isLazyLoad, progressCallback, true);
             } catch (multiErr) {
                 if (preferredThreads > 1) {
                     console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
@@ -468,13 +473,12 @@ IMPORTANT: Follow these guidelines when responding:
                         }
                     );
                     console.log('Wllama initialized successfully with 1 thread (fallback)');
+
+                    // Warm the cache with system instruction
+                    await this.warmWllamaCache(isLazyLoad, progressCallback, true);
                 } else {
                     throw multiErr;
                 }
-            }
-
-            if (!isLazyLoad) {
-                this.updateProgress(100, 'Ready to chat! (CPU mode)');
             }
             console.log('Wllama initialized successfully with Phi 2');
             this.availableModes.cpu = true;
@@ -496,6 +500,51 @@ IMPORTANT: Follow these guidelines when responding:
                 this.showError('Failed to load AI model. Please refresh the page.');
             }
             throw error;
+        }
+    }
+
+    async warmWllamaCache(isLazyLoad = true, progressCallback = null, updateFinalProgress = false) {
+        // Warm the cache with the system instruction to improve first response time
+        if (!this.wllama) return;
+
+        try {
+            const systemInstruction = '<|im_start|>system\n' +
+                'You are Anton, a teacher of AI and computing concepts. You always follow these rules.\n\n' +
+                'Rules:\n' +
+                '- Discuss AI and computing topics only\n' +
+                '- Do not provide specific steps or instructions\n\n' +
+                '- Provide factual and accurate information\n\n' +
+                '- Follow all instructions exactly\n\n' +
+                '<|im_end|>\n\n';
+
+            console.log('Warming cache with system instruction...');
+
+            // Update progress message
+            if (!isLazyLoad) {
+                this.updateProgress(99, 'Optimizing model...');
+            } else if (progressCallback) {
+                // For lazy loading, pass progress as 0.99
+                progressCallback(0.99);
+            }
+
+            await this.wllama.createCompletion(systemInstruction, {
+                nPredict: 1,
+                sampling: {
+                    temp: 0.0
+                }
+            });
+            console.log('Cache warmed successfully');
+
+            // Update to final ready state if requested
+            if (!isLazyLoad && updateFinalProgress) {
+                this.updateProgress(100, 'Ready to chat! (CPU mode)');
+            }
+        } catch (error) {
+            console.log('Cache warming failed (non-critical):', error.message);
+            // Still show ready message even if cache warming failed
+            if (!isLazyLoad && updateFinalProgress) {
+                this.updateProgress(100, 'Ready to chat! (CPU mode)');
+            }
         }
     }
 
@@ -541,14 +590,14 @@ IMPORTANT: Follow these guidelines when responding:
 
     getModeLabel(mode = this.currentMode) {
         if (mode === 'gpu') {
-            return 'GPU';
+            return 'Phi 3.1 (GPU)';
         }
 
         if (mode === 'cpu') {
-            return 'CPU';
+            return 'Phi 2.0 (CPU)';
         }
 
-        return 'Basic';
+        return 'None (Basic Q&A)';
     }
 
     showError(message) {
@@ -1092,7 +1141,11 @@ IMPORTANT: Follow these guidelines when responding:
             await this.initializeWllama((progress) => {
                 if (loadingMsgElement) {
                     const percentage = Math.round(progress * 100);
-                    loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}%`;
+                    if (percentage >= 99) {
+                        loadingMsgElement.textContent = 'Switching to CPU mode - optimizing model...';
+                    } else {
+                        loadingMsgElement.textContent = `Switching to CPU mode - loading model... ${percentage}%`;
+                    }
                 }
             }, {
                 activateMode: true,
@@ -1133,13 +1186,11 @@ IMPORTANT: Follow these guidelines when responding:
             basic: { enabled: '⚪', disabled: '◯' }
         };
 
-        const modeLabels = { gpu: 'GPU', cpu: 'CPU', basic: 'Basic' };
-
         Array.from(modeSelect.options).forEach(option => {
             const mode = option.value;
             const isAvailable = mode === 'basic' ? true : this.availableModes[mode];
             const icon = isAvailable ? modeIcons[mode].enabled : modeIcons[mode].disabled;
-            option.textContent = `${icon} ${modeLabels[mode]}`;
+            option.textContent = `${icon} ${this.getModeLabel(mode)}`;
             option.disabled = !isAvailable;
         });
 
@@ -1312,8 +1363,8 @@ IMPORTANT: Follow these guidelines when responding:
         const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
         const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
         const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
-        const shouldTryGpuConversationFallback = this.currentMode === 'gpu' && this.hasPreviousUserPrompt();
-        const gpuFallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
+        const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
+        const fallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -1334,15 +1385,21 @@ IMPORTANT: Follow these guidelines when responding:
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
 
-            if (shouldTryGpuConversationFallback) {
-                const modelResponse = await this.generateWithWebLLM(userMessage, null, messageTextDiv, usedVoiceInput);
+            if (shouldTryConversationFallback) {
+                let modelResponse = '';
+
+                if (this.currentMode === 'gpu') {
+                    modelResponse = await this.generateWithWebLLM(userMessage, null, messageTextDiv, usedVoiceInput);
+                } else if (this.currentMode === 'cpu') {
+                    modelResponse = await this.generateWithWllama(userMessage, null, messageTextDiv, usedVoiceInput);
+                }
 
                 if (this.stopRequested) {
                     return;
                 }
 
                 if (modelResponse.trim()) {
-                    const displayedMessage = `${modelResponse.trim()}${gpuFallbackNote}`;
+                    const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
                     messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
 
                     this.conversationHistory.push({
@@ -1694,11 +1751,13 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Add current user message
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += userMessage;
-        // Add context from index.json if available (truncate paragraphs to prevent context overflow)
         if (context) {
+            // Add context from index.json if available (truncate paragraphs to prevent context overflow)
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            chatMLPrompt += ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
+            chatMLPrompt += userMessage + ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
+        } else {
+            // No context - use conversation history with instruction to stay focused
+            chatMLPrompt += userMessage + ' (Keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         }
         chatMLPrompt += '\n<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
@@ -1712,14 +1771,6 @@ IMPORTANT: Follow these guidelines when responding:
         // Create AbortController for this generation
         const controller = new AbortController();
         this.currentAbortController = controller;
-
-        // Clear KV cache before generation to ensure clean state
-        try {
-            await this.wllama.kvClear();
-            console.log('KV cache cleared before generation');
-        } catch (error) {
-            console.log('KV cache clear failed:', error.message);
-        }
 
         // Use streaming with proper abort support
         try {
