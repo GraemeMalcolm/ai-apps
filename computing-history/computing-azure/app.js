@@ -231,17 +231,15 @@ function loadConfig() {
 function initializeMSAL() {
     if (!config.clientId || !config.tenantId) {
         console.error('Cannot initialize MSAL: missing client ID or tenant ID');
-        return Promise.resolve();
+        return;
     }
 
     try {
-        const redirectUri = window.location.href.split('?')[0].split('#')[0];
-
         const msalConfig = {
             auth: {
                 clientId: config.clientId,
                 authority: `https://login.microsoftonline.com/${config.tenantId}`,
-                redirectUri: redirectUri
+                redirectUri: window.location.href.split('?')[0].split('#')[0]
             },
             cache: {
                 cacheLocation: 'localStorage',
@@ -258,7 +256,7 @@ function initializeMSAL() {
         msalInstance = new msal.PublicClientApplication(msalConfig);
 
         // Initialize MSAL and handle any redirect responses
-        return msalInstance.initialize().then(() => {
+        msalInstance.initialize().then(() => {
             return msalInstance.handleRedirectPromise();
         }).then((response) => {
             if (response && response.account) {
@@ -276,14 +274,6 @@ function initializeMSAL() {
                 isConfigured = true;
                 updateUIState();
                 updateSignInButtonState();
-                // Collapse config panel now that sign-in is confirmed
-                const content = document.getElementById('configContent');
-                const icon = document.getElementById('toggleIcon');
-                if (content && icon) {
-                    content.classList.add('hidden');
-                    icon.classList.add('collapsed');
-                    document.querySelector('.config-header')?.setAttribute('aria-expanded', 'false');
-                }
             }
         }).catch((error) => {
             console.error('Error handling MSAL redirect:', error);
@@ -394,13 +384,10 @@ async function signInWithEntraID() {
         return;
     }
 
-    config.endpoint = baseEndpoint;
-    config.deployment = document.getElementById('deployment').value.trim();
-    config.authMode = 'entra';
     config.clientId = clientId;
     config.tenantId = tenantId;
 
-    await initializeMSAL();
+    initializeMSAL();
 
     if (!msalInstance) {
         updateSigninStatus('Failed to initialize authentication', true);
@@ -412,7 +399,8 @@ async function signInWithEntraID() {
 
         const loginRequest = {
             scopes: ['https://cognitiveservices.azure.com/.default'],
-            prompt: 'select_account'
+            prompt: 'select_account',
+            redirectUri: window.location.href.split('?')[0].split('#')[0]
         };
 
         const response = await msalInstance.loginPopup(loginRequest);
@@ -421,6 +409,7 @@ async function signInWithEntraID() {
             msalAccount = response.account;
             msalInstance.setActiveAccount(msalAccount);
             updateSignInButtonState();
+            console.log('Successfully signed in with Entra ID');
         } else {
             updateSigninStatus('Sign-in failed', true);
         }
@@ -442,7 +431,8 @@ async function signOutEntraID() {
         updateSigninStatus('Signing out...');
 
         const logoutRequest = {
-            account: msalAccount
+            account: msalAccount,
+            postLogoutRedirectUri: window.location.href.split('?')[0].split('#')[0]
         };
 
         await msalInstance.logoutPopup(logoutRequest);
@@ -451,6 +441,8 @@ async function signOutEntraID() {
         isConfigured = false;
         updateSignInButtonState();
         updateUIState();
+
+        console.log('Successfully signed out');
     } catch (error) {
         console.error('Error during sign-out:', error);
         updateSigninStatus(`Sign-out error: ${error.message}`, true);
