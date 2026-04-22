@@ -231,7 +231,7 @@ function loadConfig() {
 function initializeMSAL() {
     if (!config.clientId || !config.tenantId) {
         console.error('Cannot initialize MSAL: missing client ID or tenant ID');
-        return;
+        return Promise.resolve();
     }
 
     try {
@@ -259,7 +259,7 @@ function initializeMSAL() {
         msalInstance = new msal.PublicClientApplication(msalConfig);
 
         // Initialize MSAL and handle any redirect responses
-        msalInstance.initialize().then(() => {
+        return msalInstance.initialize().then(() => {
             return msalInstance.handleRedirectPromise();
         }).then((response) => {
             if (response && response.account) {
@@ -401,7 +401,7 @@ async function signInWithEntraID() {
     config.clientId = clientId;
     config.tenantId = tenantId;
 
-    initializeMSAL();
+    await initializeMSAL();
 
     if (!msalInstance) {
         updateSigninStatus('Failed to initialize authentication', true);
