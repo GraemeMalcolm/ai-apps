@@ -235,11 +235,13 @@ function initializeMSAL() {
     }
 
     try {
+        const redirectUri = window.location.href.split('?')[0].split('#')[0];
+
         const msalConfig = {
             auth: {
                 clientId: config.clientId,
                 authority: `https://login.microsoftonline.com/${config.tenantId}`,
-                redirectUri: window.location.href.split('?')[0].split('#')[0]
+                redirectUri: redirectUri
             },
             cache: {
                 cacheLocation: 'localStorage',
@@ -274,6 +276,14 @@ function initializeMSAL() {
                 isConfigured = true;
                 updateUIState();
                 updateSignInButtonState();
+                // Collapse config panel now that sign-in is confirmed
+                const content = document.getElementById('configContent');
+                const icon = document.getElementById('toggleIcon');
+                if (content && icon) {
+                    content.classList.add('hidden');
+                    icon.classList.add('collapsed');
+                    document.querySelector('.config-header')?.setAttribute('aria-expanded', 'false');
+                }
             }
         }).catch((error) => {
             console.error('Error handling MSAL redirect:', error);
@@ -384,6 +394,9 @@ async function signInWithEntraID() {
         return;
     }
 
+    config.endpoint = baseEndpoint;
+    config.deployment = document.getElementById('deployment').value.trim();
+    config.authMode = 'entra';
     config.clientId = clientId;
     config.tenantId = tenantId;
 
@@ -395,24 +408,24 @@ async function signInWithEntraID() {
     }
 
     try {
-        updateSigninStatus('Opening sign-in window...');
+        updateSigninStatus('Redirecting to sign-in...');
+
+        // Persist config so it survives the redirect
+        const configToPersist = {
+            endpoint: config.endpoint,
+            deployment: config.deployment,
+            authMode: config.authMode,
+            clientId: config.clientId,
+            tenantId: config.tenantId
+        };
+        localStorage.setItem('azureOpenAIConfig', JSON.stringify(configToPersist));
 
         const loginRequest = {
             scopes: ['https://cognitiveservices.azure.com/.default'],
-            prompt: 'select_account',
-            redirectUri: window.location.href.split('?')[0].split('#')[0]
+            prompt: 'select_account'
         };
 
-        const response = await msalInstance.loginPopup(loginRequest);
-
-        if (response && response.account) {
-            msalAccount = response.account;
-            msalInstance.setActiveAccount(msalAccount);
-            updateSignInButtonState();
-            console.log('Successfully signed in with Entra ID');
-        } else {
-            updateSigninStatus('Sign-in failed', true);
-        }
+        await msalInstance.loginRedirect(loginRequest);
     } catch (error) {
         console.error('Error during sign-in:', error);
         updateSigninStatus(`Sign-in error: ${error.message}`, true);
@@ -435,14 +448,7 @@ async function signOutEntraID() {
             postLogoutRedirectUri: window.location.href.split('?')[0].split('#')[0]
         };
 
-        await msalInstance.logoutPopup(logoutRequest);
-
-        msalAccount = null;
-        isConfigured = false;
-        updateSignInButtonState();
-        updateUIState();
-
-        console.log('Successfully signed out');
+        await msalInstance.logoutRedirect(logoutRequest);
     } catch (error) {
         console.error('Error during sign-out:', error);
         updateSigninStatus(`Sign-out error: ${error.message}`, true);
@@ -473,8 +479,8 @@ async function getAccessToken() {
                 scopes: ['https://cognitiveservices.azure.com/.default'],
                 account: msalAccount
             };
-            const response = await msalInstance.acquireTokenPopup(tokenRequest);
-            return response.accessToken;
+            await msalInstance.acquireTokenRedirect(tokenRequest);
+            throw new Error('Redirecting for token acquisition...');
         } catch (interactiveError) {
             console.error('Interactive token acquisition failed:', interactiveError);
             throw new Error('Failed to acquire access token');
