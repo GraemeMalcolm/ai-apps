@@ -448,8 +448,8 @@ IMPORTANT: Follow these guidelines when responding:
 
                 // Load model from HuggingFace with optimized settings
                 await this.wllama.loadModelFromHF(
-                    'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                    'smollm2-360m-instruct-q8_0.gguf',
+                    'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
                     modelConfig
                 );
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
@@ -460,8 +460,8 @@ IMPORTANT: Follow these guidelines when responding:
                     // Retry with single thread
                     this.wllama = new Wllama(CONFIG_PATHS);
                     await this.wllama.loadModelFromHF(
-                        'ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF',
-                        'smollm2-360m-instruct-q8_0.gguf',
+                        'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf',
                         {
                             ...modelConfig,
                             n_threads: 1
@@ -476,7 +476,7 @@ IMPORTANT: Follow these guidelines when responding:
             if (!isLazyLoad) {
                 this.updateProgress(100, 'Ready to chat! (CPU mode)');
             }
-            console.log('Wllama initialized successfully with SmolLM2-360M-Instruct');
+            console.log('Wllama initialized successfully with Phi 2');
             this.availableModes.cpu = true;
 
             if (activateMode) {
@@ -1147,7 +1147,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         const modeDescriptions = {
             gpu: 'GPU mode uses WebLLM with Phi-3-mini.',
-            cpu: 'CPU mode uses wllama with SmolLM2.',
+            cpu: 'CPU mode uses wllama with Phi-2.',
             basic: 'Basic mode returns matching content directly from the knowledge base.'
         };
 
