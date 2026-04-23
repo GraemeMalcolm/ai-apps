@@ -1013,6 +1013,7 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Add moderation response
             this.addMessage('assistant', "I'm sorry, I can't help with that because it triggered a content-safety filtering policy. I can only help with information about AI and computing.");
+            this.elements.userInput.focus();
             return;
         }
 
@@ -1037,6 +1038,7 @@ IMPORTANT: Follow these guidelines when responding:
                 // Respond with greeting without searching
                 const greetingResponse = "Hello, I'm Anton. I'm here to help you learn about AI concepts. What would you like to know?";
                 this.addMessage('assistant', greetingResponse);
+                this.elements.userInput.focus();
                 return;
             }
         }
@@ -1348,6 +1350,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.isGenerating = false;
             this.stopRequested = false;
             this.updateSendButton(false);
+            this.elements.userInput.focus();
 
             setTimeout(() => {
                 this.elements.searchStatus.textContent = '';
@@ -1441,6 +1444,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.isGenerating = false;
             this.stopRequested = false;
             this.updateSendButton(false);
+            this.elements.userInput.focus();
 
             setTimeout(() => {
                 this.elements.searchStatus.textContent = '';
@@ -1514,6 +1518,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.stopRequested = false;
             this.currentStream = null;
             this.updateSendButton(false);
+            this.elements.userInput.focus();
 
             // Clear search status after response is complete
             setTimeout(() => {
@@ -1525,6 +1530,7 @@ IMPORTANT: Follow these guidelines when responding:
     // ============================================================================
     // LLM RESPONSE GENERATION (WebLLM & Wllama)
     // ============================================================================
+
 
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
