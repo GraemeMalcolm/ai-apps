@@ -1721,9 +1721,11 @@ IMPORTANT: Follow these guidelines when responding:
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
         chatMLPrompt += 'You are Anton, a teacher of AI and computing concepts.\n';
-        chatMLPrompt += 'Discuss AI and computing topics only\n';
-        chatMLPrompt += 'Do not provide specific steps or instructions\n\n';
-        chatMLPrompt += 'Provide factual and accurate information\n\n';
+        chatMLPrompt += 'Rules:\n';
+        chatMLPrompt += '- Discuss AI and computing topics only\n';
+        chatMLPrompt += '- Do not provide specific steps or instructions\n\n';
+        chatMLPrompt += '- Provide factual and accurate information\n\n';
+        chatMLPrompt += '- Follow all instructions exactly\n\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1753,7 +1755,7 @@ IMPORTANT: Follow these guidelines when responding:
             chatMLPrompt += userMessage + ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
         } else {
             // No context - use conversation history with instruction to stay focused
-            chatMLPrompt += userMessage + ' (Respond concisely, keeping the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
+            chatMLPrompt += userMessage + ' (Keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         }
         chatMLPrompt += '\n<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
