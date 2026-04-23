@@ -11,6 +11,19 @@ const PHI2_FILE = "phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf";
 const PHI3_MODEL_ID = "Phi-3-mini-4k-instruct-q4f16_1-MLC";
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
 const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that. Either your system instructions or user input included content that was flagged by the moderation system. If you think this was a mistake, please try rephrasing your input or instructions and try again.";
+const WIKIPEDIA_MODEL_NAME = "Wikipedia API (Basic Chat)";
+
+const STOPWORDS = new Set([
+    "a", "an", "the", "and", "or", "but", "is", "are", "was", "were",
+    "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "of", "in", "on", "at", "to", "from", "with", "by", "for",
+    "about", "as", "that", "this", "these", "those", "it", "they",
+    "he", "she", "we", "you", "i", "me", "my", "him", "her", "us",
+    "them", "which", "who", "whom", "whose", "what", "where", "when",
+    "why", "how", "can", "could", "will", "would", "should",
+    "may", "might", "must", "find", "search", "show", "tell", "look",
+    "ebay", "sale", "buy", "price", "cost", "need", "one"
+]);
 
 function makeId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -78,6 +91,86 @@ function contentToText(content) {
     return String(content ?? "");
 }
 
+function extractLeadingSentences(text, maxSentences = 2) {
+    if (!text) {
+        return "";
+    }
+
+    let sentenceCount = 0;
+    let cutIndex = -1;
+
+    for (let i = 0; i < text.length; i += 1) {
+        const char = text[i];
+        if (char !== "." && char !== "!" && char !== "?") {
+            continue;
+        }
+
+        const prev = i > 0 ? text[i - 1] : "";
+        const next = i < text.length - 1 ? text[i + 1] : "";
+
+        // Ignore decimal separators such as 12.5.
+        if (char === "." && /\d/.test(prev) && /\d/.test(next)) {
+            continue;
+        }
+
+        sentenceCount += 1;
+        cutIndex = i + 1;
+        if (sentenceCount >= maxSentences) {
+            break;
+        }
+    }
+
+    if (cutIndex === -1) {
+        return text.trim();
+    }
+
+    return text.slice(0, cutIndex).trim();
+}
+
+function extractKeywords(text, excludedWords = null) {
+    const words = String(text || "")
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .split(/\s+/);
+
+    return words
+        .filter((word) => !STOPWORDS.has(word) && word.length > 0 && !(excludedWords && excludedWords.has(word)))
+        .join(" ");
+}
+
+function chunkTextForStreaming(text, minChunk = 12, maxChunk = 36) {
+    const source = String(text || "");
+    if (!source) {
+        return [];
+    }
+
+    const chunks = [];
+    let index = 0;
+    while (index < source.length) {
+        const remaining = source.length - index;
+        const target = Math.min(
+            remaining,
+            Math.max(minChunk, Math.floor(Math.random() * (maxChunk - minChunk + 1)) + minChunk)
+        );
+
+        let nextIndex = index + target;
+
+        // Prefer splitting on whitespace/punctuation boundaries for natural deltas.
+        if (nextIndex < source.length) {
+            const boundaryWindow = source.slice(index, Math.min(source.length, nextIndex + 10));
+            const boundaryOffset = boundaryWindow.search(/[\s,.!?;:)]/);
+            if (boundaryOffset > 0) {
+                nextIndex = index + boundaryOffset + 1;
+            }
+        }
+
+        chunks.push(source.slice(index, nextIndex));
+        index = nextIndex;
+    }
+
+    return chunks.filter((chunk) => chunk.length > 0);
+}
+
 function validateMessageContent(content, label) {
     if (typeof content === "string") {
         return;
@@ -128,7 +221,9 @@ class ModelCoderLLM {
         this.engine = null;  // WebLLM engine for GPU mode
         this.wllama = null;  // wllama engine for CPU mode
         this.usingWllama = false;  // Track which engine is active
+        this.usingBasic = false;  // Basic Chat Wikipedia mode
         this.webllmAvailable = false;  // Track if WebLLM model successfully loaded
+        this.availableModes = { gpu: false, cpu: true, basic: true };
         this.isReady = false;
         this.isLoading = false;
         this.statusCallback = null;
@@ -383,6 +478,7 @@ class ModelCoderLLM {
         this.isReady = false;
         this.isLoading = false;
         this.usingWllama = false;
+        this.usingBasic = false;
         this.webllmAvailable = false;
 
         // Clean up wllama
@@ -407,6 +503,29 @@ class ModelCoderLLM {
         }
     }
 
+    getCurrentMode() {
+        if (this.usingBasic) {
+            return "basic";
+        }
+        return this.usingWllama ? "cpu" : "gpu";
+    }
+
+    getAvailableModes() {
+        return {
+            gpu: Boolean(this.availableModes.gpu),
+            cpu: Boolean(this.availableModes.cpu),
+            basic: Boolean(this.availableModes.basic)
+        };
+    }
+
+    _activateBasicMode(reason = "Local model unavailable") {
+        this.usingBasic = true;
+        this.usingWllama = false;
+        this.webllmAvailable = false;
+        this.availableModes.basic = true;
+        this._status("ready", `${WIKIPEDIA_MODEL_NAME} ready (${reason})`);
+    }
+
     _status(kind, message) {
         if (typeof this.statusCallback === "function") {
             this.statusCallback({ kind, message });
@@ -423,7 +542,7 @@ class ModelCoderLLM {
     }
 
     async initialize(maxRetries = 3, options = {}) {
-        const { forceCPU = false, forceGPU = false } = options;
+        const { forceCPU = false, forceGPU = false, forceBasic = false } = options;
 
         if (this.isReady) {
             return;
@@ -435,18 +554,34 @@ class ModelCoderLLM {
 
         this.isLoading = true;
 
+        this.availableModes = {
+            gpu: false,  // Only set true once WebLLM actually loads successfully, not just because navigator.gpu exists
+            cpu: true,
+            basic: true
+        };
+
+        if (forceBasic) {
+            this._activateBasicMode("forced fallback mode");
+            this.isReady = true;
+            this.isLoading = false;
+            return;
+        }
+
         // If forcing CPU mode, skip GPU check and go straight to wllama
         if (forceCPU) {
             console.log('Forcing CPU mode (wllama)');
             this.webllmAvailable = false;
+            this.usingBasic = false;
             try {
                 await this._loadWllama(maxRetries);
                 this.usingWllama = true;
+                this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
                 console.error('Wllama initialization failed:', wllamaError);
+                this.availableModes.cpu = false;
                 this.isLoading = false;
                 throw wllamaError;
             }
@@ -462,16 +597,22 @@ class ModelCoderLLM {
             }
             console.log('WebGPU not available, using wllama (CPU mode)');
             this.webllmAvailable = false;
+            this.availableModes.gpu = false;
+            this.usingBasic = false;
             try {
                 await this._loadWllama(maxRetries);
                 this.usingWllama = true;
+                this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
                 console.error('Wllama initialization failed:', wllamaError);
+                this.availableModes.cpu = false;
+                this._activateBasicMode("GPU unavailable and CPU init failed");
+                this.isReady = true;
                 this.isLoading = false;
-                throw wllamaError;
+                return;
             }
         }
 
@@ -482,12 +623,15 @@ class ModelCoderLLM {
             console.log('WebLLM initialized successfully');
             this.webllmAvailable = true;
             this.usingWllama = false;
+            this.usingBasic = false;
+            this.availableModes.gpu = true;
             this.isReady = true;
             this.isLoading = false;
             return;
         } catch (error) {
             console.error('WebLLM initialization failed, loading wllama fallback:', error);
             this.webllmAvailable = false;
+            this.availableModes.gpu = false;
 
             if (forceGPU) {
                 this.isLoading = false;
@@ -498,13 +642,18 @@ class ModelCoderLLM {
                 await this._loadWllama(maxRetries);
                 console.log('Wllama initialized successfully as fallback');
                 this.usingWllama = true;
+                this.usingBasic = false;
+                this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
                 console.error('Both WebLLM and wllama initialization failed:', wllamaError);
+                this.availableModes.cpu = false;
+                this._activateBasicMode("GPU and CPU init failed");
+                this.isReady = true;
                 this.isLoading = false;
-                throw wllamaError;
+                return;
             }
         }
     }
@@ -635,7 +784,7 @@ class ModelCoderLLM {
     }
 
     _ensureClient(model) {
-        if (!this.isReady || (!this.wllama && !this.engine)) {
+        if (!this.isReady || (!this.usingBasic && !this.wllama && !this.engine)) {
             throw new Error("Model is not ready yet.");
         }
         if (model !== "local-llm") {
@@ -703,6 +852,20 @@ class ModelCoderLLM {
     }
 
     async _complete(messagesOrPrompt, onDelta, expectedSessionVersion = this.sessionVersion) {
+        if (this.usingBasic) {
+            const messages = Array.isArray(messagesOrPrompt)
+                ? messagesOrPrompt
+                : this._parseChatMLToMessages(messagesOrPrompt);
+
+            const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+            const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+            const summary = await this._generateWithWikipedia(latestUserText);
+            if (summary && typeof onDelta === "function") {
+                onDelta(summary);
+            }
+            return String(summary || "").trim();
+        }
+
         // Route to appropriate engine
         if (this.usingWllama) {
             // wllama expects ChatML prompt
@@ -798,6 +961,213 @@ class ModelCoderLLM {
         }
 
         return messages;
+    }
+
+    _extractPreviousAssistantFromMessages(messages) {
+        if (!Array.isArray(messages)) {
+            return "";
+        }
+
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const message = messages[i];
+            if (!message || String(message.role || "") !== "assistant") {
+                continue;
+            }
+
+            const text = contentToText(message.content).trim();
+            if (text) {
+                return text;
+            }
+        }
+
+        return "";
+    }
+
+    _appendPreviousResponseNote(outputText, previousText) {
+        const current = String(outputText || "").trim();
+        const priorRaw = String(previousText || "").trim();
+        const prior = this._stripPreviousResponseNote(priorRaw);
+        if (!current || !prior) {
+            return current;
+        }
+
+        return `${current}\n\n(Previous response: ${prior})`;
+    }
+
+    _stripPreviousResponseNote(text) {
+        const value = String(text || "");
+        if (!value) {
+            return "";
+        }
+
+        const marker = "\n(Previous response:";
+        const markerIndex = value.indexOf(marker);
+        if (markerIndex === -1) {
+            return value.trim();
+        }
+
+        return value.slice(0, markerIndex).trim();
+    }
+
+    async _generateWithWikipedia(query) {
+        try {
+            const firstLine = String(query || "").split("\n")[0];
+            const keywords = extractKeywords(firstLine);
+            if (!keywords) {
+                return "Please enter a more specific query.";
+            }
+
+            const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*&srlimit=1`;
+            const searchResponse = await fetch(searchUrl);
+            if (!searchResponse.ok) {
+                throw new Error("Wikipedia search request failed");
+            }
+
+            const searchData = await searchResponse.json();
+            const results = searchData?.query?.search;
+            if (!Array.isArray(results) || results.length === 0) {
+                return "I'm sorry. I don't know about that topic.";
+            }
+
+            const title = results[0].title;
+            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+            const summaryResponse = await fetch(summaryUrl);
+            if (!summaryResponse.ok) {
+                throw new Error("Wikipedia summary request failed");
+            }
+
+            const summaryData = await summaryResponse.json();
+            const extract = String(summaryData?.extract || "").trim();
+            if (!extract || extract.length < 20) {
+                return "I'm sorry. I don't know about that topic.";
+            }
+
+            const firstParagraph = extract.split("\n").find((paragraph) => paragraph.trim().length > 0) || extract;
+            const concise = extractLeadingSentences(firstParagraph, 2) || firstParagraph.slice(0, 300).trim();
+            return concise.length >= 20 ? concise : "I'm sorry. I don't know about that topic.";
+        } catch (error) {
+            console.error("Wikipedia lookup failed:", error);
+            return "Sorry, I had trouble searching Wikipedia right now.";
+        }
+    }
+
+    async _createStaticResponseStream(streamType, outputText, requestedRunId = null) {
+        const streamId = makeId("stream");
+        const responseId = makeId("resp");
+        const createdAtVersion = this.sessionVersion;
+
+        const session = {
+            queue: [],
+            done: false,
+            error: null,
+            responseId,
+            createdAtVersion,
+            requestedRunId: Number.isFinite(Number(requestedRunId)) ? Number(requestedRunId) : null,
+        };
+
+        const text = String(outputText || "");
+        this.streamSessions.set(streamId, session);
+
+        const chunks = chunkTextForStreaming(text);
+        let streamTask;
+        streamTask = (async () => {
+            try {
+                if (chunks.length === 0) {
+                    if (streamType === "chat") {
+                        session.queue.push({
+                            object: "chat.completion.chunk",
+                            choices: [
+                                {
+                                    index: 0,
+                                    delta: {},
+                                    finish_reason: "stop"
+                                }
+                            ]
+                        });
+                    } else {
+                        session.queue.push({
+                            type: "response.completed",
+                            response: {
+                                id: responseId,
+                                output_text: ""
+                            }
+                        });
+                    }
+                    this.responsesById.set(responseId, "");
+                    session.done = true;
+                    return;
+                }
+
+                for (let i = 0; i < chunks.length; i += 1) {
+                    if (createdAtVersion !== this.sessionVersion) {
+                        session.done = true;
+                        return;
+                    }
+
+                    const delta = chunks[i];
+                    if (streamType === "chat") {
+                        session.queue.push({
+                            object: "chat.completion.chunk",
+                            choices: [
+                                {
+                                    index: 0,
+                                    delta: {
+                                        content: delta
+                                    }
+                                }
+                            ]
+                        });
+                    } else {
+                        session.queue.push({
+                            type: "response.output_text.delta",
+                            delta
+                        });
+                    }
+
+                    // Small jitter to mimic natural token streaming cadence.
+                    const pauseMs = 20 + Math.floor(Math.random() * 50);
+                    await sleep(pauseMs);
+                }
+
+                if (createdAtVersion !== this.sessionVersion) {
+                    session.done = true;
+                    return;
+                }
+
+                if (streamType === "chat") {
+                    session.queue.push({
+                        object: "chat.completion.chunk",
+                        choices: [
+                            {
+                                index: 0,
+                                delta: {},
+                                finish_reason: "stop"
+                            }
+                        ]
+                    });
+                } else {
+                    session.queue.push({
+                        type: "response.completed",
+                        response: {
+                            id: responseId,
+                            output_text: text
+                        }
+                    });
+                }
+
+                this.responsesById.set(responseId, text);
+                session.done = true;
+            } catch (error) {
+                session.error = error;
+                session.done = true;
+            }
+        })().finally(() => {
+            this.activeGenerationTasks.delete(streamTask);
+        });
+
+        this.activeGenerationTasks.add(streamTask);
+
+        return { stream_id: streamId, response_id: responseId };
     }
 
     async _createStreamSession(messagesOrPrompt, streamType = "responses", requestedRunId = null) {
@@ -947,6 +1317,40 @@ class ModelCoderLLM {
                 return this._createSafeChatResponse();
             }
 
+            if (this.usingBasic) {
+                const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+                const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+                const previousAssistant = this._extractPreviousAssistantFromMessages(messages);
+                const wikipediaText = await this._generateWithWikipedia(latestUserText);
+                const outputText = this._appendPreviousResponseNote(wikipediaText, previousAssistant);
+
+                if (payload.stream) {
+                    const streamMeta = await this._createStaticResponseStream("chat", outputText, payload.run_id);
+                    return {
+                        stream: true,
+                        stream_id: streamMeta.stream_id,
+                        id: streamMeta.response_id
+                    };
+                }
+
+                const responseId = makeId("chatcmpl");
+                this.responsesById.set(responseId, outputText);
+                return {
+                    id: responseId,
+                    object: "chat.completion",
+                    choices: [
+                        {
+                            index: 0,
+                            finish_reason: "stop",
+                            message: {
+                                role: "assistant",
+                                content: outputText
+                            }
+                        }
+                    ]
+                };
+            }
+
             // Translate messages for Phi-3 when using WebLLM
             if (!this.usingWllama) {
                 messages = this._translateToPhi3Prompt(messages);
@@ -1007,6 +1411,48 @@ class ModelCoderLLM {
             );
             validateMessages(messages, "input");
 
+            if (this.usingBasic) {
+                const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+                const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+
+                const previousById = payload.previous_response_id && this.responsesById.has(payload.previous_response_id)
+                    ? this.responsesById.get(payload.previous_response_id)
+                    : "";
+                const previousAssistant = previousById || this._extractPreviousAssistantFromMessages(messages);
+
+                const wikipediaText = await this._generateWithWikipedia(latestUserText);
+                const outputText = this._appendPreviousResponseNote(wikipediaText, previousAssistant);
+
+                if (payload.stream) {
+                    const streamMeta = await this._createStaticResponseStream("responses", outputText, payload.run_id);
+                    return {
+                        stream: true,
+                        stream_id: streamMeta.stream_id,
+                        id: streamMeta.response_id
+                    };
+                }
+
+                const responseId = makeId("resp");
+                this.responsesById.set(responseId, outputText);
+                return {
+                    id: responseId,
+                    object: "response",
+                    output_text: outputText,
+                    output: [
+                        {
+                            type: "message",
+                            role: "assistant",
+                            content: [
+                                {
+                                    type: "output_text",
+                                    text: outputText
+                                }
+                            ]
+                        }
+                    ]
+                };
+            }
+
             // Translate messages for Phi-3 when using WebLLM
             if (!this.usingWllama) {
                 messages = this._translateToPhi3Prompt(messages);
@@ -1063,12 +1509,14 @@ const modelCoderInit = async (maxRetries = 3, options = {}) => {
 };
 
 const modelCoderInitWithMode = async (mode = 'auto', maxRetries = 3) => {
-    // mode can be 'auto', 'gpu', or 'cpu'
+    // mode can be 'auto', 'gpu', 'cpu', or 'basic'
     const options = {};
     if (mode === 'gpu') {
         options.forceGPU = true;
     } else if (mode === 'cpu') {
         options.forceCPU = true;
+    } else if (mode === 'basic') {
+        options.forceBasic = true;
     }
     await llmRuntime.initialize(maxRetries, options);
 };
@@ -1100,6 +1548,14 @@ const modelCoderIsUsingCPUMode = () => {
     return llmRuntime.usingWllama;
 };
 
+const modelCoderGetCurrentMode = () => {
+    return llmRuntime.getCurrentMode();
+};
+
+const modelCoderGetAvailableModes = () => {
+    return llmRuntime.getAvailableModes();
+};
+
 const modelCoderBridge = {
     modelCoderSetStatusListener,
     modelCoderInit,
@@ -1110,6 +1566,8 @@ const modelCoderBridge = {
     modelCoderHardResetSession,
     modelCoderNextStreamChunk,
     modelCoderIsUsingCPUMode,
+    modelCoderGetCurrentMode,
+    modelCoderGetAvailableModes,
 };
 
 function attachBridge(target) {
@@ -1125,6 +1583,8 @@ function attachBridge(target) {
     target.modelCoderHardResetSession = modelCoderHardResetSession;
     target.modelCoderNextStreamChunk = modelCoderNextStreamChunk;
     target.modelCoderIsUsingCPUMode = modelCoderIsUsingCPUMode;
+    target.modelCoderGetCurrentMode = modelCoderGetCurrentMode;
+    target.modelCoderGetAvailableModes = modelCoderGetAvailableModes;
     target.modelCoderBridge = modelCoderBridge;
 }
 
