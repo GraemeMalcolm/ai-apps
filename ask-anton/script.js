@@ -509,12 +509,10 @@ IMPORTANT: Follow these guidelines when responding:
 
         try {
             const systemInstruction = '<|im_start|>system\n' +
-                'You are Anton, a teacher of AI and computing concepts. You always follow these rules.\n\n' +
-                'Rules:\n' +
-                '- Discuss AI and computing topics only\n' +
-                '- Do not provide specific steps or instructions\n\n' +
-                '- Provide factual and accurate information\n\n' +
-                '- Follow all instructions exactly\n\n' +
+                'You are Anton, a teacher of AI and computing concepts.\n' +
+                'Discuss AI and computing topics only\n' +
+                'Do not provide specific steps or instructions\n\n' +
+                'Provide factual and accurate information\n\n' +
                 '<|im_end|>\n\n';
 
             console.log('Warming cache with system instruction...');
@@ -811,7 +809,7 @@ IMPORTANT: Follow these guidelines when responding:
         const words = normalizedText.split(' ').filter(Boolean);
         const stopWords = new Set([
             'a', 'an', 'and', 'anton', 'for', 'from', 'i', 'in', 'me', 'of', 'on', 'is', 'was', 'will', 'be',
-            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with',
+            'or', 'please', 'show', 'tell', 'the', 'to', 'up', 'use', 'using', 'with', 'explain','describe',
             'about', 'can', 'do', 'does', 'how', 'what', 'why', 'which', 'who', 'whom', 'whose',
             'all', 'any', 'this', 'that', 'these', 'those', 'documentation', 'learn', 'details', 'overview'
         ]);
@@ -1015,6 +1013,7 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Add moderation response
             this.addMessage('assistant', "I'm sorry, I can't help with that because it triggered a content-safety filtering policy. I can only help with information about AI and computing.");
+            this.elements.userInput.focus();
             return;
         }
 
@@ -1039,6 +1038,7 @@ IMPORTANT: Follow these guidelines when responding:
                 // Respond with greeting without searching
                 const greetingResponse = "Hello, I'm Anton. I'm here to help you learn about AI concepts. What would you like to know?";
                 this.addMessage('assistant', greetingResponse);
+                this.elements.userInput.focus();
                 return;
             }
         }
@@ -1350,6 +1350,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.isGenerating = false;
             this.stopRequested = false;
             this.updateSendButton(false);
+            this.elements.userInput.focus();
 
             setTimeout(() => {
                 this.elements.searchStatus.textContent = '';
@@ -1443,6 +1444,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.isGenerating = false;
             this.stopRequested = false;
             this.updateSendButton(false);
+            this.elements.userInput.focus();
 
             setTimeout(() => {
                 this.elements.searchStatus.textContent = '';
@@ -1516,6 +1518,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.stopRequested = false;
             this.currentStream = null;
             this.updateSendButton(false);
+            this.elements.userInput.focus();
 
             // Clear search status after response is complete
             setTimeout(() => {
@@ -1527,6 +1530,7 @@ IMPORTANT: Follow these guidelines when responding:
     // ============================================================================
     // LLM RESPONSE GENERATION (WebLLM & Wllama)
     // ============================================================================
+
 
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
@@ -1722,12 +1726,11 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are Anton, a teacher of AI and computing concepts. You always follow these rules.\n\n';
-        chatMLPrompt += 'Rules:\n';
-        chatMLPrompt += '- Discuss AI and computing topics only\n';
-        chatMLPrompt += '- Do not provide specific steps or instructions\n\n';
-        chatMLPrompt += '- Provide factual and accurate information\n\n';
-        chatMLPrompt += '- Follow all instructions exactly\n\n';
+        chatMLPrompt += 'You are Anton, a teacher of AI and computing concepts.\n';
+        chatMLPrompt += 'Discuss AI and computing topics only\n';
+        chatMLPrompt += 'Do not provide specific steps or instructions\n';
+        chatMLPrompt += 'Provide factual and accurate information\n';
+        chatMLPrompt += 'Follow all instructions exactly\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Add truncated previous prompt and response if available
@@ -1757,7 +1760,7 @@ IMPORTANT: Follow these guidelines when responding:
             chatMLPrompt += userMessage + ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
         } else {
             // No context - use conversation history with instruction to stay focused
-            chatMLPrompt += userMessage + ' (Keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
+            chatMLPrompt += userMessage + ' (Respond concisely, continuing the conversation about artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         }
         chatMLPrompt += '\n<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
