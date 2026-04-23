@@ -1793,6 +1793,7 @@ async function generateWithWllama(query) {
         let chatMLPrompt = '<|im_start|>system\n';
         chatMLPrompt += 'You are a knowledgeable assistant about computing history.\n';
         chatMLPrompt += 'Discuss computing and technology topics only.\n';
+        chatMLPrompt += 'Respond with one or two clear sentences, using simple language.\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Include conversation history for context (last 2 exchanges)
