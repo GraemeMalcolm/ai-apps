@@ -1134,27 +1134,13 @@ async function loadSelectedTemplate() {
         if (templateChanged) {
             clearTerminalOutput({ resetModel: false });
 
-            // In GPU mode (WebLLM/Phi-3), just clear conversation history (soft reset)
-            // In CPU mode (wllama/SmolLM2), reload the model (hard reset)
-            const isUsingCPUMode = typeof window.modelCoderIsUsingCPUMode === "function"
-                ? window.modelCoderIsUsingCPUMode()
-                : true; // Default to CPU mode behavior if function not available
+            // Both GPU mode (WebLLM/Phi-3) and CPU mode (wllama/Phi-2) now use soft reset.
+            // Phi-2 is stable enough to avoid expensive model reloads; just clear conversation history and cache.
+            // This was a workaround for SmolLM2's behavior issues and is no longer needed.
+            console.log(`Template switching: soft reset (clear conversation history and cache)`);
 
-            console.log(`Template switching: ${isUsingCPUMode ? 'CPU mode - hard reset (reload model)' : 'GPU mode - soft reset (clear conversation only)'}`);
-
-            if (isUsingCPUMode) {
-                // Hard reset without auto-reinit, then reinitialize in CPU mode to preserve mode
-                await requestModelSessionReset({ hard: true, skipReinit: true });
-                if (typeof window.modelCoderInitWithMode === "function") {
-                    await window.modelCoderInitWithMode('cpu', 3);
-                } else {
-                    // Fallback if new function not available
-                    await window.modelCoderInit(3);
-                }
-            } else {
-                // GPU mode: just soft reset
-                await requestModelSessionReset({ hard: false });
-            }
+            // Soft reset clears conversation history and KV cache without unloading the model
+            await requestModelSessionReset({ hard: false });
         }
 
         const ok = setEditorCode(snippet);
@@ -1296,10 +1282,11 @@ function enableEditorEscapeToTabOut() {
     document.body.dataset.editorEscapeFocusBound = "true";
 }
 
-function buildExecutionCode(userCode, runId) {
+function buildExecutionCode(userCode, runId, isCPUMode) {
     const serializedNopenai = JSON.stringify(state.nopenaiSource || "");
     const serializedUserCode = JSON.stringify(String(userCode || ""));
     const serializedRunId = Number.isFinite(runId) ? runId : -1;
+    const readyMessage = "Model Coder ready. Running script..." + (isCPUMode ? " (responses in CPU mode may be slow)" : "");
     return `
 import sys
 import types
@@ -1352,7 +1339,7 @@ builtins.input = __modelcoder_input
 globals()["__name__"] = "__main__"
 __user_code = ${serializedUserCode}
 __run_id = ${serializedRunId}
-print("Model Coder ready. Running script...")
+print(${JSON.stringify(readyMessage)})
 try:
     exec(__user_code, globals())
 finally:
@@ -1396,7 +1383,8 @@ async function runCurrentCode() {
         state.activeRunId = runId;
         syncActiveRunId();
         state.sessionActive = true;
-        launchTerminalScript(buildExecutionCode(code, runId), runId);
+        const isCPUMode = typeof window.modelCoderIsUsingCPUMode === "function" ? window.modelCoderIsUsingCPUMode() : true;
+        launchTerminalScript(buildExecutionCode(code, runId, isCPUMode), runId);
     } catch (error) {
         const msg = JSON.stringify(`Execution failed: ${String(error.message || error)}`);
         const runId = state.activeRunId + 1;
@@ -1449,12 +1437,12 @@ function updateModeToggleButton() {
     // Update button text and state
     if (state.currentlyUsingGPU) {
         modeToggleBtn.textContent = "GPU";
-        modeToggleBtn.title = "Using GPU mode (Phi-3). Click to switch to CPU mode (SmolLM2)";
+        modeToggleBtn.title = "Using GPU mode (Phi-3). Click to switch to CPU mode (Phi-2)";
         modeToggleBtn.setAttribute("aria-pressed", "true");
     } else {
         modeToggleBtn.textContent = "CPU";
         modeToggleBtn.title = state.gpuModeAvailable
-            ? "Using CPU mode (SmolLM2). Click to switch to GPU mode (Phi-3)"
+            ? "Using CPU mode (Phi-2). Click to switch to GPU mode (Phi-3)"
             : "GPU mode not available";
         modeToggleBtn.setAttribute("aria-pressed", "false");
     }

@@ -3,12 +3,11 @@ import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/in
 
 const WASM_PATHS = {
     "single-thread/wllama.wasm": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm",
-    // Force single-thread wasm for stability on static/browser-hosted scenarios.
-    "multi-thread/wllama.wasm": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/single-thread/wllama.wasm"
+    "multi-thread/wllama.wasm": "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/multi-thread/wllama.wasm"
 };
 
-const SMOLLM2_REPO = "ngxson/SmolLM2-360M-Instruct-Q8_0-GGUF";
-const SMOLLM2_FILE = "smollm2-360m-instruct-q8_0.gguf";
+const PHI2_REPO = "Felladrin/gguf-sharded-phi-2-orange-v2";
+const PHI2_FILE = "phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf";
 const PHI3_MODEL_ID = "Phi-3-mini-4k-instruct-q4f16_1-MLC";
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
 const MODERATION_SAFE_RESPONSE = "I'm sorry. I can't help with that. Either your system instructions or user input included content that was flagged by the moderation system. If you think this was a mistake, please try rephrasing your input or instructions and try again.";
@@ -567,7 +566,7 @@ class ModelCoderLLM {
             try {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
                 await this._loadWllamaModel();
-                this._status("ready", "Model ready: SmolLM2 (CPU mode)");
+                this._status("ready", "Model ready: Phi-2 (CPU mode)");
                 return;
             } catch (error) {
                 lastError = error;
@@ -583,9 +582,14 @@ class ModelCoderLLM {
 
     async _loadWllamaModel() {
         this.wllama = new Wllama(WASM_PATHS);
-        await this.wllama.loadModelFromHF(SMOLLM2_REPO, SMOLLM2_FILE, {
-            n_ctx: 2048,
-            n_threads: 1,
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const availableThreads = navigator.hardwareConcurrency || 4;
+        const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+
+        const baseConfig = {
+            n_ctx: 384,
+            n_threads: preferredThreads,
             progressCallback: ({ loaded, total }) => {
                 if (!total) {
                     this._status("loading", "Loading local model...");
@@ -594,7 +598,40 @@ class ModelCoderLLM {
                 const pct = Math.round((loaded / total) * 100);
                 this._status("loading", `Downloading model: ${pct}%`);
             }
-        });
+        };
+
+        try {
+            await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, baseConfig);
+        } catch (multiErr) {
+            if (preferredThreads > 1) {
+                await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, {
+                    ...baseConfig,
+                    n_threads: 1
+                });
+            } else {
+                throw multiErr;
+            }
+        }
+
+        await this._warmWllamaCache();
+    }
+
+    async _warmWllamaCache() {
+        if (!this.wllama) {
+            return;
+        }
+
+        const systemInstruction = '<|im_start|>system\nYou are a helpful coding assistant.\n<|im_end|>';
+        try {
+            await this.wllama.createCompletion(systemInstruction, {
+                nPredict: 1,
+                sampling: {
+                    temp: 0.0
+                }
+            });
+        } catch (error) {
+            console.log('[wllama] Cache warmup failed (non-critical):', error?.message || error);
+        }
     }
 
     _ensureClient(model) {
@@ -679,20 +716,19 @@ class ModelCoderLLM {
     }
 
     async _completeWithWllama(prompt, onDelta, expectedSessionVersion = this.sessionVersion) {
-        console.log('[wllama] Sending to SmolLM2 (ChatML):', prompt.substring(0, 200) + '...');
-        await this.wllama.kvClear().catch(() => { });
+        console.log('[wllama] Sending to Phi-2 (ChatML):', prompt.substring(0, 200) + '...');
 
         let previousText = "";
         let fullText = "";
 
         const stream = await this.wllama.createCompletion(prompt, {
-            nPredict: 320,
+            nPredict: 200,
             seed: -1,
             sampling: {
-                temp: 0.6,
-                top_k: 40,
-                top_p: 0.92,
-                penalty_repeat: 1.05,
+                temp: 0.1,
+                top_k: 20,
+                top_p: 0.85,
+                penalty_repeat: 1.1,
                 mirostat: 0
             },
             stopTokens: ["<|im_end|>", "<|im_start|>"],
