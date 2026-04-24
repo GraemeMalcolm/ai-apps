@@ -1701,14 +1701,40 @@ class ChatPlayground {
     // Extract keywords from text (excluding common stopwords)
     extractKeywords(text) {
         const stopwords = new Set([
+            // Articles, prepositions, conjunctions
             'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-            'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
-            'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'how',
-            'do', 'does', 'did', 'can', 'could', 'would', 'should', 'may', 'might',
-            'this', 'these', 'those', 'i', 'you', 'we', 'they', 'my', 'your',
-            'am', 'been', 'being', 'have', 'had', 'were', 'there', 'their', 'tell',
-            'show', 'give', 'provide', 'explain', 'describe', 'define', 'what\'s',
-            'whats', 'which', 'who\'s', 'whos', 'how\'s', 'hows'
+            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+            'after', 'before', 'between', 'during', 'into', 'through', 'over',
+            'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+            // Pronouns
+            'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her',
+            'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'i\'m',
+            'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
+            // Determiners and quantifiers
+            'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+            'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+            'own', 'same', 'other', 'another', 'much', 'many',
+            // Verbs (auxiliary, modal, and common generic)
+            'am', 'is', 'are', 'was', 'were', 'been', 'being', 'have', 'has',
+            'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+            'may', 'might', 'must', 'shall', 'ought', 'will',
+            'be', 'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+            'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
+            'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
+            'describe', 'define',
+            // Question words
+            'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
+            'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
+            'hows',
+            // Common adverbs
+            'also', 'just', 'now', 'here', 'there', 'then', 'very', 'too',
+            'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
+            'perhaps', 'about',
+            // Other common words
+            'yes', 'no', 'thing', 'something', 'anything', 'nothing',
+            'everything', 'someone', 'anyone', 'everyone', 'understand', 'know',
+            'think', 'believe', 'feel', 'appear',
         ]);
 
         // Extract words, convert to lowercase, filter stopwords and short words
@@ -2039,7 +2065,9 @@ class ChatPlayground {
         if (!text) return '';
 
         // Find first sentence-ending punctuation: . ! : ?
-        const match = text.match(/^[^.!:?]+[.!:?]/);
+        // Require that it's followed by whitespace, newline, or end of string
+        // This prevents breaking on email addresses like "expenses@contoso.com"
+        const match = text.match(/^[^.!:?]+[.!:?](?=\s|$)/);
         if (match) {
             return match[0];
         }
@@ -2061,7 +2089,15 @@ class ChatPlayground {
 
             const prev = i > 0 ? input[i - 1] : '';
             const next = i < input.length - 1 ? input[i + 1] : '';
+
+            // Skip if period is between digits (e.g., "3.14")
             if (char === '.' && /\d/.test(prev) && /\d/.test(next)) {
+                continue;
+            }
+
+            // Only treat as sentence boundary if followed by space, newline, or end of string
+            // This prevents breaking on email addresses like "expenses@contoso.com"
+            if (next && !/\s/.test(next)) {
                 continue;
             }
 
@@ -2125,6 +2161,7 @@ class ChatPlayground {
             const bestLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
             if (bestLine) {
+                this.fileContentUsedInPrompt = true;
                 return bestLine;
             }
 
@@ -2198,6 +2235,9 @@ class ChatPlayground {
         const assistantMessageEl = this.addMessage('assistant', 'Searching Wikipedia...');
         const contentEl = assistantMessageEl.querySelector('.message-content');
 
+        // Reset file content usage tracking
+        this.fileContentUsedInPrompt = false;
+
         let responseText = await this.generateNoneModeResponse(userMessage, imageAnalysis);
         responseText = this.maybeShortenNoneModeResponse(responseText);
         responseText = this.maybeMutateNoneModeResponse(responseText);
@@ -2206,8 +2246,15 @@ class ChatPlayground {
             return;
         }
 
-        await this.typeResponse(contentEl, responseText);
+        // Append file attribution if a file is uploaded and relevant content was used (for display only)
+        let displayResponse = responseText;
+        if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
+            displayResponse = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
+        }
 
+        await this.typeResponse(contentEl, displayResponse);
+
+        // Add to conversation history (without file attribution, to prevent cumulative citations)
         this.conversationHistory.push({ role: 'user', content: userMessage });
         this.conversationHistory.push({ role: 'assistant', content: responseText });
     }
@@ -3722,8 +3769,40 @@ class ChatPlayground {
         try {
             let responseText = '';
 
-            if (this.webllmAvailable && this.engine) {
-                // Use WebLLM
+            // Route to the appropriate engine based on current mode (same as text mode)
+            if (this.currentMode === 'none' || this.usingWikipedia) {
+                // Use Wikipedia/None mode
+                console.log('Using Wikipedia/None mode for response generation');
+                this.fileContentUsedInPrompt = false;
+                responseText = await this.generateNoneModeResponse(voiceModeUserMessage);
+                responseText = this.maybeShortenNoneModeResponse(responseText);
+                responseText = this.maybeMutateNoneModeResponse(responseText);
+
+                // Append file attribution if file content was used
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && responseText.trim()) {
+                    responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
+                }
+            } else if (this.usingWllama && this.wllama) {
+                // Use wllama (Phi-2 CPU)
+                console.log('Using Wllama for response generation');
+                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
+
+                this.currentAbortController = new AbortController();
+
+                const result = await this.wllama.createCompletion(prompt, {
+                    nPredict: Math.min(this.config.modelParameters.max_tokens, 500),
+                    sampling: {
+                        temp: this.config.modelParameters.temperature,
+                        top_p: this.config.modelParameters.top_p,
+                        penalty_repeat: this.config.modelParameters.repetition_penalty
+                    },
+                    signal: this.currentAbortController.signal
+                });
+
+                responseText = result.trim();
+                console.log('Wllama completion finished, response length:', responseText.length);
+            } else if (this.webllmAvailable && this.engine) {
+                // Use WebLLM (Phi-3 GPU)
                 console.log('Using WebLLM for response generation');
                 const messages = [
                     { role: 'system', content: this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.' },
@@ -3749,29 +3828,6 @@ class ChatPlayground {
                     }
                 }
                 console.log('WebLLM streaming complete, response length:', responseText.length);
-            } else if (this.usingWllama && this.wllama) {
-                // Use wllama fallback
-                console.log('Using Wllama for response generation');
-                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
-
-                this.currentAbortController = new AbortController();
-
-                const result = await this.wllama.createCompletion(prompt, {
-                    nPredict: Math.min(this.config.modelParameters.max_tokens, 500),
-                    sampling: {
-                        temp: this.config.modelParameters.temperature,
-                        top_p: this.config.modelParameters.top_p,
-                        penalty_repeat: this.config.modelParameters.repetition_penalty
-                    },
-                    signal: this.currentAbortController.signal
-                });
-
-                responseText = result.trim();
-                console.log('Wllama completion finished, response length:', responseText.length);
-            } else if (this.currentMode === 'none' || this.usingWikipedia) {
-                responseText = await this.generateNoneModeResponse(voiceModeUserMessage);
-                responseText = this.maybeShortenNoneModeResponse(responseText);
-                responseText = this.maybeMutateNoneModeResponse(responseText);
             } else {
                 responseText = "No AI model is currently available. Please wait for the model to load.";
             }
