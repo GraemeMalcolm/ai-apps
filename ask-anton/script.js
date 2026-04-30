@@ -801,7 +801,7 @@ IMPORTANT: Follow these guidelines when responding:
             return trimmedText.slice(5).trim();
         }
 
-        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn') || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
+        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn')  || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
             return trimmedText;
         }
 
