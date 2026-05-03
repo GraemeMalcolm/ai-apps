@@ -1,7 +1,7 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
 
-class AskAnton {
+class AskMatt {
     constructor() {
         // Debug flags for testing failover (can be set via URL params or console)
         this.debugConfig = this.parseDebugConfig();
@@ -71,14 +71,14 @@ class AskAnton {
             modalOk: document.getElementById('modal-ok')
         };
 
-        this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
+        this.systemPrompt = `You are Matt, a knowledgeable and friendly AI learning assistant who helps business users understand AI concepts.
 
 IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing. For questions outside of these topics, politely decline to answer.
 - Explain concepts clearly and concisely in a single paragraph based only on the provided context.
 - Keep responses short and focused on the question, with no headings.
 - Use examples and analogies when helpful.
-- Use simple language suitable for learners in a conversational, friendly tone.
+- Use simple language suitable for non-technical users in a conversational, friendly tone.
 - Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
 - Do not start responses with "A:" or "Q:".
 - Keep your responses concise and to the point, in ONE paragraph.
@@ -108,7 +108,7 @@ IMPORTANT: Follow these guidelines when responding:
         if (config.enabled) {
             console.log('🧪 Debug mode enabled:', config);
             console.log('💡 To force failures, add URL params: ?debug=true&forceWebGPUFail=true&forceWllamaFail=true');
-            console.log('💡 Or use console: window.askAnton.debugConfig.forceWebGPUFail = true');
+            console.log('💡 Or use console: window.askMatt.debugConfig.forceWebGPUFail = true');
         }
 
         return config;
@@ -515,7 +515,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         try {
             const systemInstruction = '<|im_start|>system\n' +
-                'You are Anton, a teacher of AI and computing concepts.\n' +
+                'You are Matt, a teacher of AI for business users.\n' +
                 'Discuss AI and computing topics only\n' +
                 'Do not provide specific steps or instructions\n\n' +
                 'Provide factual and accurate information\n\n' +
@@ -852,7 +852,7 @@ IMPORTANT: Follow these guidelines when responding:
             'yes', 'no', 'thing', 'something', 'anything', 'nothing',
             'everything', 'someone', 'anyone', 'everyone', 'understand',
             'think', 'believe', 'feel', 'appear', 'say',
-            'anton', 'please', 'using', 'search', 'docs',
+            'matt', 'please', 'using', 'search', 'docs',
             'documentation', 'learn', 'details', 'overview'
         ]);
         const uniqueWords = [];
@@ -901,7 +901,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         // Unigrams (single words) - filter out very short words and common stop words
-        const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give', 'anton', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'why', 'which', 'whom', 'whose', 'why', 'all', 'any', 'this', 'that', 'these', 'those'];
+        const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give', 'matt', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'why', 'which', 'whom', 'whose', 'why', 'all', 'any', 'this', 'that', 'these', 'those'];
         words.forEach(word => {
             if (word.length >= 2 && !stopWords.includes(word)) {
                 nGrams.push({
@@ -1062,7 +1062,7 @@ IMPORTANT: Follow these guidelines when responding:
             }
 
             // Add moderation response
-            this.addMessage('assistant', "I'm sorry, I can't help with that because it triggered a content-safety filtering policy. I can only help with information about AI and computing.");
+            this.addMessage('assistant', "I'm sorry, I can't help with that because it triggered a content-safety filtering policy. I can only help with information about AI for business.");
             this.elements.userInput.focus();
             return;
         }
@@ -1086,7 +1086,7 @@ IMPORTANT: Follow these guidelines when responding:
             const greetingPattern = /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[\s!?]*$/i;
             if (greetingPattern.test(userMessage)) {
                 // Respond with greeting without searching
-                const greetingResponse = "Hello, I'm Anton. I'm here to help you learn about AI concepts. What would you like to know?";
+                const greetingResponse = "Hello, I'm Matt. I'm here to help you learn about using AI at work. What would you like to know?";
                 this.addMessage('assistant', greetingResponse);
                 this.elements.userInput.focus();
                 return;
@@ -1284,18 +1284,18 @@ IMPORTANT: Follow these guidelines when responding:
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}-message`;
         messageDiv.setAttribute('role', 'article');
-        messageDiv.setAttribute('aria-label', `Message from ${role === 'assistant' ? 'Anton' : 'You'}`);
+        messageDiv.setAttribute('aria-label', `Message from ${role === 'assistant' ? 'Matt' : 'You'}`);
 
         if (role === 'assistant') {
             messageDiv.innerHTML = `
-                <div class="avatar anton-avatar" aria-hidden="true">
-                    <img src="images/anton-icon.png" alt="Anton the AI assistant avatar" class="avatar-image">
+                <div class="avatar matt-avatar" aria-hidden="true">
+                    <img src="images/matt-icon.png" alt="Matt the AI assistant avatar" class="avatar-image">
                 </div>
                 <div class="message-content">
-                    <p class="message-author" aria-label="From Anton">Anton</p>
+                    <p class="message-author" aria-label="From Matt">Matt</p>
                     <div class="message-text" ${isTyping ? 'aria-live="polite" aria-busy="true"' : ''}>
                         ${isTyping
-                    ? '<span class="typing-indicator" aria-label="Anton is typing">●●●</span>'
+                    ? '<span class="typing-indicator" aria-label="Matt is typing">●●●</span>'
                     : this.escapeHtml(content)}
                     </div>
                 </div>
@@ -1348,7 +1348,7 @@ IMPORTANT: Follow these guidelines when responding:
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
         const encodedKeywords = encodeURIComponent(bingKeywords);
-        const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
+        const bingUrl = `https://learn.microsoft.com/search/?terms=${encodedKeywords}&category=Documentation&products=%2Fdevrel%2F1dd701e0-441f-4b0a-9806-aa47decc4e35`;
         const historyAssistantMessage = `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nHere's what I found.`;
         const assistantMessage = historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
 
@@ -1361,9 +1361,9 @@ IMPORTANT: Follow these guidelines when responding:
         const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
 
         if (this.currentMode === 'cpu') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Matt is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
         } else if (this.currentMode === 'basic') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Matt is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
         } else {
             messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
         }
@@ -1417,7 +1417,7 @@ IMPORTANT: Follow these guidelines when responding:
     async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
         const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
         const encodedKeywords = encodeURIComponent(bingKeywords);
-        const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
+        const bingUrl = `https://learn.microsoft.com/search/?terms=${encodedKeywords}&category=Documentation`;
         const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
         const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
         const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
@@ -1432,9 +1432,9 @@ IMPORTANT: Follow these guidelines when responding:
         const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">this link</a>`;
 
         if (this.currentMode === 'cpu') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Matt is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
         } else if (this.currentMode === 'basic') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Matt is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
         } else {
             messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
         }
@@ -1521,7 +1521,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Show thinking indicator with CPU mode notice if applicable
         if (this.usingWllama) {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Matt is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
         } else {
             messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
         }
@@ -1782,7 +1782,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are Anton, a teacher of AI and computing concepts.\n';
+        chatMLPrompt += 'You are Matt, a teacher of AI and computing concepts.\n';
         chatMLPrompt += 'Discuss AI and computing topics only\n';
         chatMLPrompt += 'Do not provide specific steps or instructions\n';
         chatMLPrompt += 'Provide factual and accurate information\n';
@@ -2405,13 +2405,13 @@ IMPORTANT: Follow these guidelines when responding:
 }
 
 // Make instance globally accessible for onclick handler
-window.askAnton = null;
+window.askMatt = null;
 
 // Initialize the app when DOM is loaded
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        window.askAnton = new AskAnton();
+        window.askMatt = new AskMatt();
     });
 } else {
-    window.askAnton = new AskAnton();
+    window.askMatt = new AskMatt();
 }

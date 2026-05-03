@@ -1,0 +1,302 @@
+[
+    {
+        "category": "AI for business",
+        "link": "https://learn.microsoft.com/training/paths/transform-business-workflows-with-ai/",
+        "documents": [
+            {
+                "id": 1,
+                "title": "Microsoft 365 Copilot",
+                "keywords": [
+                    "microsoft 365 copilot",
+                    "m365 copilot",
+                    "copilot",
+                    "co-pilot",
+                    "m465 copilot",
+                    "m360 copilot"
+                ],
+                "content": "Microsoft 365 Copilot is an AI assistant embedded in Microsoft 365 apps and experiences such as Teams, Outlook, Word, Excel, PowerPoint, and chat surfaces. It combines AI reasoning with your work information to help you with common knowledge work such as drafting, summarizing, analyzing, and planning."
+            },
+            {
+                "id": 2,
+                "title": "Agents",
+                "keywords": [
+                    "agents",
+                    "agent",
+                    "agentic",
+                    "assistant",
+                    "assistants"
+                ],
+                "content": "An agent is an intelligent assistant that is configured to follow defined instructions, access selected knowledge, and execute actions repeatedly. Agents are the key to automating business processes with Microsoft 365 Copilot. "
+            },
+            {
+                "id": 3,
+                "title": "Responsible AI",
+                "keywords": [
+                    "responsible ai",
+                    "safety",
+                    "ethics",
+                    "guardrails",
+                    "fairness",
+                    "accountability",
+                    "transparency",
+                    "privacy"
+                ],
+                "content": "Responsible AI for business scenarios means designing and operating copilots and agents that are safe, fair, transparent, and aligned to policy. Teams should set clear usage expectations, define escalation paths for sensitive outcomes, and avoid blind trust in generated content. Human review remains important for legal, financial, and customer-facing decisions. Microsoft guidance emphasizes fairness, reliability and safety, privacy and security, inclusiveness, transparency, and accountability."
+            },
+            {
+                "id": 4,
+                "title": "Generative AI",
+                "keywords": [
+                    "generative ai",
+                    "genai",
+                    "generative artificial intelligence",
+                    "ai models"
+                ],
+                "content": "Generative AI refers to a class of artificial intelligence models that can generate new content, such as text, images, audio, or video, based on the data they have been trained on. These models are typically large language models (LLMs) that produce original output based on 'prompts' provided by users."
+            },
+            {
+                "id": 5,
+                "title": "What is Microsoft 365 Copilot Chat?",
+                "keywords": [
+                    "copilot chat",
+                    "co-pilot chat",
+                    "chat",
+                    "chatbot",
+                    "chat-bot"
+                ],
+                "content": "Microsoft 365 Copilot Chat is Microsoft's secure work chat experience for asking questions, exploring information, and collaborating on everyday tasks. Business users can use it to summarize information, catch up quickly, support meeting follow-up, and work with content across Microsoft 365 in a conversational way. It is most useful when people need a general-purpose chat interface for productivity rather than a single app-specific workflow. Organizations also rely on its security and enterprise context to support safe use at work."
+            },
+            {
+                "id": 6,
+                "title": "Copilot in Outlook",
+                "keywords": [
+                    "outlook",
+                    "email",
+                    "emails",
+                    "inbox",
+                    "calendar",
+                    "mail",
+                    "mails"
+                ],
+                "content": "Copilot in Outlook helps you triage inboxes, summarize long threads, and draft responses tailored to audience and tone. This helps business users communicate faster while keeping messaging consistent. Prompting with intent, audience, and desired outcome improves quality. Teams should still validate sensitive language, commitments, and external communication before sending."
+            },
+            {
+                "id": 7,
+                "title": "Copilot in Word",
+                "keywords": [
+                    "word copilot",
+                    "word co-pilot",
+                    "copilot in word",
+                    "co-pilot in word",
+                    "microsoft word",
+                    "documents",
+                    "document"
+                ],
+                "content": "Copilot in Word helps you generate first drafts, restructure text, and produce concise summaries from longer material. For business users, this accelerates proposal writing, policy updates, and communication packs. A strong workflow is to start with structured prompts, then iterate with feedback cycles and source references. Final review should ensure factual accuracy, compliance language, and brand style."
+            },
+            {
+                "id": 8,
+                "title": "Copilot in Excel",
+                "keywords": [
+                    "excel",
+                    "analyze",
+                    "analysis",
+                    "worksheet",
+                    "worksheets",
+                    "workbook",
+                    "workbooks",
+                    "spreadsheet",
+                    "spreadsheets"
+                ],
+                "content": "Copilot in Excel helps you explore datasets, identify trends, and generate formulas, visualizations, and explanations in plain language. This is valuable for managers and analysts who need quick interpretation without advanced spreadsheet expertise. High-quality outcomes depend on clean data, consistent headers, and clear definitions of business metrics. Copilot can accelerate interpretation, but metric logic and decision implications should still be validated by domain owners."
+            },
+            {
+                "id": 9,
+                "title": "Copilot in PowerPoint",
+                "keywords": [
+                    "powerpoint",
+                    "slides",
+                    "slide",
+                    "presentations",
+                    "presentation",
+                    "deck",
+                    "decks"
+                ],
+                "content": "Copilot in PowerPoint helps you turn source material into slide structures, narratives, and audience-ready presentations. Business teams can produce status updates and strategy decks faster by iterating on storyline before design polish. Effective prompts include objective, audience type, and desired call to action. Human review should confirm message coherence, factual precision, and visual clarity."
+            }
+        ]
+    },
+    {
+        "category": "Prompting",
+        "link": "https://learn.microsoft.com/training/paths/craft-effective-prompts-copilot-microsoft-365/",
+        "documents": [
+            {
+                "id": 10,
+                "title": "Prompting Fundamentals",
+                "keywords": [
+                    "prompting",
+                    "prompt",
+                    "prompts",
+                    "questions",
+                    "question",
+                    "input"
+                ],
+                "content": "Good prompts are clear, contextual, and outcome-oriented. A practical pattern is to specify role, task, context, constraints, and output format. For example, asking for a three-bullet executive summary with risks and recommendations generally produces more useful output than broad requests. Prompt quality is one of the highest leverage skills for business users and no-code builders."
+            },
+            {
+                "id": 11,
+                "title": "Reusable Prompt Patterns",
+                "keywords": [
+                    "reusable prompts",
+                    "prompt templates",
+                    "prompt patterns"
+                ],
+                "content": "Reusable prompt patterns improve consistency and reduce trial-and-error across teams. Common patterns include summarize-and-recommend, compare options, draft-and-rewrite, and plan-with-risks. Storing approved prompt templates can improve quality control and support onboarding. Makers can embed these patterns into agent instructions to standardize behavior at scale."
+            },
+            {
+                "id": 12,
+                "title": "Response Verification and Fact-Checking",
+                "keywords": [
+                    "fact",
+                    "trust the response",
+                    "factually",
+                    "verification",
+                    "verify",
+                    "accuracy",
+                    "accurate",
+                    "mistakes",
+                    "hallucination",
+                    "hallucinations",
+                    "correct",
+                    "wrong answer",
+                    "wrong answers",
+                    "incorrect",
+                    "inaccurate",
+                    "inaccuracies"
+                ],
+                "content": "Copilot outputs should be treated as draft intelligence, not automatic truth. Users should verify critical facts, check cited sources, and compare output against authoritative internal data. A useful practice is to ask Copilot to show assumptions, evidence, and confidence limits, then cross-check before action. Verification is especially important in finance, legal, HR, healthcare, and customer commitments."
+            },
+            {
+                "id": 13,
+                "title": "Privacy-Aware Prompting",
+                "keywords": [
+                    "private",
+                    "sensitive",
+                    "compliance",
+                    "personal"
+                ],
+                "content": "Privacy-aware prompting means sharing only the minimum data required to complete a task and avoiding unnecessary personal or regulated information. Teams should align prompting practices to data classification and compliance rules. No-code builders should design experiences that encourage safe input patterns and apply environment-level controls where needed. This reduces exposure risk while preserving business value."
+            }
+        ]
+    },
+    {
+        "category": "Pre-Built Agents",
+        "link": "https://learn.microsoft.com/training/modules/explore-prebuilt-microsoft-365-copilot-agents/",
+        "documents": [
+            {
+                "id": 14,
+                "title": "The Analyst Agent",
+                "keywords": [
+                    "analyst",
+                    "agent for analysis",
+                    "analysis agent",
+                    "analyzer agent"
+                ],
+                "content": "The Analyst agent is a built-in agent in Microsoft 365 Copilot that acts like your personal data assistant. It can scan data in files you have access to (such as Excel spreadsheets, Word documents, and Power BI dashboards) and provide helpful summaries, charts, and insights based on your questions. "
+            },
+            {
+                "id": 15,
+                "title": "The Researcher Agent",
+                "keywords": [
+                    "researcher",
+                    "agent for research",
+                    "research assistant"
+                ],
+                "content": "The Researcher agent is a built-in agent in Microsoft 365 Copilot that acts like your personal research assistant. It can search the web and internal data sources to gather information on a topic, summarize key points, and provide references. This helps you quickly get up to speed on unfamiliar subjects or find supporting data for decisions."
+            },
+            {
+                "id": 16,
+                "title": "The Prompt Coach Agent",
+                "keywords": [
+                    "prompt coach",
+                    "agent for prompting",
+                    "prompting assistant"
+                ],
+                "content": "The Prompt Coach agent is a built-in agent in Microsoft 365 Copilot that helps you improve your prompts and interactions with Copilot. It can provide suggestions, best practices, and feedback to enhance the quality and effectiveness of your prompts."
+            },
+            {
+                "id": 17,
+                "title": "The Idea Coach Agent",
+                "keywords": [
+                    "idea coach",
+                    "agent for ideas",
+                    "idea generation assistant"
+                ],
+                "content": "The Idea Coach agent is a built-in agent in Microsoft 365 Copilot that helps you generate and refine ideas. It can provide creative suggestions, brainstorm solutions, and offer feedback to enhance your ideation process."
+            },
+            {
+                "id": 18,
+                "title": "The Writing Coach Agent",
+                "keywords": [
+                    "writing coach",
+                    "agent for writing",
+                    "writing assistant"
+                ],
+                "content": "The Writing Coach agent is a built-in agent in Microsoft 365 Copilot that helps you improve your writing. It can provide suggestions, feedback, and guidance to enhance the clarity, style, and effectiveness of your written content."
+            }
+        ]
+    },
+    {
+        "category": "Building Custom Agents",
+        "link": "https://learn.microsoft.com/training/modules/build-manage-no-code-copilot-agent-sharepoint/",
+        "documents": [
+            {
+                "id": 19,
+                "title": "Tools for Building Custom Agents",
+                "keywords": [
+                    "agent tools",
+                    "build an agent",
+                    "custom agent",
+                    "no-code agent",
+                    "create an agent",
+                    "build a copilot agent",
+                    "build a co-pilot agent"
+                ],
+                "content": "Microsoft provides tools for building custom agents that can automate tasks and processes, with no programming skills required. Tools for building agents include Microsoft 365 Copilot Agent Builder, the SharePoint agent tool, and Microsoft Copilot Studio."
+            },
+            {
+                "id": 20,
+                "title": "Agent Builder",
+                "keywords": [
+                    "agent builder",
+                    "copilot agent tool",
+                    "copilot agent creator",
+                    "agent creation tool",
+                    "declarative"
+                ],
+                "content": "Agent Builder uses a guided interface with Microsoft 365 Copilot, from which users can easily create agents for Microsoft 365 Copilot Chat. When doing so, you specify the agent's purpose, add relevant knowledge sources (such as SharePoint documents or websites), and configure tone and behavior. These agents are well-suited for answering questions, offering guidance, or surfacing organizational information directly within Microsoft 365 experiences such as Copilot Chat, Teams, and Outlook."
+            },
+            {
+                "id": 21,
+                "title": "SharePoint Agent Tool",
+                "keywords": [
+                    "sharepoint agent",
+                    "sharepoint agent tool",
+                    "sharepoint agent creator",
+                    "sharepoint agent builder"
+                ],
+                "content": "The SharePoint agent tool is a no-code solution for building agents that are integrated into a Microsoft SharePoint site."
+            },
+            {
+                "id": 22,
+                "title": "Microsoft Copilot Studio",
+                "keywords": [
+                    "copilot studio",
+                    "agent development studio",
+                    "agent designer"
+                ],
+                "content": "Microsoft Copilot Studio is a more advanced tool for building custom agents with greater flexibility and control. It provides a visual interface for designing complex agent workflows, integrating multiple data sources, and configuring sophisticated behaviors. Copilot Studio is ideal for users who want to create highly customized agents that go beyond the capabilities of the standard Agent Builder, allowing for deeper integration with organizational systems and more complex interactions."
+            }
+        ]
+    }
+]
