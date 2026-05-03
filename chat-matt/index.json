@@ -142,7 +142,7 @@
                     "question",
                     "input"
                 ],
-                "content": "Good prompts are clear, contextual, and outcome-oriented. A practical pattern is to specify role, task, context, constraints, and output format. For example, asking for a three-bullet executive summary with risks and recommendations generally produces more useful output than broad requests. Prompt quality is one of the highest leverage skills for business users and no-code builders."
+                "content": "Good prompts are clear, contextual, and outcome-oriented. A practical pattern is to specify role, task, context, constraints, and output format. For example, asking for a three-bullet executive summary with risks and recommendations generally produces more useful output than broad requests."
             },
             {
                 "id": 11,
@@ -152,7 +152,7 @@
                     "prompt templates",
                     "prompt patterns"
                 ],
-                "content": "Reusable prompt patterns improve consistency and reduce trial-and-error across teams. Common patterns include summarize-and-recommend, compare options, draft-and-rewrite, and plan-with-risks. Storing approved prompt templates can improve quality control and support onboarding. Makers can embed these patterns into agent instructions to standardize behavior at scale."
+                "content": "Reusable prompt patterns improve consistency and reduce trial-and-error across teams. Common patterns include summarize-and-recommend, compare options, draft-and-rewrite, and plan-with-risks. Storing approved prompt templates can improve quality control and support onboarding. You can embed these patterns into agent instructions to standardize behavior at scale."
             },
             {
                 "id": 12,
