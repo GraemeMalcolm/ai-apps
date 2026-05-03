@@ -807,7 +807,7 @@ IMPORTANT: Follow these guidelines when responding:
             return trimmedText.slice(5).trim();
         }
 
-        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn') || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
+        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft support') || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
             return trimmedText;
         }
 
@@ -1102,7 +1102,7 @@ IMPORTANT: Follow these guidelines when responding:
         // Search for relevant context
         const searchResult = this.searchContext(userMessage);
 
-        // If no results found, provide Microsoft Learn search link
+        // If no results found, provide Microsoft support search link
         if (!searchResult.context || searchResult.documents.length === 0) {
             await this.respondWithNoResultsSearchLink(userMessage, usedVoice);
             return;
@@ -1347,9 +1347,9 @@ IMPORTANT: Follow these guidelines when responding:
     async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
-        const encodedKeywords = encodeURIComponent(bingKeywords);
-        const bingUrl = `https://learn.microsoft.com/search/?terms=${encodedKeywords}&category=Documentation&products=%2Fdevrel%2F1dd701e0-441f-4b0a-9806-aa47decc4e35`;
-        const historyAssistantMessage = `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nHere's what I found.`;
+        const keywordSuffix = bingKeywords ? bingKeywords.split(' ').map(kw => encodeURIComponent(kw)).join('+') : '';
+        const bingUrl = `https://support.microsoft.com/search/results?query=${keywordSuffix}`;
+        const historyAssistantMessage = `OK, I searched the Microsoft support documentation for "${bingKeywords}".\nHere's what I found.`;
         const assistantMessage = historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
 
         this.isGenerating = true;
@@ -1416,12 +1416,12 @@ IMPORTANT: Follow these guidelines when responding:
 
     async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
         const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
-        const encodedKeywords = encodeURIComponent(bingKeywords);
-        const bingUrl = `https://learn.microsoft.com/search/?terms=${encodedKeywords}&category=Documentation`;
-        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft Learn documentation.`;
+        const keywordSuffix = bingKeywords ? bingKeywords.split(' ').map(kw => encodeURIComponent(kw)).join('+') : '';
+        const bingUrl = `https://support.microsoft.com/search/results?query=${keywordSuffix}`;
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft support documentation.`;
         const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
         const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
-        const fallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
+        const fallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information from Microsoft support.';
 
         this.isGenerating = true;
         this.stopRequested = false;
