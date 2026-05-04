@@ -1429,7 +1429,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
-        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">this link</a>`;
+        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Bing search results</a>`;
 
         if (this.currentMode === 'cpu') {
             messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Matt is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
