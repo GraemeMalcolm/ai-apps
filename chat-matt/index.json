@@ -65,7 +65,7 @@
                     "chatbot",
                     "chat-bot"
                 ],
-                "content": "Microsoft 365 Copilot Chat is Microsoft's secure work chat experience for asking questions, exploring information, and collaborating on everyday tasks. Business users can use it to summarize information, catch up quickly, support meeting follow-up, and work with content across Microsoft 365 in a conversational way. It is most useful when people need a general-purpose chat interface for productivity rather than a single app-specific workflow. Organizations also rely on its security and enterprise context to support safe use at work."
+                "content": "Microsoft 365 Copilot Chat is Microsoft's secure work chat experience for asking questions, exploring information, and collaborating on everyday tasks. You can use it to summarize information, catch up quickly, support meeting follow-up, and work with content across Microsoft 365 in a conversational way."
             },
             {
                 "id": 6,
@@ -79,7 +79,7 @@
                     "mail",
                     "mails"
                 ],
-                "content": "Copilot in Outlook helps you triage inboxes, summarize long threads, and draft responses tailored to audience and tone. This helps business users communicate faster while keeping messaging consistent. Prompting with intent, audience, and desired outcome improves quality. Teams should still validate sensitive language, commitments, and external communication before sending."
+                "content": "Copilot in Outlook helps you triage inboxes, summarize long threads, and draft responses tailored to audience and tone. This helps business users communicate faster while keeping messaging consistent. Prompting with intent, audience, and desired outcome improves quality."
             },
             {
                 "id": 7,
@@ -93,7 +93,7 @@
                     "documents",
                     "document"
                 ],
-                "content": "Copilot in Word helps you generate first drafts, restructure text, and produce concise summaries from longer material. For business users, this accelerates proposal writing, policy updates, and communication packs. A strong workflow is to start with structured prompts, then iterate with feedback cycles and source references. Final review should ensure factual accuracy, compliance language, and brand style."
+                "content": "Copilot in Word helps you generate first drafts, restructure text, and produce concise summaries from longer material."
             },
             {
                 "id": 8,
@@ -109,7 +109,7 @@
                     "spreadsheet",
                     "spreadsheets"
                 ],
-                "content": "Copilot in Excel helps you explore datasets, identify trends, and generate formulas, visualizations, and explanations in plain language. This is valuable for managers and analysts who need quick interpretation without advanced spreadsheet expertise. High-quality outcomes depend on clean data, consistent headers, and clear definitions of business metrics. Copilot can accelerate interpretation, but metric logic and decision implications should still be validated by domain owners."
+                "content": "Copilot in Excel helps you explore datasets, identify trends, and generate formulas, visualizations, and explanations in plain language."
             },
             {
                 "id": 9,
@@ -123,7 +123,19 @@
                     "deck",
                     "decks"
                 ],
-                "content": "Copilot in PowerPoint helps you turn source material into slide structures, narratives, and audience-ready presentations. Business teams can produce status updates and strategy decks faster by iterating on storyline before design polish. Effective prompts include objective, audience type, and desired call to action. Human review should confirm message coherence, factual precision, and visual clarity."
+                "content": "Copilot in PowerPoint helps you turn source material into slide structures, narratives, and audience-ready presentations."
+            },
+            {
+                "id": 10,
+                "title": "Copilot in Teams",
+                "keywords": [
+                    "teams",
+                    "meetings",
+                    "meeting",
+                    "call",
+                    "calls"
+                ],
+                "content": "Copilot in Teams helps you manage meetings, calls, and collaboration more effectively. Business teams can streamline communication, track action items, and enhance productivity by leveraging AI-driven insights."
             }
         ]
     },
@@ -132,7 +144,7 @@
         "link": "https://learn.microsoft.com/training/paths/craft-effective-prompts-copilot-microsoft-365/",
         "documents": [
             {
-                "id": 10,
+                "id": 11,
                 "title": "Prompting Fundamentals",
                 "keywords": [
                     "prompting",
@@ -145,7 +157,7 @@
                 "content": "Good prompts are clear, contextual, and outcome-oriented. A practical pattern is to specify role, task, context, constraints, and output format. For example, asking for a three-bullet executive summary with risks and recommendations generally produces more useful output than broad requests."
             },
             {
-                "id": 11,
+                "id": 12,
                 "title": "Reusable Prompt Patterns",
                 "keywords": [
                     "reusable prompts",
@@ -155,7 +167,7 @@
                 "content": "Reusable prompt patterns improve consistency and reduce trial-and-error across teams. Common patterns include summarize-and-recommend, compare options, draft-and-rewrite, and plan-with-risks. Storing approved prompt templates can improve quality control and support onboarding. You can embed these patterns into agent instructions to standardize behavior at scale."
             },
             {
-                "id": 12,
+                "id": 13,
                 "title": "Response Verification and Fact-Checking",
                 "keywords": [
                     "fact",
@@ -178,7 +190,7 @@
                 "content": "Copilot outputs should be treated as draft intelligence, not automatic truth. Users should verify critical facts, check cited sources, and compare output against authoritative internal data. A useful practice is to ask Copilot to show assumptions, evidence, and confidence limits, then cross-check before action. Verification is especially important in finance, legal, HR, healthcare, and customer commitments."
             },
             {
-                "id": 13,
+                "id": 14,
                 "title": "Privacy-Aware Prompting",
                 "keywords": [
                     "private",
@@ -195,7 +207,7 @@
         "link": "https://learn.microsoft.com/training/modules/explore-prebuilt-microsoft-365-copilot-agents/",
         "documents": [
             {
-                "id": 14,
+                "id": 15,
                 "title": "The Analyst Agent",
                 "keywords": [
                     "analyst",
@@ -206,7 +218,7 @@
                 "content": "The Analyst agent is a built-in agent in Microsoft 365 Copilot that acts like your personal data assistant. It can scan data in files you have access to (such as Excel spreadsheets, Word documents, and Power BI dashboards) and provide helpful summaries, charts, and insights based on your questions. "
             },
             {
-                "id": 15,
+                "id": 16,
                 "title": "The Researcher Agent",
                 "keywords": [
                     "researcher",
@@ -216,7 +228,7 @@
                 "content": "The Researcher agent is a built-in agent in Microsoft 365 Copilot that acts like your personal research assistant. It can search the web and internal data sources to gather information on a topic, summarize key points, and provide references. This helps you quickly get up to speed on unfamiliar subjects or find supporting data for decisions."
             },
             {
-                "id": 16,
+                "id": 17,
                 "title": "The Prompt Coach Agent",
                 "keywords": [
                     "prompt coach",
@@ -226,7 +238,7 @@
                 "content": "The Prompt Coach agent is a built-in agent in Microsoft 365 Copilot that helps you improve your prompts and interactions with Copilot. It can provide suggestions, best practices, and feedback to enhance the quality and effectiveness of your prompts."
             },
             {
-                "id": 17,
+                "id": 18,
                 "title": "The Idea Coach Agent",
                 "keywords": [
                     "idea coach",
@@ -236,7 +248,7 @@
                 "content": "The Idea Coach agent is a built-in agent in Microsoft 365 Copilot that helps you generate and refine ideas. It can provide creative suggestions, brainstorm solutions, and offer feedback to enhance your ideation process."
             },
             {
-                "id": 18,
+                "id": 19,
                 "title": "The Writing Coach Agent",
                 "keywords": [
                     "writing coach",
@@ -252,7 +264,7 @@
         "link": "https://learn.microsoft.com/training/modules/build-manage-no-code-copilot-agent-sharepoint/",
         "documents": [
             {
-                "id": 19,
+                "id": 20,
                 "title": "Tools for Building Custom Agents",
                 "keywords": [
                     "agent tools",
@@ -266,7 +278,7 @@
                 "content": "Microsoft provides tools for building custom agents that can automate tasks and processes, with no programming skills required. Tools for building agents include Microsoft 365 Copilot Agent Builder, the SharePoint agent tool, and Microsoft Copilot Studio."
             },
             {
-                "id": 20,
+                "id": 21,
                 "title": "Agent Builder",
                 "keywords": [
                     "agent builder",
@@ -278,7 +290,7 @@
                 "content": "Agent Builder uses a guided interface with Microsoft 365 Copilot, from which users can easily create agents for Microsoft 365 Copilot Chat. When doing so, you specify the agent's purpose, add relevant knowledge sources (such as SharePoint documents or websites), and configure tone and behavior. These agents are well-suited for answering questions, offering guidance, or surfacing organizational information directly within Microsoft 365 experiences such as Copilot Chat, Teams, and Outlook."
             },
             {
-                "id": 21,
+                "id": 22,
                 "title": "SharePoint Agent Tool",
                 "keywords": [
                     "sharepoint agent",
@@ -289,7 +301,7 @@
                 "content": "The SharePoint agent tool is a no-code solution for building agents that are integrated into a Microsoft SharePoint site."
             },
             {
-                "id": 22,
+                "id": 23,
                 "title": "Microsoft Copilot Studio",
                 "keywords": [
                     "copilot studio",
