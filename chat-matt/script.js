@@ -1417,9 +1417,9 @@ IMPORTANT: Follow these guidelines when responding:
     async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
         const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
         const keywordSuffix = bingKeywords ? bingKeywords.split(' ').map(kw => encodeURIComponent(kw)).join('+') : '';
-        const bingUrl = `https://support.microsoft.com/search/results?query=${keywordSuffix}`;
-        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for in the Microsoft support documentation.`;
-        const assistantMessage = historyAssistantMessage.replace('documentation.', 'documentation at [[SEARCH_RESULT_LINK]].');
+        const bingUrl = `https://www.bing.com/search?q=${keywordSuffix}`;
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.`;
+        const assistantMessage = historyAssistantMessage.replace('here.', 'here: [[SEARCH_RESULT_LINK]].');
         const shouldTryConversationFallback = (this.currentMode === 'gpu' || this.currentMode === 'cpu') && this.hasPreviousUserPrompt();
         const fallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information from Microsoft support.';
 
