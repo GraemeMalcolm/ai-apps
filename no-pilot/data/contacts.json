@@ -1,0 +1,68 @@
+[
+    {
+        "id": "contact1",
+        "name": "Anton",
+        "email": "anton@fourthcoffee.com",
+        "role": "Sales Representative",
+        "department": "Sales",
+        "phone": "+1 (555) 123-4567",
+        "keywords": [
+            "anton",
+            "sales",
+            "representative"
+        ]
+    },
+    {
+        "id": "contact2",
+        "name": "Matt",
+        "email": "matt@fourthcoffee.com",
+        "role": "Installation and Fulfillment Manager",
+        "department": "Operations",
+        "phone": "+1 (555) 234-5678",
+        "keywords": [
+            "matt",
+            "installation",
+            "fulfillment",
+            "operations"
+        ]
+    },
+    {
+        "id": "contact3",
+        "name": "Sarah Johnson",
+        "email": "sarah@fourthcoffee.com",
+        "role": "Finance Manager",
+        "department": "Finance",
+        "phone": "+1 (555) 345-6789",
+        "keywords": [
+            "sarah",
+            "finance",
+            "manager"
+        ]
+    },
+    {
+        "id": "contact4",
+        "name": "David Chen",
+        "email": "david@fourthcoffee.com",
+        "role": "Marketing Director",
+        "department": "Marketing",
+        "phone": "+1 (555) 456-7890",
+        "keywords": [
+            "david",
+            "marketing",
+            "director"
+        ]
+    },
+    {
+        "id": "contact5",
+        "name": "Emily Rodriguez",
+        "email": "emily@fourthcoffee.com",
+        "role": "HR Manager",
+        "department": "Human Resources",
+        "phone": "+1 (555) 567-8901",
+        "keywords": [
+            "emily",
+            "hr",
+            "human resources"
+        ]
+    }
+]

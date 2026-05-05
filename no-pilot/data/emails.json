@@ -1,0 +1,94 @@
+[
+    {
+        "id": "email1",
+        "from": "anton@fourthcoffee.com",
+        "fromName": "Anton",
+        "to": [
+            "you@fourthcoffee.com"
+        ],
+        "subject": "Exciting Opportunity with Microsoft!",
+        "content": "Hi,\n\nGreat news! Microsoft Corporation has reached out to us with a potential opportunity. They're interested in installing coffee vending machines at their campus.\n\nThey want:\n- 5 standard coffee vending machines for general employee use\n- 1 premium espresso machine for their executive briefing center\n\nThis could be a significant deal for us. Can we schedule a kickoff meeting to discuss how we can best serve this client?\n\nBest regards,\nAnton",
+        "date": -6,
+        "keywords": [
+            "microsoft",
+            "opportunity",
+            "vending",
+            "machines",
+            "anton"
+        ]
+    },
+    {
+        "id": "email2",
+        "from": "anton@fourthcoffee.com",
+        "fromName": "Anton",
+        "to": [
+            "you@fourthcoffee.com",
+            "matt@fourthcoffee.com"
+        ],
+        "subject": "Microsoft Deal - Feasibility Discussion",
+        "content": "Hi team,\n\nFollowing up on the Microsoft opportunity. I wanted to loop in Matt to discuss the feasibility of this installation.\n\nMatt - Can we handle the installation of 5 standard machines and 1 premium espresso machine? What's our timeline looking like?\n\nWe should all meet to discuss:\n1. Installation logistics\n2. Pricing structure\n3. Timeline for delivery and setup\n4. Ongoing maintenance contracts\n\nLet's make sure we're ready to present a solid proposal to Microsoft.\n\nThanks,\nAnton",
+        "date": -5,
+        "keywords": [
+            "microsoft",
+            "feasibility",
+            "installation",
+            "matt",
+            "anton",
+            "meeting"
+        ]
+    },
+    {
+        "id": "email3",
+        "from": "matt@fourthcoffee.com",
+        "fromName": "Matt",
+        "to": [
+            "you@fourthcoffee.com",
+            "anton@fourthcoffee.com"
+        ],
+        "subject": "RE: Microsoft Deal - Background Research Needed",
+        "content": "Hi Anton and team,\n\nI can definitely handle the installation logistics. We have the capacity and the machines in stock.\n\nHowever, before we finalize our proposal, I think we need some background information on Microsoft:\n- Their typical vendor requirements\n- Corporate structure and decision-making process\n- Any specific sustainability or compliance requirements\n\nCan someone research this and compile a brief on Microsoft? This will help us tailor our proposal effectively.\n\nWe have our follow-up meeting tomorrow, so let's be prepared with all the details.\n\nBest,\nMatt",
+        "date": -2,
+        "keywords": [
+            "microsoft",
+            "research",
+            "background",
+            "matt",
+            "proposal",
+            "meeting"
+        ]
+    },
+    {
+        "id": "email4",
+        "from": "matt@fourthcoffee.com",
+        "fromName": "Matt",
+        "to": [
+            "you@fourthcoffee.com"
+        ],
+        "subject": "Lunch Next Week?",
+        "content": "Hey,\n\nAre you still free for lunch next week? I was thinking we could try that new cafe downtown.\n\nLet me know what works for you!\n\nCheers,\nMatt",
+        "date": -3,
+        "keywords": [
+            "lunch",
+            "matt",
+            "next week",
+            "cafe"
+        ]
+    },
+    {
+        "id": "email5",
+        "from": "autoinsurance@spammail.com",
+        "fromName": "Auto Insurance Deals",
+        "to": [
+            "you@fourthcoffee.com"
+        ],
+        "subject": "Save BIG on Auto Insurance Today!",
+        "content": "Dear Valued Customer,\n\nYou could save up to $500 on your auto insurance! Our exclusive rates are available for a limited time only.\n\nClick here to get your FREE quote today!\n\nDon't miss out on these incredible savings!\n\nBest regards,\nAuto Insurance Team",
+        "date": -1,
+        "keywords": [
+            "insurance",
+            "auto",
+            "spam",
+            "save"
+        ]
+    }
+]
