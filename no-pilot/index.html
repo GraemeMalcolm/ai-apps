@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>No-Pilot</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
     <script src="coi-serviceworker.js"></script>
 </head>
@@ -35,9 +36,8 @@
 
             <button class="nav-item new-chat-btn" data-page="newChat">
                 <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                        d="M14.5 3h-9A2.5 2.5 0 0 0 3 5.5v9A2.5 2.5 0 0 0 5.5 17h9a2.5 2.5 0 0 0 2.5-2.5v-9A2.5 2.5 0 0 0 14.5 3zm-9 1h9c.83 0 1.5.67 1.5 1.5v9c0 .83-.67 1.5-1.5 1.5h-9A1.5 1.5 0 0 1 4 14.5v-9C4 4.67 4.67 4 5.5 4z">
-                    </path>
+                    <path d="M3 4h14v2H5v10h10v-6h2v8H3V4z"></path>
+                    <path d="M14 3h3v3l-3-3zm0 0l3 3-7 7-3-3 7-7z"></path>
                 </svg>
                 <span class="nav-text">New chat</span>
             </button>
@@ -87,10 +87,11 @@
                     <span id="pageTitle">New chat</span>
                 </div>
                 <div class="header-actions">
-                    <button id="restartBtn" class="icon-btn" title="New chat">
+                    <button id="restartBtn" class="icon-btn" title="Restart chat">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M3 4h14v2H5v10h10v-6h2v8H3V4z"></path>
-                            <path d="M14 3h3v3l-3-3zm0 0l3 3-7 7-3-3 7-7z"></path>
+                            <path
+                                d="M6 6c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2v7c0 1.1-.9 2-2 2h-1.5l-2 2-2-2H8c-1.1 0-2-.9-2-2V6zm2-1c-.55 0-1 .45-1 1v7c0 .55.45 1 1 1h3l1.5 1.5L13 14h3c.55 0 1-.45 1-1V6c0-.55-.45-1-1-1H8z">
+                            </path>
                         </svg>
                     </button>
                     <button id="menuBtn" class="icon-btn">
@@ -119,7 +120,7 @@
                             </path>
                         </svg>
                     </button>
-                    <input type="text" id="userInput" placeholder="Message Copilot" />
+                    <input type="text" id="userInput" placeholder="Message No-Pilot" />
                     <button id="voiceBtn" class="voice-btn">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                             <path
@@ -147,6 +148,11 @@
                 <div id="suggestionDropdown" class="suggestion-dropdown" style="display: none;"></div>
                 <div id="attachmentMenu" class="attachment-menu" style="display: none;"></div>
             </div>
+
+            <!-- Footer -->
+            <footer class="app-footer">
+                <p>AI-generated content may be inaccurate.</p>
+            </footer>
         </main>
     </div>
 
@@ -166,7 +172,7 @@
         <button class="menu-item" data-model="wikipedia">Wikipedia (Fallback)</button>
     </div>
 
-    <script type="module" src="app.js?v=20260504-43"></script>
+    <script type="module" src="app.js?v=20260505-82"></script>
 </body>
 
 </html>

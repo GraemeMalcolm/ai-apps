@@ -15,7 +15,8 @@
             "vending",
             "machines",
             "anton"
-        ]
+        ],
+        "summary": "Anton announces a new opportunity with Microsoft to install 5 standard coffee vending machines and 1 premium espresso machine at their campus, requesting a kickoff meeting to discuss the potential deal."
     },
     {
         "id": "email2",
@@ -35,7 +36,8 @@
             "matt",
             "anton",
             "meeting"
-        ]
+        ],
+        "summary": "Anton follows up on the Microsoft opportunity, asking Matt about installation feasibility and requesting a team meeting to discuss logistics, pricing, timeline, and maintenance contracts for the proposal."
     },
     {
         "id": "email3",
@@ -55,7 +57,8 @@
             "matt",
             "proposal",
             "meeting"
-        ]
+        ],
+        "summary": "Matt confirms installation capacity and requests background research on Microsoft's vendor requirements, corporate structure, and compliance needs before tomorrow's follow-up meeting to finalize the proposal."
     },
     {
         "id": "email4",
@@ -72,7 +75,8 @@
             "matt",
             "next week",
             "cafe"
-        ]
+        ],
+        "summary": "Matt asks about availability for lunch next week at the new cafe downtown."
     },
     {
         "id": "email5",
@@ -89,6 +93,7 @@
             "auto",
             "spam",
             "save"
-        ]
+        ],
+        "summary": "Promotional email offering up to $500 savings on auto insurance with a free quote and limited-time exclusive rates."
     }
 ]
