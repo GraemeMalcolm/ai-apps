@@ -545,6 +545,52 @@ body {
     border-color: #4A9EFF;
 }
 
+/* Analyst Page */
+.analyst-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+.analyst-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    flex: 1;
+}
+
+.analyst-input-container {
+    width: 100%;
+    max-width: 700px;
+    margin-bottom: 48px;
+}
+
+.analyst-input-container .input-container {
+    width: 100%;
+}
+
+.analyst-chat {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.analyst-input-bottom {
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+    background: white;
+}
+
+.analyst-input-bottom .input-container {
+    width: 100%;
+    max-width: none;
+}
+
 /* App Footer */
 .app-footer {
     padding: 16px 24px;
@@ -932,195 +978,6 @@ body {
     background: #333;
 }
 
-/* New Agent Builder */
-.agent-builder {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 24px;
-}
-
-.agent-builder-header {
-    text-align: center;
-    margin-bottom: 48px;
-}
-
-.agent-builder-header h1 {
-    font-size: 36px;
-    color: #333;
-    margin-bottom: 8px;
-}
-
-.agent-builder-subtitle {
-    font-size: 14px;
-    color: #666;
-}
-
-.agent-builder-content {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 48px;
-}
-
-.agent-builder-form {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    border: 1px solid #e0e0e0;
-}
-
-.form-section {
-    margin-bottom: 32px;
-}
-
-.form-section label {
-    display: block;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 8px;
-    font-size: 14px;
-}
-
-.form-section textarea,
-.form-section input {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-family: inherit;
-    font-size: 14px;
-}
-
-.form-section textarea {
-    min-height: 100px;
-    resize: vertical;
-}
-
-.knowledge-input {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.knowledge-sources {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 12px;
-}
-
-.knowledge-btn {
-    padding: 12px 20px;
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.knowledge-btn:hover {
-    background: #f5f5f5;
-}
-
-.prompts-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.prompts-table th {
-    text-align: left;
-    padding: 8px;
-    border-bottom: 1px solid #e0e0e0;
-    font-size: 12px;
-    color: #666;
-}
-
-.prompts-table td {
-    padding: 8px;
-}
-
-.prompts-table input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-}
-
-.agent-preview {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    border: 1px solid #e0e0e0;
-}
-
-.preview-agent-info {
-    text-align: center;
-    margin-bottom: 32px;
-}
-
-.preview-agent-icon {
-    width: 80px;
-    height: 80px;
-    background: linear-gradient(135deg, #4A9EFF, #7B61FF);
-    border-radius: 16px;
-    margin: 0 auto 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.preview-agent-name {
-    font-size: 24px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 8px;
-}
-
-.preview-agent-description {
-    font-size: 14px;
-    color: #666;
-}
-
-.preview-prompts {
-    display: grid;
-    gap: 12px;
-}
-
-.builder-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-    margin-top: 32px;
-}
-
-.btn {
-    padding: 12px 24px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-}
-
-.btn-primary {
-    background: #4A9EFF;
-    color: white;
-}
-
-.btn-primary:hover {
-    background: #3d8ae0;
-}
-
-.btn-secondary {
-    background: white;
-    color: #333;
-    border: 1px solid #e0e0e0;
-}
-
-.btn-secondary:hover {
-    background: #f5f5f5;
-}
-
 /* Modal */
 .modal {
     display: none;
@@ -1223,10 +1080,6 @@ body {
         position: absolute;
         z-index: 100;
         height: 100%;
-    }
-
-    .agent-builder-content {
-        grid-template-columns: 1fr;
     }
 }
 

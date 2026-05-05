@@ -1,0 +1,93 @@
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="400" fill="#ffffff"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle" fill="#333">
+    Microsoft Vending Machine Contract - Financial Analysis
+  </text>
+  
+  <!-- Grid lines -->
+  <g stroke="#e0e0e0" stroke-width="1">
+    <line x1="80" y1="80" x2="80" y2="330"/>
+    <line x1="80" y1="330" x2="750" y2="330"/>
+    <line x1="80" y1="280" x2="750" y2="280" stroke-dasharray="2,2"/>
+    <line x1="80" y1="230" x2="750" y2="230" stroke-dasharray="2,2"/>
+    <line x1="80" y1="180" x2="750" y2="180" stroke-dasharray="2,2"/>
+    <line x1="80" y1="130" x2="750" y2="130" stroke-dasharray="2,2"/>
+    <line x1="80" y1="80" x2="750" y2="80" stroke-dasharray="2,2"/>
+  </g>
+  
+  <!-- Y-axis labels -->
+  <text x="70" y="85" font-family="Arial" font-size="12" text-anchor="end" fill="#666">$30k</text>
+  <text x="70" y="135" font-family="Arial" font-size="12" text-anchor="end" fill="#666">$20k</text>
+  <text x="70" y="185" font-family="Arial" font-size="12" text-anchor="end" fill="#666">$10k</text>
+  <text x="70" y="235" font-family="Arial" font-size="12" text-anchor="end" fill="#666">$0</text>
+  <text x="70" y="285" font-family="Arial" font-size="12" text-anchor="end" fill="#666">-$10k</text>
+  <text x="70" y="335" font-family="Arial" font-size="12" text-anchor="end" fill="#666">-$20k</text>
+  
+  <!-- X-axis labels -->
+  <text x="110" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">1</text>
+  <text x="170" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">2</text>
+  <text x="225" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">3</text>
+  <text x="280" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">4</text>
+  <text x="335" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">5</text>
+  <text x="390" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">6</text>
+  <text x="445" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">7</text>
+  <text x="500" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">8</text>
+  <text x="555" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">9</text>
+  <text x="610" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">10</text>
+  <text x="665" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">11</text>
+  <text x="720" y="350" font-family="Arial" font-size="11" text-anchor="middle" fill="#666">12</text>
+  <text x="400" y="375" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">Month</text>
+  
+  <!-- Costs line (red) - Scale: 1 px = $100, baseline at y=230 (zero point) -->
+  <!-- Month 1: 24500, Month 2-12: 3500 -->
+  <polyline points="110,85 170,300 225,300 280,300 335,300 390,300 445,300 500,300 555,300 610,300 665,300 720,300" 
+            fill="none" stroke="#FF4444" stroke-width="3"/>
+  
+  <!-- Profit line (green) - negative values go down, positive go up -->
+  <!-- Month 1: -2300, Month 2-12: 3700 -->
+  <polyline points="110,253 170,193 225,193 280,193 335,193 390,193 445,193 500,193 555,193 610,193 665,193 720,193" 
+            fill="none" stroke="#44AA44" stroke-width="3"/>
+  
+  <!-- Data points -->
+  <g fill="#FF4444">
+    <circle cx="110" cy="85" r="4"/>
+    <circle cx="170" cy="300" r="4"/>
+    <circle cx="225" cy="300" r="4"/>
+    <circle cx="280" cy="300" r="4"/>
+    <circle cx="335" cy="300" r="4"/>
+    <circle cx="390" cy="300" r="4"/>
+    <circle cx="445" cy="300" r="4"/>
+    <circle cx="500" cy="300" r="4"/>
+    <circle cx="555" cy="300" r="4"/>
+    <circle cx="610" cy="300" r="4"/>
+    <circle cx="665" cy="300" r="4"/>
+    <circle cx="720" cy="300" r="4"/>
+  </g>
+  
+  <g fill="#44AA44">
+    <circle cx="110" cy="253" r="4"/>
+    <circle cx="170" cy="193" r="4"/>
+    <circle cx="225" cy="193" r="4"/>
+    <circle cx="280" cy="193" r="4"/>
+    <circle cx="335" cy="193" r="4"/>
+    <circle cx="390" cy="193" r="4"/>
+    <circle cx="445" cy="193" r="4"/>
+    <circle cx="500" cy="193" r="4"/>
+    <circle cx="555" cy="193" r="4"/>
+    <circle cx="610" cy="193" r="4"/>
+    <circle cx="665" cy="193" r="4"/>
+    <circle cx="720" cy="193" r="4"/>
+  </g>
+  
+  <!-- Legend -->
+  <g>
+    <line x1="600" y1="55" x2="640" y2="55" stroke="#FF4444" stroke-width="3"/>
+    <text x="650" y="60" font-family="Arial" font-size="13" fill="#333">Total Costs</text>
+    
+    <line x1="600" y1="75" x2="640" y2="75" stroke="#44AA44" stroke-width="3"/>
+    <text x="650" y="80" font-family="Arial" font-size="13" fill="#333">Net Profit</text>
+  </g>
+</svg>

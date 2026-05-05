@@ -28,6 +28,9 @@ const state = {
     // Researcher state
     researcherPrompt: null,
     researcherAwaitingSelection: false,
+    // Analyst state
+    analystAttachedDocument: null,
+    analystChatActive: false,
     // Streaming control
     isGenerating: false,
     stopRequested: false,
@@ -41,7 +44,7 @@ const state = {
 // Initialize the application
 async function init() {
     console.log('Initializing No-Pilot...');
-    console.log('App Version: 2025-05-05-v82 - Fixed CPU warning display in Researcher using innerHTML and <br>');
+    console.log('App Version: 2025-05-05-v88 - Removed New Agent page and associated functionality');
 
     // Load organizational data
     await loadOrganizationalData();
@@ -330,10 +333,13 @@ function setupEventListeners() {
 
     // Restart button
     document.getElementById('restartBtn').addEventListener('click', () => {
-        // Check if we're on the Researcher page
+        // Check if we're on the Researcher or Analyst page
         if (state.currentPage === 'researcher') {
             // Reset Researcher page
             navigateToPage('researcher');
+        } else if (state.currentPage === 'analyst') {
+            // Reset Analyst page
+            navigateToPage('analyst');
         } else {
             // Clear chat history
             state.chatHistory = [];
@@ -393,6 +399,7 @@ function setupEventListeners() {
         const dropdown = document.getElementById('suggestionDropdown');
         const attachMenu = document.getElementById('attachmentMenu');
         const attachBtn = document.getElementById('attachBtn');
+        const analystAttachBtn = document.getElementById('analystAttachBtn');
 
         if (!menu.contains(e.target) && !menuBtn.contains(e.target)) {
             menu.style.display = 'none';
@@ -402,7 +409,9 @@ function setupEventListeners() {
             dropdown.style.display = 'none';
         }
 
-        if (attachMenu && !attachMenu.contains(e.target) && !attachBtn.contains(e.target)) {
+        if (attachMenu && !attachMenu.contains(e.target) &&
+            !attachBtn?.contains(e.target) &&
+            !analystAttachBtn?.contains(e.target)) {
             attachMenu.style.display = 'none';
         }
     });
@@ -591,6 +600,12 @@ function updateAttachmentsDisplay() {
             removeAttachment(docId);
         });
     });
+
+    // Focus input after attachment
+    const userInput = document.getElementById('userInput');
+    if (userInput) {
+        userInput.focus();
+    }
 }
 
 // Remove an attachment
@@ -640,15 +655,12 @@ function navigateToPage(pageName) {
             break;
         case 'analyst':
             document.getElementById('pageTitle').textContent = 'Analyst';
+            // Reset analyst state
+            state.analystAttachedDocument = null;
+            state.analystChatActive = false;
             pageContent.innerHTML = renderAnalystPage();
-            inputArea.style.display = 'block';
-            setupAnalystListeners();
-            break;
-        case 'newAgent':
-            document.getElementById('pageTitle').textContent = 'Agent Builder';
-            pageContent.innerHTML = renderNewAgentPage();
             inputArea.style.display = 'none';
-            setupAgentBuilderListeners();
+            setupAnalystListeners();
             break;
     }
 }
@@ -783,8 +795,8 @@ function renderResearcherPage() {
 
 function renderAnalystPage() {
     return `
-        <div class="chat-container">
-            <div class="agent-page">
+        <div class="analyst-container">
+            <div class="analyst-welcome" id="analystWelcome">
                 <div class="agent-icon" style="background: linear-gradient(135deg, #C87EFF, #FF61D2);">
                     <svg width="40" height="40" viewBox="0 0 40 40" fill="white">
                         <path d="M5 5h8v20H5V5zm10 12h8v8h-8v-8zm10-6h8v14h-8V11z"/>
@@ -793,120 +805,71 @@ function renderAnalystPage() {
                 <h1>Analyst</h1>
                 <p class="agent-description">Simulated agent, powered by Microsoft Phi</p>
                 
-                <div class="prompt-cards">
-                    <div class="prompt-card" data-action="analyzeData">
-                        <div class="prompt-card-icon">📈</div>
-                        <div class="prompt-card-title">Analyze data</div>
-                        <div class="prompt-card-message">What are the trends you see in the uploaded files? Which...</div>
+                <div class="analyst-input-container">
+                    <div class="input-container">
+                        <button class="attach-btn" id="analystAttachBtn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 3a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H4a1 1 0 1 1 0-2h5V4a1 1 0 0 1 1-1z"></path>
+                            </svg>
+                        </button>
+                        <input type="text" id="analystInput" placeholder="Ask Analyst to analyze your data and generate insights" />
+                        <button id="analystVoiceBtn" class="voice-btn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zm-5 8a1 1 0 1 1 2 0 3 3 0 0 0 6 0 1 1 0 1 1 2 0 5 5 0 0 1-4 4.9V17h2a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h2v-2.1A5 5 0 0 1 5 10z"></path>
+                            </svg>
+                        </button>
+                        <button id="analystStopTop" class="stop-btn" style="display: none;">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <rect x="6" y="6" width="8" height="8"></rect>
+                            </svg>
+                        </button>
+                        <button id="analystSubmitTop" class="submit-btn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 3l7 7-1.5 1.5L11 7v10H9V7L4.5 11.5 3 10l7-7z"></path>
+                            </svg>
+                        </button>
                     </div>
-                    <div class="prompt-card" data-action="getInsights">
-                        <div class="prompt-card-icon">☑️</div>
-                        <div class="prompt-card-title">Get insights</div>
-                        <div class="prompt-card-message">What are some quick insights about the data from the...</div>
-                    </div>
-                    <div class="prompt-card" data-action="visualize">
-                        <div class="prompt-card-icon">📊</div>
-                        <div class="prompt-card-title">Visualize</div>
-                        <div class="prompt-card-message">Create a table with the volume of planets, add a column to...</div>
-                    </div>
-                </div>
-            </div>
-            <div class="chat-messages" id="chatMessages"></div>
-        </div>
-    `;
-}
-
-function renderNewAgentPage() {
-    return `
-        <div class="agent-builder">
-            <div class="agent-builder-header">
-                <h1>Build an agent <span style="color: #4A9EFF;">to save you time</span></h1>
-                <p class="agent-builder-subtitle">Simulated agent, powered by Microsoft Phi</p>
-            </div>
-            
-            <div class="agent-builder-content">
-                <div class="agent-builder-form">
-                    <div class="form-section">
-                        <label>Instructions</label>
-                        <textarea id="agentInstructions" placeholder="Describe what this agent should do, define its tone, and outline any rules or guidelines it must follow"></textarea>
-                    </div>
-                    
-                    <div class="form-section">
-                        <label>Knowledge</label>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 12px;">Choose the sources your agent will use to generate responses</p>
-                        <div class="knowledge-sources">
-                            <button class="knowledge-btn">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-7-7z"/>
-                                </svg>
-                                Files
-                            </button>
-                            <button class="knowledge-btn">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
-                                </svg>
-                                Email
-                            </button>
-                            <button class="knowledge-btn">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                    <circle cx="10" cy="10" r="8"/>
-                                </svg>
-                                Web
-                            </button>
-                        </div>
-                        <div class="knowledge-input">
-                            <input type="text" id="agentWebsite" placeholder="Enter a URL or name or drop files here" />
-                        </div>
-                    </div>
-                    
-                    <div class="form-section">
-                        <label>Suggested prompts</label>
-                        <table class="prompts-table">
-                            <thead>
-                                <tr>
-                                    <th>Title</th>
-                                    <th>Message</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><input type="text" class="prompt-title" placeholder="Enter a title" /></td>
-                                    <td><input type="text" class="prompt-message" placeholder="Enter a message" /></td>
-                                </tr>
-                                <tr>
-                                    <td><input type="text" class="prompt-title" placeholder="Enter a title" /></td>
-                                    <td><input type="text" class="prompt-message" placeholder="Enter a message" /></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <div id="analystAttachmentDisplay" class="attachments-container" style="display: none;"></div>
                 </div>
                 
-                <div class="agent-preview">
-                    <div class="preview-agent-info">
-                        <div class="preview-agent-icon">
-                            <svg width="40" height="40" viewBox="0 0 40 40" fill="white">
-                                <path d="M20 10v10h10v10H20V20H10V10h10z"/>
+                <div class="prompt-cards">
+                    <div class="prompt-card">
+                        <div class="prompt-card-icon">📈</div>
+                        <div class="prompt-card-title">Analyze data</div>
+                        <div class="prompt-card-message">Summarize large volumes of data</div>
+                    </div>
+                    <div class="prompt-card">
+                        <div class="prompt-card-icon">☑️</div>
+                        <div class="prompt-card-title">Get insights</div>
+                        <div class="prompt-card-message">Identify trends and patterns in data</div>
+                    </div>
+                    <div class="prompt-card">
+                        <div class="prompt-card-icon">📊</div>
+                        <div class="prompt-card-title">Visualize</div>
+                        <div class="prompt-card-message">Create charts and graphs to visualize data</div>
+                    </div>
+                </div>
+            </div>
+            <div class="analyst-chat" id="analystChat" style="display: none;">
+                <div class="chat-messages" id="analystMessages"></div>
+                <div class="analyst-input-bottom">
+                    <div class="input-container">
+                        <input type="text" id="analystInputBottom" placeholder="Message Analyst" />
+                        <button class="voice-btn" id="analystVoiceBottom">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zm-5 8a1 1 0 1 1 2 0 3 3 0 0 0 6 0 1 1 0 1 1 2 0 5 5 0 0 1-4 4.9V17h2a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h2v-2.1A5 5 0 0 1 5 10z"></path>
                             </svg>
-                        </div>
-                        <div class="preview-agent-name">New Agent</div>
-                        <div class="preview-agent-description">Searches public websites to find current information and summarize results for users.</div>
-                    </div>
-                    
-                    <div class="preview-prompts">
-                        <div class="prompt-card">
-                            <div class="prompt-card-title">Find Recent News</div>
-                            <div class="prompt-card-message">Search the web for the latest headlines on a topic.</div>
-                        </div>
-                        <div class="prompt-card">
-                            <div class="prompt-card-title">Get contact details</div>
-                            <div class="prompt-card-message">Get contact details</div>
-                        </div>
-                    </div>
-                    
-                    <div class="builder-actions">
-                        <button class="btn btn-secondary" id="tryAgentBtn">Try it</button>
-                        <button class="btn btn-primary" id="createAgentBtn">Create</button>
+                        </button>
+                        <button id="analystStopBottom" class="stop-btn" style="display: none;">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <rect x="6" y="6" width="8" height="8"></rect>
+                            </svg>
+                        </button>
+                        <button id="analystSubmitBottom" class="submit-btn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 3l7 7-1.5 1.5L11 7v10H9V7L4.5 11.5 3 10l7-7z"></path>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2950,177 +2913,359 @@ async function generateResearchWithWllama(prompt) {
 
 // Analyst page listeners
 function setupAnalystListeners() {
-    document.querySelectorAll('.prompt-card[data-action]').forEach(card => {
-        card.addEventListener('click', (e) => {
-            const action = e.currentTarget.getAttribute('data-action');
-            handleAnalystAction(action);
-        });
-    });
-}
+    const analystInput = document.getElementById('analystInput');
+    const analystInputBottom = document.getElementById('analystInputBottom');
+    const analystSubmitTop = document.getElementById('analystSubmitTop');
+    const analystSubmitBottom = document.getElementById('analystSubmitBottom');
+    const analystAttachBtn = document.getElementById('analystAttachBtn');
 
-function handleAnalystAction(action) {
-    if (action === 'analyzeData') {
-        // Show document selection
-        const docs = state.organizationalData.documents.filter(d => d.type === 'csv');
-        let message = 'Please select a document to analyze:\n\n';
-        docs.forEach(doc => {
-            message += `<a href="#" class="data-link" data-analyze="${doc.id}">${doc.name}</a>\n`;
+    // Top input listeners
+    if (analystInput) {
+        analystInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && analystInput.value.trim()) {
+                handleAnalystPrompt(analystInput.value.trim());
+                analystInput.value = '';
+            }
         });
-        addMessageToChat('assistant', message);
+    }
 
-        // Add click listeners
-        setTimeout(() => {
-            document.querySelectorAll('[data-analyze]').forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const docId = e.target.getAttribute('data-analyze');
-                    analyzeDocument(docId);
-                });
-            });
-        }, 100);
+    if (analystSubmitTop) {
+        analystSubmitTop.addEventListener('click', () => {
+            if (analystInput && analystInput.value.trim()) {
+                handleAnalystPrompt(analystInput.value.trim());
+                analystInput.value = '';
+            }
+        });
+    }
+
+    // Bottom input listeners
+    if (analystInputBottom) {
+        analystInputBottom.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && analystInputBottom.value.trim()) {
+                handleAnalystPrompt(analystInputBottom.value.trim());
+                analystInputBottom.value = '';
+            }
+        });
+    }
+
+    if (analystSubmitBottom) {
+        analystSubmitBottom.addEventListener('click', () => {
+            if (analystInputBottom && analystInputBottom.value.trim()) {
+                handleAnalystPrompt(analystInputBottom.value.trim());
+                analystInputBottom.value = '';
+            }
+        });
+    }
+
+    // Attach button listener
+    if (analystAttachBtn) {
+        analystAttachBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showAnalystAttachmentMenu();
+        });
     }
 }
 
-function analyzeDocument(docId) {
+function showAnalystAttachmentMenu() {
+    const menu = document.getElementById('attachmentMenu');
+    const analystAttachBtn = document.getElementById('analystAttachBtn');
+    if (!menu || !analystAttachBtn) return;
+
+    if (menu.style.display === 'block') {
+        menu.style.display = 'none';
+        return;
+    }
+
+    // Build menu with "+ Add work content" option
+    menu.innerHTML = `
+        <button class="attachment-menu-item" data-action="add-work-analyst">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 2a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2H9v4a1 1 0 1 1-2 0V9H3a1 1 0 1 1 0-2h4V3a1 1 0 0 1 1-1z"></path>
+            </svg>
+            Add work content
+        </button>
+    `;
+
+    // Position menu above the attach button
+    const rect = analystAttachBtn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.left = `${rect.left}px`;
+    menu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+    menu.style.display = 'block';
+
+    // Add click handler
+    menu.querySelector('[data-action="add-work-analyst"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        showAnalystDocumentPicker();
+    });
+}
+
+function showAnalystDocumentPicker() {
+    const menu = document.getElementById('attachmentMenu');
+    if (!menu) return;
+
+    const csvDocs = state.organizationalData.documents.filter(d => d.type === 'csv');
+
+    if (csvDocs.length === 0) {
+        alert('No CSV documents available.');
+        menu.style.display = 'none';
+        return;
+    }
+
+    // Build submenu with CSV document list
+    let html = '<div style="padding: 8px 16px; font-weight: 600; font-size: 12px; color: #666;">Select a CSV file:</div>';
+    csvDocs.forEach(doc => {
+        const iconPath = 'M3 3h10v2H3V3zm0 4h10v2H3V7zm0 4h10v2H3v-2z'; // Table icon for CSV
+
+        html += `
+            <button class="attachment-menu-item" data-analyst-doc-id="${doc.id}">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="${iconPath}"></path>
+                </svg>
+                ${doc.name}
+            </button>
+        `;
+    });
+
+    menu.innerHTML = html;
+
+    // Add click handlers
+    menu.querySelectorAll('[data-analyst-doc-id]').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const docId = e.currentTarget.getAttribute('data-analyst-doc-id');
+            attachAnalystDocument(docId);
+            menu.style.display = 'none';
+        });
+    });
+}
+
+window.attachAnalystDocument = function (docId) {
     const doc = state.organizationalData.documents.find(d => d.id === docId);
-    if (!doc || doc.type !== 'csv') return;
+    if (!doc) return;
 
-    // Show thinking indicator
-    const thinkingIndicator = addThinkingIndicator();
+    state.analystAttachedDocument = doc;
 
-    // Simulate processing time
-    setTimeout(() => {
-        // Remove thinking indicator
-        if (thinkingIndicator) {
-            thinkingIndicator.remove();
-        }
-
-        // Parse CSV and sum columns
-        const lines = doc.content.split('\n');
-        const headers = lines[0].split(',');
-        const rows = lines.slice(1, -1); // Exclude TOTAL row if exists
-
-        const sums = {};
-        headers.forEach((header, index) => {
-            if (index === 0) return; // Skip first column (labels)
-
-            let sum = 0;
-            rows.forEach(row => {
-                const cells = row.split(',');
-                const value = parseFloat(cells[index]);
-                if (!isNaN(value)) {
-                    sum += value;
-                }
-            });
-
-            sums[header] = sum;
-        });
-
-        // Format results
-        let analysis = `Analysis of ${doc.name}:\n\n`;
-        Object.entries(sums).forEach(([key, value]) => {
-            analysis += `**${key}:** ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}\n`;
-        });
-
-        addMessageToChat('assistant', analysis);
-    }, 800);
-}
-
-// Agent builder listeners
-function setupAgentBuilderListeners() {
-    document.getElementById('tryAgentBtn')?.addEventListener('click', () => {
-        const website = document.getElementById('agentWebsite').value;
-        if (!website) {
-            alert('Please enter a website URL for the agent to search.');
-            return;
-        }
-
-        // Show test interface
-        document.getElementById('pageContent').innerHTML = renderAgentTestPage(website);
-        setupAgentTestListeners(website);
-    });
-
-    document.getElementById('createAgentBtn')?.addEventListener('click', () => {
-        const website = document.getElementById('agentWebsite').value;
-        if (!website) {
-            alert('Please enter a website URL for the agent to search.');
-            return;
-        }
-
-        alert('Agent created successfully!');
-        navigateToPage('newChat');
-    });
-}
-
-function renderAgentTestPage(website) {
-    return `
-        <div class="chat-container">
-            <div class="agent-page">
-                <div class="agent-icon">
-                    <svg width="40" height="40" viewBox="0 0 40 40" fill="white">
-                        <path d="M20 10v10h10v10H20V20H10V10h10z"/>
-                    </svg>
-                </div>
-                <h1>New Agent</h1>
-                <p class="agent-description">Searches ${website} to find current information and summarize results for users.</p>
-                
-                <div class="prompt-cards">
-                    <div class="prompt-card" data-search="recent news">
-                        <div class="prompt-card-title">Find Recent News</div>
-                        <div class="prompt-card-message">Search the web for the latest headlines on a topic.</div>
-                    </div>
-                    <div class="prompt-card" data-search="contact details">
-                        <div class="prompt-card-title">Get contact details</div>
-                        <div class="prompt-card-message">Get contact details</div>
-                    </div>
-                </div>
+    // Update display
+    const display = document.getElementById('analystAttachmentDisplay');
+    if (display) {
+        display.style.display = 'block';
+        display.innerHTML = `
+            <div class=\"attachment-chip\">
+                <span>\ud83d\udcc4 ${doc.name}</span>
+                <button onclick=\"removeAnalystAttachment()\" class=\"remove-attachment\">&times;</button>
             </div>
-            <div class="chat-messages" id="chatMessages"></div>
+        `;
+    }
+
+    // Focus input after attachment
+    const analystInput = document.getElementById('analystInput');
+    if (analystInput) {
+        analystInput.focus();
+    }
+};
+
+window.removeAnalystAttachment = function () {
+    state.analystAttachedDocument = null;
+    const display = document.getElementById('analystAttachmentDisplay');
+    if (display) {
+        display.style.display = 'none';
+        display.innerHTML = '';
+    }
+};
+
+async function handleAnalystPrompt(prompt) {
+    if (!state.analystAttachedDocument) {
+        // No document attached - prompt to attach one
+        const messagesDiv = document.getElementById('analystMessages');
+        if (!messagesDiv) return;
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message-assistant';
+        messageDiv.innerHTML = `
+            <div class=\"message-content\">
+                <p>Please attach a CSV document first by clicking the + button.</p>
+            </div>
+        `;
+        messagesDiv.appendChild(messageDiv);
+        return;
+    }
+
+    // Activate chat mode
+    if (!state.analystChatActive) {
+        const welcomeScreen = document.getElementById('analystWelcome');
+        const chatScreen = document.getElementById('analystChat');
+        if (welcomeScreen) welcomeScreen.style.display = 'none';
+        if (chatScreen) chatScreen.style.display = 'flex';
+        state.analystChatActive = true;
+    }
+
+    // Add user message to chat
+    const messagesDiv = document.getElementById('analystMessages');
+    const userMessageDiv = document.createElement('div');
+    userMessageDiv.className = 'message message-user';
+    userMessageDiv.innerHTML = `
+        <div class=\"message-content\">
+            ${prompt}
         </div>
     `;
+    messagesDiv.appendChild(userMessageDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    // Process the prompt
+    await handleAnalystQuery(prompt);
 }
 
-function setupAgentTestListeners(website) {
-    document.getElementById('inputArea').style.display = 'block';
+async function handleAnalystQuery(prompt) {
+    const messagesDiv = document.getElementById('analystMessages');
+    const doc = state.analystAttachedDocument;
 
-    // Override submit handler for this agent
-    const originalHandler = handleSubmit;
-    window.handleSubmit = async function () {
-        const input = document.getElementById('userInput');
-        const message = input.value.trim();
+    if (!doc || doc.id !== 'doc2') {
+        // Only doc2 has pre-prepared analysis
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message-assistant';
+        messageDiv.innerHTML = `
+            <div class=\"message-content\">
+                <p>Analysis is only available for the Microsoft Financial Projection document.</p>
+            </div>
+        `;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        return;
+    }
 
-        if (!message) return;
+    const promptLower = prompt.toLowerCase();
 
-        input.value = '';
-        addMessageToChat('user', message);
+    // Detect intent
+    const hasAnalyzeIntent = /analyze|summarize|totals|analysis|insights/i.test(prompt);
+    const hasVisualizeIntent = /visualize|chart|graph|plot/i.test(prompt);
 
-        // Show thinking indicator
-        const thinkingIndicator = addThinkingIndicator();
+    if (!hasAnalyzeIntent && !hasVisualizeIntent) {
+        // Ask what they want
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message-assistant';
+        messageDiv.innerHTML = `
+            <div class=\"message-content\">
+                <p>I can help you with this data. Would you like me to:</p>
+                <ul>
+                    <li>Analyze the data and provide insights with totals</li>
+                    <li>Create a visualization (chart) of the data</li>
+                    <li>Both analysis and visualization</li>
+                </ul>
+                <p>Please let me know what you'd prefer.</p>
+            </div>
+        `;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        return;
+    }
 
-        // Simulate search time
-        await new Promise(resolve => setTimeout(resolve, 500));
+    // Show thinking indicator
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'message message-assistant';
+    thinkingDiv.id = 'analystThinking';
+    thinkingDiv.innerHTML = `
+        <div class=\"message-content\">
+            <div class=\"thinking-indicator\">
+                <div class=\"thinking-dots\">
+                    <span>Analyzing data</span>
+                    <span class=\"dots\"><span>.</span><span>.</span><span>.</span></span>
+                </div>
+            </div>
+        </div>
+    `;
+    messagesDiv.appendChild(thinkingDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-        // Remove thinking indicator
-        if (thinkingIndicator) {
-            thinkingIndicator.remove();
+    // Simulate processing time
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Remove thinking indicator
+    const thinkingIndicator = document.getElementById('analystThinking');
+    if (thinkingIndicator) thinkingIndicator.remove();
+
+    // Generate response
+    let response = '';
+
+    if (hasAnalyzeIntent) {
+        response += `<h3>Financial Analysis: Microsoft Vending Machine Contract</h3>\n\n`;
+        response += `<p><strong>12-Month Financial Projection Summary</strong></p>\n\n`;
+        response += `<table style=\"border-collapse: collapse; width: 100%; margin: 16px 0;\">\n`;
+        response += `<tr style=\"border-bottom: 2px solid #333;\">\n`;
+        response += `<th style=\"text-align: left; padding: 8px; font-weight: bold;\">Category</th>\n`;
+        response += `<th style=\"text-align: right; padding: 8px; font-weight: bold;\">Total</th>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px;\">Total Revenue</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px; font-weight: bold; color: #217346;\">$101,400</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px; padding-left: 24px;\">Installation Revenue</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px;\">$15,000</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px; padding-left: 24px;\">Monthly Contract Revenue</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px;\">$86,400</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px;\">Total Costs</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px; font-weight: bold; color: #C00000;\">$63,000</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px; padding-left: 24px;\">Coffee Supply</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px;\">$36,000</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px; padding-left: 24px;\">Machine Cost</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px;\">$18,000</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px; padding-left: 24px;\">Installation Cost</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px;\">$3,000</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-bottom: 1px solid #e0e0e0;\">\n`;
+        response += `<td style=\"padding: 8px; padding-left: 24px;\">Delivery Cost</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px;\">$6,000</td>\n`;
+        response += `</tr>\n`;
+        response += `<tr style=\"border-top: 2px solid #333;\">\n`;
+        response += `<td style=\"padding: 8px; font-weight: bold;\">Net Profit</td>\n`;
+        response += `<td style=\"text-align: right; padding: 8px; font-weight: bold; color: #217346; font-size: 16px;\">$38,400</td>\n`;
+        response += `</tr>\n`;
+        response += `</table>\n\n`;
+        response += `<p><strong>Key Insights:</strong></p>\n`;
+        response += `<ul>\n`;
+        response += `<li>Month 1 shows an initial loss of $2,300 due to upfront machine and installation costs</li>\n`;
+        response += `<li>Months 2-12 generate consistent monthly profit of $3,700</li>\n`;
+        response += `<li>The contract breaks even during Month 2 and remains profitable throughout the year</li>\n`;
+        response += `<li>Monthly recurring costs ($3,500) are primarily driven by coffee supply ($3,000) and delivery ($500)</li>\n`;
+        response += `<li>Annual profit margin: 37.9% ($38,400 profit / $101,400 revenue)</li>\n`;
+        response += `</ul>\n`;
+    }
+
+    if (hasVisualizeIntent) {
+        if (hasAnalyzeIntent) {
+            response += `<br><h3>Financial Visualization</h3>\n\n`;
         }
+        response += `<p>Below is a chart showing the Total Costs and Net Profit trends over the 12-month period:</p>\n\n`;
+        response += `<img src=\"images/microsoft-financial-chart.svg\" alt=\"Financial Chart\" style=\"max-width: 100%; height: auto; border: 1px solid #e0e0e0; border-radius: 8px; margin: 16px 0;\" />\n`;
+    }
 
-        // Extract keywords and create Bing search URL
-        const keywords = extractKeywords(message);
-        const searchQuery = keywords.join('+');
-        const bingUrl = `https://www.bing.com/search?q=site%3A${website}+${searchQuery}`;
+    // Add response to chat
+    const responseDiv = document.createElement('div');
+    responseDiv.className = 'message message-assistant';
+    responseDiv.innerHTML = `
+        <div class=\"message-content\">
+            ${response}
+        </div>
+    `;
+    messagesDiv.appendChild(responseDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-        const response = `I searched for '${keywords.join(' ')}' on ${website} - here are the results: [View Results](${bingUrl})`;
-        addMessageToChat('assistant', response);
-    };
-
-    document.querySelectorAll('.prompt-card[data-search]').forEach(card => {
-        card.addEventListener('click', (e) => {
-            const searchTerm = e.currentTarget.getAttribute('data-search');
-            document.getElementById('userInput').value = searchTerm;
-            handleSubmit();
-        });
-    });
+    // Focus back to input
+    const analystInputBottom = document.getElementById('analystInputBottom');
+    if (analystInputBottom && !analystInputBottom.disabled) {
+        analystInputBottom.focus();
+    }
 }
 
 // Voice input
