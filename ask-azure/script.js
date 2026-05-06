@@ -1211,7 +1211,7 @@ IMPORTANT: Follow these guidelines when responding:
         const categories = [...new Set(rankedMatches.map(m => m.category))];
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
-        
+
         // Extract videos from documents that have video_id
         const videos = documents
             .filter(doc => doc.video_id)
@@ -2031,7 +2031,7 @@ IMPORTANT: Follow these guidelines when responding:
 
     showVideoModal(videoId, videoTitle) {
         console.log('showVideoModal called with:', { videoId, videoTitle });
-        
+
         // Handle cases where videoId might be a full URL
         let actualVideoId = videoId;
         if (videoId.includes('synthesia.io/')) {
@@ -2041,45 +2041,45 @@ IMPORTANT: Follow these guidelines when responding:
                 actualVideoId = match[1];
             }
         }
-        
+
         const videoUrl = `https://share.synthesia.io/embeds/videos/${actualVideoId}`;
         console.log('Video URL:', videoUrl);
-        
+
         // Set the video title
         this.elements.videoModalTitle.textContent = videoTitle || 'Video';
-        
+
         // Set the iframe source
         this.elements.videoIframe.src = videoUrl;
         this.elements.videoIframe.title = videoTitle || 'Video';
-        
+
         // Show the modal
         this.elements.videoModal.style.display = 'flex';
         this.currentModal = this.elements.videoModal;
-        
+
         // Store the previously focused element
         this.lastFocusedElement = document.activeElement;
-        
+
         // Announce modal to screen readers
         this.elements.videoModal.setAttribute('aria-hidden', 'false');
-        
+
         // Set focus to close button
         setTimeout(() => {
             this.elements.videoModalClose.focus();
             this.setupModalFocusTrap(this.elements.videoModal);
         }, 100);
-        
+
         console.log('Video modal displayed');
     }
 
     hideVideoModal() {
         // Clear the iframe source to stop video playback
         this.elements.videoIframe.src = '';
-        
+
         this.elements.videoModal.style.display = 'none';
         this.elements.videoModal.setAttribute('aria-hidden', 'true');
         this.removeModalFocusTrap();
         this.currentModal = null;
-        
+
         // Restore focus to the element that opened the modal
         if (this.lastFocusedElement) {
             this.lastFocusedElement.focus();
