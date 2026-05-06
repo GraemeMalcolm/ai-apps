@@ -112,6 +112,7 @@
             {
                 "id": 8,
                 "title": "Introduction to Generative AI",
+                "video_id": "904e700e-4549-42ac-8056-7e4dfd505966",
                 "keywords": [
                     "generative ai",
                     "genai",
@@ -124,6 +125,7 @@
             {
                 "id": 9,
                 "title": "Large Language Models",
+                "video_id": "298e27ef-f5b0-4ed7-ade5-623d8465105a",
                 "keywords": [
                     "large language model",
                     "large language models",
@@ -136,6 +138,7 @@
             {
                 "id": 10,
                 "title": "AI Agents",
+                "video_id": "17ea5149-8d84-4d51-8c46-e1a86d21815f",
                 "keywords": [
                     "agents",
                     "agent",

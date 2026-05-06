@@ -68,7 +68,12 @@ class AskAnton {
             aboutModalOk: document.getElementById('about-modal-ok'),
             aiModeModal: document.getElementById('ai-mode-modal'),
             modalClose: document.getElementById('modal-close'),
-            modalOk: document.getElementById('modal-ok')
+            modalOk: document.getElementById('modal-ok'),
+            videoModal: document.getElementById('video-modal'),
+            videoModalClose: document.getElementById('video-modal-close'),
+            videoModalOk: document.getElementById('video-modal-ok'),
+            videoModalTitle: document.getElementById('video-modal-title'),
+            videoIframe: document.getElementById('video-iframe')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -717,6 +722,22 @@ IMPORTANT: Follow these guidelines when responding:
             }
         });
 
+        // Video modal handlers
+        this.elements.videoModalClose.addEventListener('click', () => {
+            this.hideVideoModal();
+        });
+
+        this.elements.videoModalOk.addEventListener('click', () => {
+            this.hideVideoModal();
+        });
+
+        // Close video modal on overlay click
+        this.elements.videoModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.videoModal || e.target.classList.contains('modal-overlay')) {
+                this.hideVideoModal();
+            }
+        });
+
         // Modal handlers
         this.elements.modalClose.addEventListener('click', () => {
             this.hideAiModeModal();
@@ -740,6 +761,8 @@ IMPORTANT: Follow these guidelines when responding:
                     this.hideAiModeModal();
                 } else if (this.elements.aboutModal.style.display === 'flex') {
                     this.hideAboutModal();
+                } else if (this.elements.videoModal.style.display === 'flex') {
+                    this.hideVideoModal();
                 }
             }
         });
@@ -996,7 +1019,7 @@ IMPORTANT: Follow these guidelines when responding:
         // If no matches, return null context
         if (matches.length === 0) {
             this.elements.searchStatus.textContent = '🔍 No specific context found';
-            return { context: null, categories: [], links: [], documents: [] };
+            return { context: null, categories: [], links: [], documents: [], videos: [] };
         }
 
         // Rank documents by match quality (documents with longer/better keyword matches come first)
@@ -1015,6 +1038,10 @@ IMPORTANT: Follow these guidelines when responding:
         const categories = [...new Set(rankedMatches.map(m => m.category))];
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
+        const videos = documents.filter(doc => doc.video_id).map(doc => ({
+            video_id: doc.video_id,
+            title: doc.title
+        }));
 
         this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
 
@@ -1022,7 +1049,8 @@ IMPORTANT: Follow these guidelines when responding:
             context: contextParts.join('\n\n'),
             categories: categories,
             links: links,
-            documents: documents
+            documents: documents,
+            videos: videos
         };
     }
 
@@ -1316,11 +1344,20 @@ IMPORTANT: Follow these guidelines when responding:
         return messageDiv;
     }
 
-    renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], placeholders = {}) {
+    renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], videos = [], placeholders = {}) {
         let displayMessage = assistantMessage;
 
         if (links && links.length > 0 && categories && categories.length > 0) {
             displayMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
+        }
+
+        // Add video links if available
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                displayMessage += '\n\nWatch this video for more details: [[VIDEO_LINK_0]]';
+            } else {
+                displayMessage += '\n\nThese videos might provide more information:\n[[VIDEO_LINKS]]';
+            }
         }
 
         let formattedMessage = this.formatResponse(displayMessage);
@@ -1333,11 +1370,38 @@ IMPORTANT: Follow these guidelines when responding:
             formattedMessage = formattedMessage.replace(/\[\[LEARN_MORE_LINKS\]\]/g, linkHtml);
         }
 
+        // Replace video links
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                const video = videos[0];
+                const videoLinkHtml = `<a href="#" class="video-link" data-video-id="${this.escapeHtml(video.video_id)}" data-video-title="${this.escapeHtml(video.title)}">${this.escapeHtml(video.title)}</a>`;
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
+            } else {
+                const videoLinksHtml = videos.map(video => {
+                    return `• <a href="#" class="video-link" data-video-id="${this.escapeHtml(video.video_id)}" data-video-title="${this.escapeHtml(video.title)}">${this.escapeHtml(video.title)}</a>`;
+                }).join('\n');
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
+            }
+        }
+
         Object.entries(placeholders).forEach(([placeholder, replacement]) => {
             formattedMessage = formattedMessage.split(placeholder).join(replacement);
         });
 
         messageTextDiv.innerHTML = formattedMessage;
+
+        // Add click handlers for video links
+        if (videos && videos.length > 0) {
+            const videoLinks = messageTextDiv.querySelectorAll('.video-link');
+            videoLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const videoId = link.getAttribute('data-video-id');
+                    const videoTitle = link.getAttribute('data-video-title');
+                    this.showVideoModal(videoId, videoTitle);
+                });
+            });
+        }
     }
 
     hasPreviousUserPrompt() {
@@ -1391,6 +1455,7 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage,
                 searchResult.categories,
                 searchResult.links,
+                searchResult.videos || [],
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
@@ -1491,6 +1556,7 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage,
                 [],
                 [],
+                [],
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
@@ -1509,7 +1575,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
-        const { context, categories, links } = searchResult;
+        const { context, categories, links, videos } = searchResult;
 
         this.isGenerating = true;
         this.stopRequested = false;
@@ -1538,9 +1604,11 @@ IMPORTANT: Follow these guidelines when responding:
                 assistantMessage = await this.generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput);
             }
 
-            // Add learn more links
+            // Add learn more links and videos
             if (links && links.length > 0 && categories && categories.length > 0) {
-                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links);
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links, videos, {});
+            } else if (videos && videos.length > 0) {
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, [], [], videos, {});
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
@@ -2363,6 +2431,44 @@ IMPORTANT: Follow these guidelines when responding:
         this.removeModalFocusTrap();
         this.currentModal = null;
         // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showVideoModal(videoId, videoTitle) {
+        // Set the video iframe src and title
+        const videoUrl = `https://share.synthesia.io/embeds/videos/${videoId}`;
+        this.elements.videoIframe.src = videoUrl;
+        this.elements.videoIframe.title = videoTitle;
+        this.elements.videoModalTitle.textContent = videoTitle;
+
+        // Show the modal
+        this.elements.videoModal.style.display = 'flex';
+        this.currentModal = this.elements.videoModal;
+        this.lastFocusedElement = document.activeElement;
+        this.elements.videoModal.setAttribute('aria-hidden', 'false');
+
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.videoModalClose.focus();
+            this.setupModalFocusTrap(this.elements.videoModal);
+        }, 100);
+    }
+
+    hideVideoModal() {
+        this.elements.videoModal.style.display = 'none';
+        this.elements.videoModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+
+        // Clear the iframe src to stop video playback
+        this.elements.videoIframe.src = '';
+        this.elements.videoIframe.title = '';
+
+        // Restore focus
         if (this.lastFocusedElement) {
             this.lastFocusedElement.focus();
         } else {
