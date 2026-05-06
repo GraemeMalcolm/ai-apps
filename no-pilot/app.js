@@ -1,6 +1,6 @@
-// No-Pilot Application v96
+// No-Pilot Application v97
 // A simplified Microsoft 365 Copilot emulation for educational purposes
-// v96: Fixed voice input path for GitHub Pages, improved Vosk loading UX, fixed spoken responses
+// v97: Fixed Vosk failover to automatically start listening and display both status messages
 
 // Import models
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
@@ -64,7 +64,7 @@ const state = {
 // Initialize the application
 async function init() {
     console.log('Initializing No-Pilot...');
-    console.log('App Version: 2025-05-05-v96 - Fixed voice input path for GitHub Pages, improved Vosk loading UX, fixed spoken responses');
+    console.log('App Version: 2025-05-05-v97 - Fixed Vosk failover to automatically start listening and display both status messages');
 
     // Calculate speech model path relative to the base path
     const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
@@ -3655,6 +3655,9 @@ async function handleMicClick(inputId) {
             console.log('Web Speech API not available, loading Vosk fallback...');
             state.usingWebSpeech = false;
 
+            // Store inputId so loadVoskModel can show messages in the right place
+            state.currentVoiceInputId = inputId;
+
             // Load Vosk model if not already loaded
             if (!state.voskLoaded) {
                 const loaded = await loadVoskModel();
@@ -3844,7 +3847,7 @@ async function loadVoskModel() {
         console.log('Vosk speech model loaded successfully');
 
         // Notify user in chat
-        addVoiceErrorMessage(state.currentVoiceInputId, 'Offline speech model ready! Please click the microphone to try speaking again.');
+        addVoiceErrorMessage(state.currentVoiceInputId, 'Offline speech model ready! Listening...');
         disableInput(state.currentVoiceInputId, false); // Re-enable input
 
         return true;
