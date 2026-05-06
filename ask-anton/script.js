@@ -1345,11 +1345,7 @@ IMPORTANT: Follow these guidelines when responding:
     renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], videos = [], placeholders = {}) {
         let displayMessage = assistantMessage;
 
-        if (links && links.length > 0 && categories && categories.length > 0) {
-            displayMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
-        }
-
-        // Add video links if available
+        // Add video links if available (before Learn more links)
         if (videos && videos.length > 0) {
             if (videos.length === 1) {
                 displayMessage += '\n\nWatch this video for more details: [[VIDEO_LINK_0]]';
@@ -1358,7 +1354,28 @@ IMPORTANT: Follow these guidelines when responding:
             }
         }
 
+        // Add learn more links after videos
+        if (links && links.length > 0 && categories && categories.length > 0) {
+            displayMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
+        }
+
         let formattedMessage = this.formatResponse(displayMessage);
+
+        // Replace video links - open in new tab (COEP blocks Synthesia iframe embedding)
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                const video = videos[0];
+                const videoUrl = `https://share.synthesia.io/embeds/videos/${this.escapeHtml(video.video_id)}`;
+                const videoLinkHtml = `<a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
+            } else {
+                const videoLinksHtml = videos.map(video => {
+                    const videoUrl = `https://share.synthesia.io/embeds/videos/${this.escapeHtml(video.video_id)}`;
+                    return `• <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
+                }).join('<br>');
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
+            }
+        }
 
         if (links && links.length > 0 && categories && categories.length > 0) {
             const linkHtml = links.map((link, index) => {
@@ -1368,38 +1385,11 @@ IMPORTANT: Follow these guidelines when responding:
             formattedMessage = formattedMessage.replace(/\[\[LEARN_MORE_LINKS\]\]/g, linkHtml);
         }
 
-        // Replace video links
-        if (videos && videos.length > 0) {
-            if (videos.length === 1) {
-                const video = videos[0];
-                const videoLinkHtml = `<a href="#" class="video-link" data-video-id="${this.escapeHtml(video.video_id)}" data-video-title="${this.escapeHtml(video.title)}">${this.escapeHtml(video.title)}</a>`;
-                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
-            } else {
-                const videoLinksHtml = videos.map(video => {
-                    return `• <a href="#" class="video-link" data-video-id="${this.escapeHtml(video.video_id)}" data-video-title="${this.escapeHtml(video.title)}">${this.escapeHtml(video.title)}</a>`;
-                }).join('\n');
-                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
-            }
-        }
-
         Object.entries(placeholders).forEach(([placeholder, replacement]) => {
             formattedMessage = formattedMessage.split(placeholder).join(replacement);
         });
 
         messageTextDiv.innerHTML = formattedMessage;
-
-        // Add click handlers for video links
-        if (videos && videos.length > 0) {
-            const videoLinks = messageTextDiv.querySelectorAll('.video-link');
-            videoLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const videoId = link.getAttribute('data-video-id');
-                    const videoTitle = link.getAttribute('data-video-title');
-                    this.showVideoModal(videoId, videoTitle);
-                });
-            });
-        }
     }
 
     hasPreviousUserPrompt() {
