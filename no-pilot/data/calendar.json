@@ -1,0 +1,153 @@
+[
+    {
+        "id": "event1",
+        "title": "Initial Kickoff - Microsoft Opportunity",
+        "attendees": [
+            "You",
+            "Anton",
+            "Matt"
+        ],
+        "date": -1,
+        "startTime": "10:00 AM",
+        "endTime": "11:00 AM",
+        "location": "Conference Room B",
+        "description": "Initial discussion about the Microsoft vending machine opportunity. Review requirements and discuss feasibility.",
+        "keywords": [
+            "microsoft",
+            "kickoff",
+            "meeting",
+            "anton",
+            "matt"
+        ]
+    },
+    {
+        "id": "event2",
+        "title": "Microsoft Opportunity Follow-up",
+        "attendees": [
+            "You",
+            "Anton",
+            "Matt"
+        ],
+        "date": 1,
+        "startTime": "2:00 PM",
+        "endTime": "3:00 PM",
+        "location": "Conference Room A",
+        "description": "Follow-up meeting to finalize proposal for Microsoft. Review research findings and pricing structure.",
+        "keywords": [
+            "microsoft",
+            "follow-up",
+            "meeting",
+            "anton",
+            "matt",
+            "proposal"
+        ]
+    },
+    {
+        "id": "event3",
+        "title": "Weekly Team Meeting",
+        "attendees": [
+            "You",
+            "Anton",
+            "Matt",
+            "Sarah",
+            "David"
+        ],
+        "date": 2,
+        "startTime": "9:00 AM",
+        "endTime": "10:00 AM",
+        "location": "Main Conference Room",
+        "description": "Weekly team sync to discuss ongoing projects and priorities.",
+        "keywords": [
+            "team",
+            "meeting",
+            "weekly"
+        ]
+    },
+    {
+        "id": "event4",
+        "title": "Lunch with Matt",
+        "attendees": [
+            "You",
+            "Matt"
+        ],
+        "date": 5,
+        "startTime": "12:00 PM",
+        "endTime": "1:00 PM",
+        "location": "Downtown Cafe",
+        "description": "Casual lunch meeting.",
+        "keywords": [
+            "lunch",
+            "matt"
+        ]
+    },
+    {
+        "id": "event5",
+        "title": "Dentist Appointment",
+        "attendees": [
+            "You"
+        ],
+        "date": -3,
+        "startTime": "3:00 PM",
+        "endTime": "4:00 PM",
+        "location": "Smile Dental Clinic",
+        "description": "Regular dental checkup.",
+        "keywords": [
+            "dentist",
+            "appointment"
+        ]
+    },
+    {
+        "id": "event6",
+        "title": "Q2 Budget Review",
+        "attendees": [
+            "You",
+            "Sarah"
+        ],
+        "date": 3,
+        "startTime": "10:00 AM",
+        "endTime": "11:30 AM",
+        "location": "Finance Office",
+        "description": "Review Q2 budget allocations and expenditures.",
+        "keywords": [
+            "budget",
+            "review",
+            "finance"
+        ]
+    },
+    {
+        "id": "event7",
+        "title": "Client Site Visit - TechCorp",
+        "attendees": [
+            "Anton",
+            "Matt"
+        ],
+        "date": -2,
+        "startTime": "1:00 PM",
+        "endTime": "3:00 PM",
+        "location": "TechCorp HQ",
+        "description": "Site visit for machine maintenance at TechCorp location.",
+        "keywords": [
+            "site visit",
+            "techcorp",
+            "client"
+        ]
+    },
+    {
+        "id": "event8",
+        "title": "Sales Team Standup",
+        "attendees": [
+            "Anton",
+            "David"
+        ],
+        "date": 1,
+        "startTime": "8:30 AM",
+        "endTime": "9:00 AM",
+        "location": "Sales Office",
+        "description": "Daily sales team standup.",
+        "keywords": [
+            "sales",
+            "standup",
+            "team"
+        ]
+    }
+]
