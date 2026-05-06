@@ -1,5 +1,6 @@
-// No-Pilot Application
+// No-Pilot Application v95
 // A simplified Microsoft 365 Copilot emulation for educational purposes
+// v95: Custom SVG profile images for Anton and Matt contacts
 
 // Import models
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
@@ -22,6 +23,25 @@ const state = {
     speechRecognition: null,
     speechSynthesis: window.speechSynthesis,
     isListening: false,
+    // Vosk speech recognition (lazy-loaded fallback)
+    voskModel: null,
+    voskRecognizer: null,
+    voskLoaded: false,
+    voskLoadingFailed: false,
+    isRecording: false,
+    mediaStream: null,
+    audioContext: null,
+    processorNode: null,
+    sourceNode: null,
+    speechModelUrl: '../speech-model/speech-model.tar.gz',
+    silenceTimer: null,
+    noSpeechTimer: null,
+    lastSpeechTime: null,
+    hasSpeech: false,
+    silenceTimeout: 2000,
+    noSpeechTimeout: 5000,
+    usingWebSpeech: true,
+    currentVoiceInputId: null,
     chatHistory: [],
     attachedDocuments: [],
     prohibitedWords: [], // Content moderation
@@ -44,7 +64,7 @@ const state = {
 // Initialize the application
 async function init() {
     console.log('Initializing No-Pilot...');
-    console.log('App Version: 2025-05-05-v88 - Removed New Agent page and associated functionality');
+    console.log('App Version: 2025-05-05-v89 - Added speech recognition with Web Speech API and Vosk fallback');
 
     // Load organizational data
     await loadOrganizationalData();
@@ -895,6 +915,9 @@ async function handleSubmit() {
         // Add moderation response
         addMessageToChat('assistant', "I'm sorry. Content safety rules prevent me from helping you with that.");
 
+        // Voice output for content violation
+        speakResponse("I'm sorry, but I can't help with that.");
+
         // Focus back on input
         input.focus();
         return;
@@ -952,6 +975,11 @@ async function handleAttachedDocumentQuery(message) {
     const contentEl = messageDiv.querySelector('.message-content');
     contentEl.innerHTML = formatMessageContent(response);
     scrollToBottom();
+
+    // Voice output for successful response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
 
     // Clear attachments after response
     state.attachedDocuments = [];
@@ -1046,6 +1074,7 @@ async function handleContactQuery(message, intent) {
         summary += `<tr><td>Department: ${contact.department}</td></tr>`;
         summary += `<tr><td>Email: ${contact.email}</td></tr>`;
         summary += `<tr><td>Phone: ${contact.phone}</td></tr>`;
+        summary += `<tr><td><a href="#contact-${contact.id}" class="data-link">View Contact</a></td></tr>`;
         summary += `<tr class="spacer-row"><td>&nbsp;</td></tr>`;
     });
     summary += `</table>`;
@@ -1057,6 +1086,23 @@ async function handleContactQuery(message, intent) {
     const contentEl = messageDiv.querySelector('.message-content');
     contentEl.innerHTML = summary;
     scrollToBottom();
+
+    // Add click listeners for contact links
+    setTimeout(() => {
+        document.querySelectorAll('a[href^="#contact-"]').forEach(link => {
+            link.classList.add('data-link');
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const contactId = e.target.getAttribute('href').replace('#contact-', '');
+                showContactModal(contactId);
+            });
+        });
+    }, 100);
+
+    // Voice output for successful response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
 }
 
 // Handle email queries
@@ -1125,6 +1171,11 @@ async function handleEmailQuery(message, intent) {
             });
         });
     }, 100);
+
+    // Voice output for successful response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
 }
 
 // Handle calendar queries
@@ -1171,6 +1222,11 @@ async function handleCalendarQuery(message) {
             });
         });
     }, 100);
+
+    // Voice output for successful response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
 }
 
 // Handle document queries
@@ -1242,6 +1298,11 @@ async function handleDocumentQuery(message) {
             });
         });
     }, 100);
+
+    // Voice output for successful response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
 }
 
 // Handle general queries with AI model
@@ -1271,6 +1332,11 @@ async function handleGeneralQuery(message) {
             }
 
             addMessageToChat('assistant', 'No AI model is currently available. Please try switching to Wikipedia mode from the menu or refresh the page to retry loading a model.');
+
+            // Voice output for error
+            if (state.currentVoiceInputId) {
+                speakResponse("I'm sorry. Something went wrong.");
+            }
         }
     } catch (error) {
         console.error('Error handling query:', error);
@@ -1278,6 +1344,11 @@ async function handleGeneralQuery(message) {
             thinkingIndicator.remove();
         }
         addMessageToChat('assistant', 'I encountered an error processing your request. Please try again.');
+
+        // Voice output for error
+        if (state.currentVoiceInputId) {
+            speakResponse("I'm sorry. Something went wrong.");
+        }
     } finally {
         // Wait for typewriter animation to complete before resetting UI
         if (state.typingState && state.typingState.isTyping) {
@@ -1714,6 +1785,11 @@ function removeIncompleteSentences(text) {
 
 // Typewriter animation functions
 function startTypingAnimation(contentEl, initialText) {
+    // Voice output at start of response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
+
     state.typingState = {
         contentEl: contentEl,
         fullText: initialText,
@@ -2278,6 +2354,7 @@ function performSearch(query) {
     const keywordLower = keywords.toLowerCase();
     const hasKeywords = keywordLower.length > 0;
     const results = {
+        contacts: [],
         emails: [],
         documents: [],
         events: []
@@ -2287,6 +2364,35 @@ function performSearch(query) {
     if (!hasKeywords && !personFilter) {
         searchResults.innerHTML = '<p style="text-align: center; color: #666;">Enter a search term or select a filter</p>';
         return;
+    }
+
+    // Search contacts - especially when personFilter is applied
+    if (!sourceFilter) {
+        state.organizationalData.contacts.forEach(contact => {
+            let matches = false;
+
+            // Filter by person if specified
+            if (personFilter) {
+                if (contact.name && contact.name.toLowerCase().includes(personFilter)) {
+                    matches = true;
+                }
+            }
+
+            // Also search by keywords
+            if (!matches && hasKeywords) {
+                const nameMatch = contact.name && contact.name.toLowerCase().includes(keywordLower);
+                const roleMatch = contact.role && contact.role.toLowerCase().includes(keywordLower);
+                const deptMatch = contact.department && contact.department.toLowerCase().includes(keywordLower);
+                const emailMatch = contact.email && contact.email.toLowerCase().includes(keywordLower);
+                if (nameMatch || roleMatch || deptMatch || emailMatch) {
+                    matches = true;
+                }
+            }
+
+            if (matches) {
+                results.contacts.push(contact);
+            }
+        });
     }
 
     // Search emails (if not filtered out by source)
@@ -2363,6 +2469,19 @@ function performSearch(query) {
     // Render results
     let html = '';
 
+    if (results.contacts.length > 0) {
+        html += '<div class="result-section"><h3>People</h3>';
+        results.contacts.forEach(contact => {
+            html += `
+                <div class="result-item" onclick="showContactModal('${contact.id}')">
+                    <div class="result-item-title">👤 ${contact.name}</div>
+                    <div class="result-item-meta">${contact.role} - ${contact.department}</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+
     if (results.emails.length > 0) {
         html += '<div class="result-section"><h3>Emails</h3>';
         results.emails.forEach(email => {
@@ -2417,6 +2536,78 @@ window.showContactModal = function (contactId) {
 
     const contactSummary = `${contact.name} is a ${contact.role} in the ${contact.department} department.`;
 
+    // Generate avatar based on contact name
+    let avatarHTML;
+    if (contact.name === 'Anton') {
+        // Anton - person with glasses and dark hair
+        avatarHTML = `
+            <svg width="120" height="120" viewBox="0 0 120 120" style="border-radius: 50%;">
+                <defs>
+                    <linearGradient id="antonBg" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+                <!-- Background -->
+                <circle cx="60" cy="60" r="60" fill="url(#antonBg)"/>
+                <!-- Head -->
+                <circle cx="60" cy="55" r="25" fill="#FFD4A3"/>
+                <!-- Hair -->
+                <path d="M 35 45 Q 35 30 45 25 Q 55 20 65 20 Q 75 20 85 25 Q 95 30 85 45 Q 82 40 75 38 Q 68 36 60 36 Q 52 36 45 38 Q 38 40 35 45 Z" fill="#2C1810"/>
+                <!-- Eyes -->
+                <circle cx="52" cy="52" r="3" fill="#2C1810"/>
+                <circle cx="68" cy="52" r="3" fill="#2C1810"/>
+                <!-- Glasses -->
+                <ellipse cx="52" cy="52" rx="8" ry="7" fill="none" stroke="#333" stroke-width="2"/>
+                <ellipse cx="68" cy="52" rx="8" ry="7" fill="none" stroke="#333" stroke-width="2"/>
+                <line x1="60" y1="52" x2="60" y2="52" stroke="#333" stroke-width="2"/>
+                <!-- Nose -->
+                <path d="M 60 55 L 58 62 L 62 62 Z" fill="#E6A074"/>
+                <!-- Smile -->
+                <path d="M 52 65 Q 60 70 68 65" stroke="#8B4513" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <!-- Neck -->
+                <rect x="52" y="75" width="16" height="15" fill="#FFD4A3"/>
+                <!-- Shirt -->
+                <path d="M 40 90 L 52 80 L 68 80 L 80 90 L 80 120 L 40 120 Z" fill="#2C5AA0"/>
+            </svg>
+        `;
+    } else if (contact.name === 'Matt') {
+        // Matt - person with lighter features
+        avatarHTML = `
+            <svg width="120" height="120" viewBox="0 0 120 120" style="border-radius: 50%;">
+                <defs>
+                    <linearGradient id="mattBg" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+                <!-- Background -->
+                <circle cx="60" cy="60" r="60" fill="url(#mattBg)"/>
+                <!-- Head -->
+                <circle cx="60" cy="55" r="25" fill="#FFDDB0"/>
+                <!-- Hair -->
+                <path d="M 35 42 Q 35 28 45 23 Q 55 18 65 18 Q 75 18 85 23 Q 95 28 85 42 L 82 40 Q 78 35 70 33 Q 62 31 60 31 Q 58 31 50 33 Q 42 35 38 40 Z" fill="#8B6914"/>
+                <!-- Eyes -->
+                <circle cx="52" cy="52" r="3" fill="#2C5AA0"/>
+                <circle cx="68" cy="52" r="3" fill="#2C5AA0"/>
+                <!-- Eyebrows -->
+                <path d="M 46 47 Q 52 45 58 46" stroke="#6B5210" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <path d="M 62 46 Q 68 45 74 47" stroke="#6B5210" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <!-- Nose -->
+                <path d="M 60 55 L 58 62 L 62 62 Z" fill="#E6A074"/>
+                <!-- Smile -->
+                <path d="M 50 66 Q 60 72 70 66" stroke="#8B4513" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <!-- Neck -->
+                <rect x="52" y="75" width="16" height="15" fill="#FFDDB0"/>
+                <!-- Shirt -->
+                <path d="M 40 90 L 52 80 L 68 80 L 80 90 L 80 120 L 40 120 Z" fill="#E74C3C"/>
+            </svg>
+        `;
+    } else {
+        // Default avatar circle for other contacts
+        avatarHTML = `<div class="avatar-circle">${contact.name.charAt(0)}</div>`;
+    }
+
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <div class="app-modal contact-modal">
@@ -2455,7 +2646,7 @@ window.showContactModal = function (contactId) {
             <div id="summary-area-${contact.id}" class="summary-area" style="display: none;"></div>
             <div class="contact-card">
                 <div class="contact-avatar">
-                    <div class="avatar-circle">${contact.name.charAt(0)}</div>
+                    ${avatarHTML}
                 </div>
                 <h2 class="contact-name">${contact.name}</h2>
                 <div class="contact-title">${contact.role}</div>
@@ -2495,6 +2686,7 @@ function setupResearcherListeners() {
     const researcherInputBottom = document.getElementById('researcherInputBottom');
     const researcherSubmitTop = document.getElementById('researcherSubmitTop');
     const researcherSubmitBottom = document.getElementById('researcherSubmitBottom');
+    const researcherVoiceBtn = document.getElementById('researcherVoiceBtn');
 
     if (researcherInput) {
         researcherInput.addEventListener('keypress', (e) => {
@@ -2511,6 +2703,12 @@ function setupResearcherListeners() {
                 handleResearcherPrompt(researcherInput.value.trim());
                 researcherInput.value = '';
             }
+        });
+    }
+
+    if (researcherVoiceBtn) {
+        researcherVoiceBtn.addEventListener('click', () => {
+            handleMicClick('researcherInput');
         });
     }
 
@@ -2556,6 +2754,9 @@ async function handleResearcherPrompt(prompt) {
     const keywords = extractKeywords(prompt);
     const keywordsText = keywords.length > 0 ? keywords.join(', ') : 'that topic';
 
+    // Check if user used voice input
+    const usedVoiceInput = state.currentVoiceInputId === 'researcherInput';
+
     // Store the prompt for later
     state.researcherPrompt = prompt;
     state.researcherAwaitingSelection = true;
@@ -2576,6 +2777,11 @@ async function handleResearcherPrompt(prompt) {
     `;
     messagesDiv.appendChild(messageDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    // If voice input was used, speak prompt and start listening
+    if (usedVoiceInput) {
+        speakAndListen("What kind of report would you like?", 'researcherInput');
+    }
 }
 
 function handleResearcherSelection(input) {
@@ -2813,6 +3019,11 @@ window.selectResearcherReport = async function (reportType) {
             researcherInputBottom.focus();
         }
 
+        // Voice output for successful response
+        if (state.currentVoiceInputId) {
+            speakResponse("Here's what I found.");
+        }
+
     } catch (error) {
         console.error('Research error:', error);
         clearInterval(thinkingTimer);
@@ -2840,6 +3051,11 @@ window.selectResearcherReport = async function (reportType) {
         // Focus back to input after error display
         if (researcherInputBottom && !researcherInputBottom.disabled) {
             researcherInputBottom.focus();
+        }
+
+        // Voice output for error
+        if (state.currentVoiceInputId) {
+            speakResponse("I'm sorry. Something went wrong.");
         }
     }
 };
@@ -2918,6 +3134,7 @@ function setupAnalystListeners() {
     const analystSubmitTop = document.getElementById('analystSubmitTop');
     const analystSubmitBottom = document.getElementById('analystSubmitBottom');
     const analystAttachBtn = document.getElementById('analystAttachBtn');
+    const analystVoiceBtn = document.getElementById('analystVoiceBtn');
 
     // Top input listeners
     if (analystInput) {
@@ -2935,6 +3152,12 @@ function setupAnalystListeners() {
                 handleAnalystPrompt(analystInput.value.trim());
                 analystInput.value = '';
             }
+        });
+    }
+
+    if (analystVoiceBtn) {
+        analystVoiceBtn.addEventListener('click', () => {
+            handleMicClick('analystInput');
         });
     }
 
@@ -3266,45 +3489,490 @@ async function handleAnalystQuery(prompt) {
     if (analystInputBottom && !analystInputBottom.disabled) {
         analystInputBottom.focus();
     }
+
+    // Voice output for successful response
+    if (state.currentVoiceInputId) {
+        speakResponse("Here's what I found.");
+    }
 }
 
-// Voice input
-function toggleVoiceInput() {
-    if (!state.speechRecognition) {
-        // Initialize speech recognition
+// Voice input and output
+// ============================================================================
+// SPEECH OUTPUT - WEB SPEECH API
+// ============================================================================
+
+function speakResponse(message) {
+    if (!state.currentVoiceInputId) return; // Only speak if voice input was used
+
+    if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(message);
+        utterance.lang = 'en-US';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // Clear voice input flag after speaking
+    state.currentVoiceInputId = null;
+}
+
+function speakAndListen(message, inputId) {
+    // Speak a message and then start listening for voice input
+    if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(message);
+        utterance.lang = 'en-US';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+
+        // When speech finishes, start listening
+        utterance.onend = () => {
+            console.log('Speech finished, starting to listen...');
+            // Small delay before starting to listen
+            setTimeout(() => {
+                handleMicClick(inputId);
+            }, 300);
+        };
+
+        window.speechSynthesis.speak(utterance);
+    } else {
+        // If speech synthesis not available, just start listening
+        handleMicClick(inputId);
+    }
+}
+
+// ============================================================================
+// SPEECH RECOGNITION - WEB SPEECH API & VOSK
+// ============================================================================
+
+function addVoiceErrorMessage(inputId, message) {
+    // Add error message to appropriate chat interface
+    if (inputId === 'userInput') {
+        addMessageToChat('assistant', message);
+    } else if (inputId === 'researcherInput') {
+        const messagesDiv = document.getElementById('researcherMessages');
+        if (messagesDiv) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message message-assistant';
+            messageDiv.innerHTML = `<div class="message-content"><p>${message}</p></div>`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    } else if (inputId === 'analystInput') {
+        const messagesDiv = document.getElementById('analystMessages');
+        if (messagesDiv) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message message-assistant';
+            messageDiv.innerHTML = `<div class="message-content"><p>${message}</p></div>`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    }
+}
+
+function submitVoiceInput(inputId) {
+    // Auto-submit based on which input field was used
+    if (inputId === 'userInput') {
+        handleSubmit();
+    } else if (inputId === 'researcherInput') {
+        const input = document.getElementById(inputId);
+        const prompt = input?.value.trim();
+        if (prompt) {
+            if (state.researcherAwaitingSelection) {
+                handleResearcherSelection(prompt);
+            } else {
+                handleResearcherPrompt(prompt);
+            }
+            input.value = '';
+        }
+    } else if (inputId === 'analystInput') {
+        const input = document.getElementById(inputId);
+        const prompt = input?.value.trim();
+        if (prompt) {
+            handleAnalystPrompt(prompt);
+            input.value = '';
+        }
+    }
+}
+
+async function handleMicClick(inputId) {
+    // Try Web Speech API first
+    if (state.usingWebSpeech) {
+        const webSpeechWorked = await tryWebSpeech(inputId);
+        if (!webSpeechWorked) {
+            // Web Speech failed, switch to Vosk
+            console.log('Web Speech API not available, loading Vosk fallback...');
+            state.usingWebSpeech = false;
+
+            // Load Vosk model if not already loaded
+            if (!state.voskLoaded) {
+                const loaded = await loadVoskModel();
+                if (!loaded) {
+                    return; // Vosk failed to load
+                }
+            }
+
+            // Now try Vosk
+            await startVoskRecording(inputId);
+        }
+    } else {
+        // Already using Vosk
+        if (state.isRecording) {
+            stopVoskRecording(true);
+        } else {
+            await startVoskRecording(inputId);
+        }
+    }
+}
+
+async function tryWebSpeech(inputId) {
+    return new Promise((resolve) => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
         if (!SpeechRecognition) {
-            alert('Speech recognition is not supported in your browser.');
+            resolve(false);
             return;
         }
 
-        state.speechRecognition = new SpeechRecognition();
-        state.speechRecognition.continuous = false;
-        state.speechRecognition.interimResults = false;
+        try {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
 
-        state.speechRecognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            document.getElementById('userInput').value = transcript;
-            state.isListening = false;
-        };
+            let hasResolved = false;
+            let noSpeechTimer = null;
 
-        state.speechRecognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            state.isListening = false;
-        };
+            // Set active state
+            setMicButtonState(inputId, true);
 
-        state.speechRecognition.onend = () => {
-            state.isListening = false;
-        };
+            // Start no-speech timeout
+            noSpeechTimer = setTimeout(() => {
+                if (!hasResolved) {
+                    console.log('No speech detected in 5 seconds, cancelling...');
+                    recognition.stop();
+                    if (!hasResolved) {
+                        hasResolved = true;
+                        setMicButtonState(inputId, false);
+                        addVoiceErrorMessage(inputId, 'No speech detected. Please try again.');
+                        resolve(true); // Don't fallback, just inform user
+                    }
+                }
+            }, state.noSpeechTimeout);
+
+            recognition.onresult = (event) => {
+                // Clear no-speech timer since we got speech
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                const transcript = event.results[0][0].transcript;
+                const inputElement = document.getElementById(inputId);
+                if (inputElement) {
+                    inputElement.value = transcript;
+                    inputElement.focus();
+                }
+
+                // Auto-submit the voice input
+                submitVoiceInput(inputId);
+
+                if (!hasResolved) {
+                    hasResolved = true;
+                    resolve(true);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+
+                // Clear no-speech timer
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                // Reset visual state
+                setMicButtonState(inputId, false);
+
+                if (!hasResolved) {
+                    hasResolved = true;
+                    // If it's a permission error, don't fallback
+                    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        addVoiceErrorMessage(inputId, 'Microphone access was denied.');
+                        resolve(true); // Don't fallback, user denied permission
+                    } else {
+                        // Any other error (network, no-speech, etc.) triggers fallback
+                        addVoiceErrorMessage(inputId, 'Loading offline speech recognition...');
+                        resolve(false); // Fallback to Vosk
+                    }
+                }
+            };
+
+            recognition.onend = () => {
+                // Clear no-speech timer
+                if (noSpeechTimer) {
+                    clearTimeout(noSpeechTimer);
+                    noSpeechTimer = null;
+                }
+
+                setMicButtonState(inputId, false);
+            };
+
+            recognition.start();
+            console.log('Web Speech recognition started');
+            // Don't resolve here - wait for result or error
+        } catch (error) {
+            console.error('Error starting Web Speech recognition:', error);
+            setMicButtonState(inputId, false);
+            resolve(false);
+        }
+    });
+}
+
+async function loadVoskModel() {
+    if (state.voskLoaded || state.voskLoadingFailed) {
+        return state.voskLoaded;
     }
 
-    if (state.isListening) {
-        state.speechRecognition.stop();
-        state.isListening = false;
+    try {
+        console.log('Loading Vosk speech model from', state.speechModelUrl);
+
+        if (!window.Vosk || typeof Vosk.createModel !== 'function') {
+            console.warn('Vosk library not loaded');
+            state.voskLoadingFailed = true;
+            addVoiceErrorMessage(state.currentVoiceInputId, 'Offline speech recognition is not available.');
+            return false;
+        }
+
+        // Don't show loading screen, just load in background
+        console.log('Loading Vosk model in background...');
+
+        state.voskModel = await Vosk.createModel(state.speechModelUrl);
+        state.voskRecognizer = new state.voskModel.KaldiRecognizer(16000);
+
+        // Set up recognizer event handlers
+        state.voskRecognizer.on("result", (message) => {
+            const result = message.result;
+            if (result && result.text) {
+                // Clear no-speech timer since we got speech
+                if (state.noSpeechTimer) {
+                    clearTimeout(state.noSpeechTimer);
+                    state.noSpeechTimer = null;
+                }
+
+                // Append the recognized text to the input
+                const inputElement = document.getElementById(state.currentVoiceInputId);
+                if (inputElement) {
+                    const currentText = inputElement.value;
+                    inputElement.value = currentText + (currentText ? " " : "") + result.text;
+                }
+                state.hasSpeech = true;
+                state.lastSpeechTime = Date.now();
+                resetSilenceTimer();
+            }
+        });
+
+        state.voskRecognizer.on("partialresult", (message) => {
+            // Reset silence timer on partial results too
+            const result = message.result;
+            if (result && result.partial && result.partial.trim()) {
+                // Clear no-speech timer on partial results
+                if (state.noSpeechTimer) {
+                    clearTimeout(state.noSpeechTimer);
+                    state.noSpeechTimer = null;
+                }
+
+                state.lastSpeechTime = Date.now();
+                resetSilenceTimer();
+            }
+        });
+
+        state.voskLoaded = true;
+        console.log('Vosk speech model loaded successfully');
+
+        // Notify user in chat
+        addVoiceErrorMessage(state.currentVoiceInputId, 'Offline speech model ready! Please speak again.');
+
+        return true;
+    } catch (error) {
+        console.error('Error loading Vosk model:', error);
+        state.voskLoadingFailed = true;
+        addVoiceErrorMessage(state.currentVoiceInputId, 'Failed to load offline speech model. Voice input is unavailable.');
+        return false;
+    }
+}
+
+async function startVoskRecording(inputId) {
+    if (!state.voskRecognizer) {
+        addVoiceErrorMessage(inputId, 'Speech input is not available.');
+        return;
+    }
+
+    try {
+        // Store the input ID for later use
+        state.currentVoiceInputId = inputId;
+
+        // Request microphone access
+        state.mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                channelCount: 1,
+                sampleRate: 16000
+            }
+        });
+
+        // Create audio context
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        state.sourceNode = state.audioContext.createMediaStreamSource(state.mediaStream);
+        state.processorNode = state.audioContext.createScriptProcessor(4096, 1, 1);
+
+        // Process audio data
+        state.processorNode.onaudioprocess = (event) => {
+            try {
+                if (state.isRecording && state.voskRecognizer) {
+                    state.voskRecognizer.acceptWaveform(event.inputBuffer);
+                }
+            } catch (e) {
+                console.error('Audio processing error:', e);
+            }
+        };
+
+        state.sourceNode.connect(state.processorNode);
+        state.processorNode.connect(state.audioContext.destination);
+
+        state.isRecording = true;
+        state.hasSpeech = false;
+        state.lastSpeechTime = Date.now();
+
+        // Start silence detection timer
+        resetSilenceTimer();
+
+        // Start no-speech timeout
+        state.noSpeechTimer = setTimeout(() => {
+            if (state.isRecording && !state.hasSpeech) {
+                console.log('No speech detected in 5 seconds, cancelling...');
+                stopVoskRecording(true);
+                addVoiceErrorMessage(state.currentVoiceInputId, 'No speech detected. Please try again.');
+            }
+        }, state.noSpeechTimeout);
+
+        // Set active state
+        setMicButtonState(inputId, true);
+
+        console.log('Vosk recording started');
+    } catch (error) {
+        console.error('Microphone access denied:', error);
+        addVoiceErrorMessage(inputId, 'Microphone access was denied. Please allow microphone access to use voice input.');
+    }
+}
+
+function stopVoskRecording(isCancelled = false) {
+    state.isRecording = false;
+
+    // Clear all timers
+    clearSpeechTimers();
+
+    // Clean up audio resources
+    cleanupAudioResources();
+
+    // Reset button state
+    if (state.currentVoiceInputId) {
+        setMicButtonState(state.currentVoiceInputId, false);
+    }
+
+    console.log('Vosk recording stopped');
+
+    // Auto-send the message if there's text and it wasn't manually cancelled
+    if (!isCancelled && state.currentVoiceInputId) {
+        const inputElement = document.getElementById(state.currentVoiceInputId);
+        if (inputElement && inputElement.value.trim()) {
+            submitVoiceInput(state.currentVoiceInputId);
+        }
+    }
+}
+
+function setMicButtonState(inputId, isActive) {
+    // Determine which voice button to update based on input ID
+    let voiceBtnId;
+    if (inputId === 'userInput') {
+        voiceBtnId = 'voiceBtn';
+    } else if (inputId === 'researcherInput') {
+        voiceBtnId = 'researcherVoiceBtn';
+    } else if (inputId === 'analystInput') {
+        voiceBtnId = 'analystVoiceBtn';
+    }
+
+    const voiceBtn = document.getElementById(voiceBtnId);
+    if (!voiceBtn) return;
+
+    if (isActive) {
+        voiceBtn.style.opacity = '0.6';
+        voiceBtn.classList.add('active');
+        voiceBtn.title = 'Listening...';
     } else {
-        state.speechRecognition.start();
-        state.isListening = true;
+        voiceBtn.style.opacity = '1';
+        voiceBtn.classList.remove('active');
+        voiceBtn.title = 'Voice input';
     }
+}
+
+function clearSpeechTimers() {
+    if (state.silenceTimer) {
+        clearTimeout(state.silenceTimer);
+        state.silenceTimer = null;
+    }
+    if (state.noSpeechTimer) {
+        clearTimeout(state.noSpeechTimer);
+        state.noSpeechTimer = null;
+    }
+}
+
+function cleanupAudioResources() {
+    if (state.processorNode) {
+        state.processorNode.disconnect();
+        state.processorNode = null;
+    }
+    if (state.sourceNode) {
+        state.sourceNode.disconnect();
+        state.sourceNode = null;
+    }
+    if (state.audioContext) {
+        state.audioContext.close();
+        state.audioContext = null;
+    }
+    if (state.mediaStream) {
+        state.mediaStream.getTracks().forEach(track => track.stop());
+        state.mediaStream = null;
+    }
+}
+
+function resetSilenceTimer() {
+    // Clear existing timer
+    if (state.silenceTimer) {
+        clearTimeout(state.silenceTimer);
+    }
+
+    // Set new timer to auto-stop after silence
+    if (state.isRecording) {
+        state.silenceTimer = setTimeout(() => {
+            if (state.isRecording && state.hasSpeech) {
+                console.log('Silence detected, auto-stopping...');
+                stopVoskRecording(false);
+            }
+        }, state.silenceTimeout);
+    }
+}
+
+function toggleVoiceInput() {
+    handleMicClick('userInput');
 }
 
 // Switch model
