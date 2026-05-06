@@ -244,6 +244,14 @@
                     type="button">×</button>
             </div>
             <div class="modal-body" id="video-modal-body">
+                <div id="video-error-message"
+                    style="display: none; background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #856404;">
+                    <strong>⚠️ Video Loading Issue</strong>
+                    <p style="margin: 8px 0 0 0;">The video cannot be displayed in the embedded player. <a
+                            id="video-fallback-link" href="#" target="_blank" rel="noopener noreferrer"
+                            style="color: #0078d4; text-decoration: underline;">Click here to watch it on Synthesia</a>.
+                    </p>
+                </div>
                 <div style="position: relative; overflow: hidden; aspect-ratio: 1920/1080">
                     <iframe id="video-iframe" src="" loading="lazy" title="" allowfullscreen
                         allow="encrypted-media; fullscreen; microphone; screen-wake-lock;"

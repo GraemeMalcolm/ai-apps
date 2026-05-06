@@ -73,7 +73,9 @@ class AskAnton {
             videoModalClose: document.getElementById('video-modal-close'),
             videoModalOk: document.getElementById('video-modal-ok'),
             videoModalTitle: document.getElementById('video-modal-title'),
-            videoIframe: document.getElementById('video-iframe')
+            videoIframe: document.getElementById('video-iframe'),
+            videoErrorMessage: document.getElementById('video-error-message'),
+            videoFallbackLink: document.getElementById('video-fallback-link')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -81,13 +83,9 @@ class AskAnton {
 IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing. For questions outside of these topics, politely decline to answer.
 - Explain concepts clearly and concisely in a single paragraph based only on the provided context.
-- Keep responses short and focused on the question, with no headings.
-- Use examples and analogies when helpful.
 - Use simple language suitable for learners in a conversational, friendly tone.
 - Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
-- Do not start responses with "A:" or "Q:".
-- Keep your responses concise and to the point, in ONE paragraph.
-- Do NOT provide links for more information (these will be added automatically later).`;
+- Do NOT provide links for more information.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -2441,6 +2439,58 @@ IMPORTANT: Follow these guidelines when responding:
     showVideoModal(videoId, videoTitle) {
         // Set the video iframe src and title
         const videoUrl = `https://share.synthesia.io/embeds/videos/${videoId}`;
+
+        // Log details for debugging
+        console.log('Opening video modal:');
+        console.log('- Video ID:', videoId);
+        console.log('- Video Title:', videoTitle);
+        console.log('- Video URL:', videoUrl);
+        console.log('- Current domain:', window.location.hostname);
+
+        // Set up fallback link
+        if (this.elements.videoFallbackLink) {
+            this.elements.videoFallbackLink.href = videoUrl;
+        }
+
+        // Hide error message initially
+        if (this.elements.videoErrorMessage) {
+            this.elements.videoErrorMessage.style.display = 'none';
+        }
+
+        // Add error and load handlers to iframe
+        const iframe = this.elements.videoIframe;
+
+        // Remove old listeners if any
+        iframe.onerror = null;
+        iframe.onload = null;
+
+        // Add load handler
+        iframe.onload = () => {
+            console.log('✓ Video iframe loaded successfully');
+        };
+
+        // Add error handler (though this may not catch all iframe errors)
+        iframe.onerror = (error) => {
+            console.error('✗ Video iframe error:', error);
+            if (this.elements.videoErrorMessage) {
+                this.elements.videoErrorMessage.style.display = 'block';
+            }
+        };
+
+        // Monitor for console errors
+        const originalConsoleError = console.error;
+        const errorCapture = (...args) => {
+            if (args.some(arg => String(arg).includes('synthesia'))) {
+                console.log('Captured Synthesia-related error:', ...args);
+            }
+            originalConsoleError.apply(console, args);
+        };
+        console.error = errorCapture;
+
+        setTimeout(() => {
+            console.error = originalConsoleError;
+        }, 5000);
+
         this.elements.videoIframe.src = videoUrl;
         this.elements.videoIframe.title = videoTitle;
         this.elements.videoModalTitle.textContent = videoTitle;
@@ -2456,6 +2506,24 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.videoModalClose.focus();
             this.setupModalFocusTrap(this.elements.videoModal);
         }, 100);
+
+        // Check iframe status after a moment
+        setTimeout(() => {
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                console.log('Iframe content accessible:', !!iframeDoc);
+            } catch (e) {
+                console.log('⚠ Cannot access iframe content (expected if cross-origin):', e.message);
+                console.log('This is normal for cross-origin iframes. Check Network tab for HTTP errors.');
+                console.log('');
+                console.log('📋 Troubleshooting steps:');
+                console.log('1. Open DevTools Network tab');
+                console.log('2. Look for a request to:', videoUrl);
+                console.log('3. Check the Status Code (should be 200)');
+                console.log('4. If blocked, check Response Headers for X-Frame-Options or Content-Security-Policy');
+                console.log('5. If you see "refused to connect", Synthesia may be blocking this domain');
+            }
+        }, 1000);
     }
 
     hideVideoModal() {
@@ -2463,6 +2531,11 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.videoModal.setAttribute('aria-hidden', 'true');
         this.removeModalFocusTrap();
         this.currentModal = null;
+
+        // Hide error message if shown
+        if (this.elements.videoErrorMessage) {
+            this.elements.videoErrorMessage.style.display = 'none';
+        }
 
         // Clear the iframe src to stop video playback
         this.elements.videoIframe.src = '';
