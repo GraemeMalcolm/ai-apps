@@ -1,6 +1,6 @@
-// No-Pilot Application v95
+// No-Pilot Application v96
 // A simplified Microsoft 365 Copilot emulation for educational purposes
-// v95: Custom SVG profile images for Anton and Matt contacts
+// v96: Fixed voice input path for GitHub Pages, improved Vosk loading UX, fixed spoken responses
 
 // Import models
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
@@ -33,7 +33,7 @@ const state = {
     audioContext: null,
     processorNode: null,
     sourceNode: null,
-    speechModelUrl: '../speech-model/speech-model.tar.gz',
+    speechModelUrl: null, // Calculated dynamically
     silenceTimer: null,
     noSpeechTimer: null,
     lastSpeechTime: null,
@@ -64,7 +64,13 @@ const state = {
 // Initialize the application
 async function init() {
     console.log('Initializing No-Pilot...');
-    console.log('App Version: 2025-05-05-v89 - Added speech recognition with Web Speech API and Vosk fallback');
+    console.log('App Version: 2025-05-05-v96 - Fixed voice input path for GitHub Pages, improved Vosk loading UX, fixed spoken responses');
+
+    // Calculate speech model path relative to the base path
+    const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+    state.speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+    console.log('Speech model URL:', state.speechModelUrl);
 
     // Load organizational data
     await loadOrganizationalData();
@@ -3501,6 +3507,40 @@ async function handleAnalystQuery(prompt) {
 // SPEECH OUTPUT - WEB SPEECH API
 // ============================================================================
 
+function disableInput(inputId, disabled, disableMicOnly = false) {
+    // Disable or enable input based on inputId
+    if (inputId === 'userInput') {
+        const input = document.getElementById('userInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const voiceBtn = document.getElementById('voiceBtn');
+        if (input && !disableMicOnly) input.disabled = disabled;
+        if (submitBtn && !disableMicOnly) submitBtn.disabled = disabled;
+        if (voiceBtn) voiceBtn.disabled = disabled;
+    } else if (inputId === 'researcherInput') {
+        const input = document.getElementById('researcherInput');
+        const inputBottom = document.getElementById('researcherInputBottom');
+        const submitTop = document.getElementById('researcherSubmitTop');
+        const submitBottom = document.getElementById('researcherSubmitBottom');
+        const voiceBtn = document.getElementById('researcherVoiceBtn');
+        if (input && !disableMicOnly) input.disabled = disabled;
+        if (inputBottom && !disableMicOnly) inputBottom.disabled = disabled;
+        if (submitTop && !disableMicOnly) submitTop.disabled = disabled;
+        if (submitBottom && !disableMicOnly) submitBottom.disabled = disabled;
+        if (voiceBtn) voiceBtn.disabled = disabled;
+    } else if (inputId === 'analystInput') {
+        const input = document.getElementById('analystInput');
+        const inputBottom = document.getElementById('analystInputBottom');
+        const submitTop = document.getElementById('analystSubmitTop');
+        const submitBottom = document.getElementById('analystSubmitBottom');
+        const voiceBtn = document.getElementById('analystVoiceBtn');
+        if (input && !disableMicOnly) input.disabled = disabled;
+        if (inputBottom && !disableMicOnly) inputBottom.disabled = disabled;
+        if (submitTop && !disableMicOnly) submitTop.disabled = disabled;
+        if (submitBottom && !disableMicOnly) submitBottom.disabled = disabled;
+        if (voiceBtn) voiceBtn.disabled = disabled;
+    }
+}
+
 function speakResponse(message) {
     if (!state.currentVoiceInputId) return; // Only speak if voice input was used
 
@@ -3513,11 +3553,16 @@ function speakResponse(message) {
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
 
-        window.speechSynthesis.speak(utterance);
-    }
+        // Clear voice input flag after speech finishes
+        utterance.onend = () => {
+            state.currentVoiceInputId = null;
+        };
 
-    // Clear voice input flag after speaking
-    state.currentVoiceInputId = null;
+        window.speechSynthesis.speak(utterance);
+    } else {
+        // If speech synthesis not available, clear flag immediately
+        state.currentVoiceInputId = null;
+    }
 }
 
 function speakAndListen(message, inputId) {
@@ -3709,7 +3754,8 @@ async function tryWebSpeech(inputId) {
                         resolve(true); // Don't fallback, user denied permission
                     } else {
                         // Any other error (network, no-speech, etc.) triggers fallback
-                        addVoiceErrorMessage(inputId, 'Loading offline speech recognition...');
+                        addVoiceErrorMessage(inputId, 'Loading offline speech recognition, please wait...');
+                        disableInput(inputId, true);
                         resolve(false); // Fallback to Vosk
                     }
                 }
@@ -3798,13 +3844,16 @@ async function loadVoskModel() {
         console.log('Vosk speech model loaded successfully');
 
         // Notify user in chat
-        addVoiceErrorMessage(state.currentVoiceInputId, 'Offline speech model ready! Please speak again.');
+        addVoiceErrorMessage(state.currentVoiceInputId, 'Offline speech model ready! Please click the microphone to try speaking again.');
+        disableInput(state.currentVoiceInputId, false); // Re-enable input
 
         return true;
     } catch (error) {
         console.error('Error loading Vosk model:', error);
         state.voskLoadingFailed = true;
-        addVoiceErrorMessage(state.currentVoiceInputId, 'Failed to load offline speech model. Voice input is unavailable.');
+        addVoiceErrorMessage(state.currentVoiceInputId, 'Failed to load offline speech model. Voice input is unavailable, but you can still type.');
+        disableInput(state.currentVoiceInputId, false, true); // Re-enable input but disable mic
+        return false;
         return false;
     }
 }
