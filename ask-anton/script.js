@@ -1,4 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/+esm";
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.7/esm/index.js';
 
 class AskAnton {
@@ -26,6 +26,8 @@ class AskAnton {
         this.currentModal = null;
         this.lastFocusedElement = null;
         this.modalFocusTrapHandler = null;
+        this.videoPopupWidth = 800;
+        this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
 
         // Vosk speech recognition (lazy-loaded fallback)
@@ -68,14 +70,7 @@ class AskAnton {
             aboutModalOk: document.getElementById('about-modal-ok'),
             aiModeModal: document.getElementById('ai-mode-modal'),
             modalClose: document.getElementById('modal-close'),
-            modalOk: document.getElementById('modal-ok'),
-            videoModal: document.getElementById('video-modal'),
-            videoModalClose: document.getElementById('video-modal-close'),
-            videoModalOk: document.getElementById('video-modal-ok'),
-            videoModalTitle: document.getElementById('video-modal-title'),
-            videoIframe: document.getElementById('video-iframe'),
-            videoErrorMessage: document.getElementById('video-error-message'),
-            videoFallbackLink: document.getElementById('video-fallback-link')
+            modalOk: document.getElementById('modal-ok')
         };
 
         this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
@@ -352,11 +347,28 @@ IMPORTANT: Follow these guidelines when responding:
                 throw new Error('DEBUG: Forced WebGPU initialization failure');
             }
 
-            const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+            // Use Phi-3.5-mini with correct model library URL from WebLLM config
+            const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+
+            const appConfig = {
+                model_list: [
+                    {
+                        model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
+                        model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+                        model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                        vram_required_MB: 3672.07,
+                        low_resource_required: false,
+                        overrides: {
+                            context_window_size: 4096
+                        }
+                    }
+                ]
+            };
 
             this.engine = await webllm.CreateMLCEngine(
                 targetModelId,
                 {
+                    appConfig: appConfig,
                     initProgressCallback: (progress) => {
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
                         this.updateProgress(
@@ -597,11 +609,11 @@ IMPORTANT: Follow these guidelines when responding:
 
     getModeLabel(mode = this.currentMode) {
         if (mode === 'gpu') {
-            return 'Phi 3.1 (GPU)';
+            return 'Phi 3.5 (GPU)';
         }
 
         if (mode === 'cpu') {
-            return 'Phi 2.0 (CPU)';
+            return 'Phi 2 (CPU)';
         }
 
         return 'None (Basic Q&A)';
@@ -720,22 +732,6 @@ IMPORTANT: Follow these guidelines when responding:
             }
         });
 
-        // Video modal handlers
-        this.elements.videoModalClose.addEventListener('click', () => {
-            this.hideVideoModal();
-        });
-
-        this.elements.videoModalOk.addEventListener('click', () => {
-            this.hideVideoModal();
-        });
-
-        // Close video modal on overlay click
-        this.elements.videoModal.addEventListener('click', (e) => {
-            if (e.target === this.elements.videoModal || e.target.classList.contains('modal-overlay')) {
-                this.hideVideoModal();
-            }
-        });
-
         // Modal handlers
         this.elements.modalClose.addEventListener('click', () => {
             this.hideAiModeModal();
@@ -759,8 +755,6 @@ IMPORTANT: Follow these guidelines when responding:
                     this.hideAiModeModal();
                 } else if (this.elements.aboutModal.style.display === 'flex') {
                     this.hideAboutModal();
-                } else if (this.elements.videoModal.style.display === 'flex') {
-                    this.hideVideoModal();
                 }
             }
         });
@@ -781,6 +775,23 @@ IMPORTANT: Follow these guidelines when responding:
             if (e.key === 'Enter' && e.target.classList.contains('ai-mode-link')) {
                 e.preventDefault();
                 e.target.click();
+            }
+        });
+
+        this.elements.chatMessages.addEventListener('click', (e) => {
+            const videoLink = e.target.closest('.video-link');
+            if (!videoLink) {
+                return;
+            }
+
+            e.preventDefault();
+            this.openVideoPopup(videoLink.href);
+        });
+
+        this.elements.chatMessages.addEventListener('keydown', (e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('video-link')) {
+                e.preventDefault();
+                this.openVideoPopup(e.target.href);
             }
         });
     }
@@ -1361,16 +1372,16 @@ IMPORTANT: Follow these guidelines when responding:
 
         let formattedMessage = this.formatResponse(displayMessage);
 
-        // Replace video links - open in new tab (COEP blocks Synthesia iframe embedding)
+        // Replace video links - popup window avoids the blocked iframe embed path
         if (videos && videos.length > 0) {
             if (videos.length === 1) {
                 const video = videos[0];
-                const videoUrl = `https://share.synthesia.io/embeds/videos/${this.escapeHtml(video.video_id)}`;
+                const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
                 const videoLinkHtml = `<a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
                 formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
             } else {
                 const videoLinksHtml = videos.map(video => {
-                    const videoUrl = `https://share.synthesia.io/embeds/videos/${this.escapeHtml(video.video_id)}`;
+                    const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
                     return `• <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
                 }).join('<br>');
                 formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
@@ -1647,7 +1658,7 @@ IMPORTANT: Follow these guidelines when responding:
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         let userPrompt = userMessage + ' (keep the conversation focused on artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
         if (context) {
-            userPrompt = `${userMessage}\nRespond based on the following context:\n${context}\n`;
+            userPrompt = `${userMessage}\nBase your response on the following information:\n${context}`;
         }
 
         const recentHistory = this.conversationHistory.slice(-6);
@@ -2426,117 +2437,31 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
-    showVideoModal(videoId, videoTitle) {
-        // Set the video iframe src and title
-        const videoUrl = `https://share.synthesia.io/embeds/videos/${videoId}`;
-
-        // Log details for debugging
-        console.log('Opening video modal:');
-        console.log('- Video ID:', videoId);
-        console.log('- Video Title:', videoTitle);
-        console.log('- Video URL:', videoUrl);
-        console.log('- Current domain:', window.location.hostname);
-
-        // Set up fallback link
-        if (this.elements.videoFallbackLink) {
-            this.elements.videoFallbackLink.href = videoUrl;
-        }
-
-        // Hide error message initially
-        if (this.elements.videoErrorMessage) {
-            this.elements.videoErrorMessage.style.display = 'none';
-        }
-
-        // Add error and load handlers to iframe
-        const iframe = this.elements.videoIframe;
-
-        // Remove old listeners if any
-        iframe.onerror = null;
-        iframe.onload = null;
-
-        // Add load handler
-        iframe.onload = () => {
-            console.log('✓ Video iframe loaded successfully');
-        };
-
-        // Add error handler (though this may not catch all iframe errors)
-        iframe.onerror = (error) => {
-            console.error('✗ Video iframe error:', error);
-            if (this.elements.videoErrorMessage) {
-                this.elements.videoErrorMessage.style.display = 'block';
-            }
-        };
-
-        // Monitor for console errors
-        const originalConsoleError = console.error;
-        const errorCapture = (...args) => {
-            if (args.some(arg => String(arg).includes('synthesia'))) {
-                console.log('Captured Synthesia-related error:', ...args);
-            }
-            originalConsoleError.apply(console, args);
-        };
-        console.error = errorCapture;
-
-        setTimeout(() => {
-            console.error = originalConsoleError;
-        }, 5000);
-
-        this.elements.videoIframe.src = videoUrl;
-        this.elements.videoIframe.title = videoTitle;
-        this.elements.videoModalTitle.textContent = videoTitle;
-
-        // Show the modal
-        this.elements.videoModal.style.display = 'flex';
-        this.currentModal = this.elements.videoModal;
-        this.lastFocusedElement = document.activeElement;
-        this.elements.videoModal.setAttribute('aria-hidden', 'false');
-
-        // Set focus to close button
-        setTimeout(() => {
-            this.elements.videoModalClose.focus();
-            this.setupModalFocusTrap(this.elements.videoModal);
-        }, 100);
-
-        // Check iframe status after a moment
-        setTimeout(() => {
-            try {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                console.log('Iframe content accessible:', !!iframeDoc);
-            } catch (e) {
-                console.log('⚠ Cannot access iframe content (expected if cross-origin):', e.message);
-                console.log('This is normal for cross-origin iframes. Check Network tab for HTTP errors.');
-                console.log('');
-                console.log('📋 Troubleshooting steps:');
-                console.log('1. Open DevTools Network tab');
-                console.log('2. Look for a request to:', videoUrl);
-                console.log('3. Check the Status Code (should be 200)');
-                console.log('4. If blocked, check Response Headers for X-Frame-Options or Content-Security-Policy');
-                console.log('5. If you see "refused to connect", Synthesia may be blocking this domain');
-            }
-        }, 1000);
+    getSynthesiaVideoUrl(videoId) {
+        return videoId.startsWith('http') ? videoId : `https://share.synthesia.io/embeds/videos/${videoId}`;
     }
 
-    hideVideoModal() {
-        this.elements.videoModal.style.display = 'none';
-        this.elements.videoModal.setAttribute('aria-hidden', 'true');
-        this.removeModalFocusTrap();
-        this.currentModal = null;
+    openVideoPopup(videoUrl) {
+        const left = Math.max(0, Math.round(window.screenX + ((window.outerWidth - this.videoPopupWidth) / 2)));
+        const top = Math.max(0, Math.round(window.screenY + ((window.outerHeight - this.videoPopupHeight) / 2)));
+        const popupFeatures = [
+            'popup=yes',
+            `width=${this.videoPopupWidth}`,
+            `height=${this.videoPopupHeight}`,
+            `left=${left}`,
+            `top=${top}`,
+            'resizable=yes',
+            'scrollbars=yes'
+        ].join(',');
 
-        // Hide error message if shown
-        if (this.elements.videoErrorMessage) {
-            this.elements.videoErrorMessage.style.display = 'none';
+        const popup = window.open(videoUrl, 'ask-anton-video', popupFeatures);
+        if (!popup) {
+            window.location.href = videoUrl;
+            return;
         }
 
-        // Clear the iframe src to stop video playback
-        this.elements.videoIframe.src = '';
-        this.elements.videoIframe.title = '';
-
-        // Restore focus
-        if (this.lastFocusedElement) {
-            this.lastFocusedElement.focus();
-        } else {
-            this.elements.userInput.focus();
-        }
+        popup.opener = null;
+        popup.focus();
     }
 
     setupModalFocusTrap(modalElement) {
