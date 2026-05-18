@@ -1137,6 +1137,9 @@ async function handleSend() {
             }
 
             if (summary) {
+                // Update bubble with cleaned summary (removes incomplete sentences)
+                setBubbleContent(bubble, escapeHtml(summary));
+
                 // Store in conversation history
                 conversationHistory.push({
                     user: truncateToFirstSentence(text),
@@ -1626,6 +1629,9 @@ async function performClassification(imgEl, userText = "") {
                         }
 
                         if (summary) {
+                            // Update bubble with cleaned summary (removes incomplete sentences)
+                            setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(summary));
+
                             conversationHistory.push({
                                 user: historyUserPrompt,
                                 assistant: truncateToFirstSentence(summary)
