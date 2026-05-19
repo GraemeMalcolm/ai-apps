@@ -1401,7 +1401,7 @@ class ChatPlayground {
                 }
             );
             console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-            await this.warmWllamaCache(isLazyLoad, updateProgress);
+            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
         } catch (multiErr) {
             if (preferredThreads > 1) {
                 console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
@@ -1422,7 +1422,7 @@ class ChatPlayground {
                     }
                 );
                 console.log('Wllama initialized successfully with 1 thread (fallback)');
-                await this.warmWllamaCache(isLazyLoad, updateProgress);
+                await this.warmWllamaCache(isLazyLoad, updateProgress, true);
             } else {
                 throw multiErr;
             }
@@ -1437,7 +1437,7 @@ class ChatPlayground {
         }, 1000);
     }
 
-    async warmWllamaCache(isLazyLoad = true, progressCallback = null) {
+    async warmWllamaCache(isLazyLoad = true, progressCallback = null, updateFinalProgress = false) {
         if (!this.wllama) return;
 
         try {
@@ -1460,8 +1460,17 @@ class ChatPlayground {
                 stream: false
             });
             console.log('Cache warmed successfully');
+
+            // Update to final ready state if requested
+            if (!isLazyLoad && updateFinalProgress) {
+                this.updateProgress(100, 'CPU model ready!');
+            }
         } catch (error) {
             console.log('Cache warming failed (non-critical):', error.message);
+            // Still show ready message even if cache warming failed
+            if (!isLazyLoad && updateFinalProgress) {
+                this.updateProgress(100, 'CPU model ready!');
+            }
         }
     }
 
@@ -2907,7 +2916,7 @@ class ChatPlayground {
         // Prime a clean prompt after interruption so the next turn does not reuse
         // an unfinished decode path from the previous streamed generation.
         try {
-            await this.warmWllamaCache(true, null);
+            await this.warmWllamaCache(true, null, false);
         } catch (error) {
             console.warn('Wllama reset after interruption failed:', error);
         }
