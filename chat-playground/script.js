@@ -26,6 +26,7 @@ class ChatPlayground {
         this.stopRequested = false;
         this.currentStream = null; // Track current streaming completion
         this.currentAbortController = null; // Track abort controller for wllama
+        this.wllamaStateNeedsReset = false; // Track if wllama state needs reset after stop
         this.typingState = null;
         this.currentSystemMessage = "You are an AI assistant that helps people find information.";
         this.currentModelId = null;
@@ -1400,32 +1401,29 @@ class ChatPlayground {
                     progressCallback: modelConfig.progressCallback
                 }
             );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
+            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
             await this.warmWllamaCache(isLazyLoad, updateProgress, true);
         } catch (multiErr) {
-            if (preferredThreads > 1) {
-                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-                if (!isLazyLoad) {
-                    updateProgress(20, 100);
-                }
-
-                this.wllama = new Wllama(CONFIG_PATHS);
-                await this.wllama.loadModelFromHF(
-                    {
-                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
-                    },
-                    {
-                        ...modelConfig,
-                        n_threads: 1,
-                        progressCallback: modelConfig.progressCallback
-                    }
-                );
-                console.log('Wllama initialized successfully with 1 thread (fallback)');
-                await this.warmWllamaCache(isLazyLoad, updateProgress, true);
-            } else {
-                throw multiErr;
+            console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
+            if (!isLazyLoad) {
+                updateProgress(20, 100);
             }
+
+            // Create fresh instance
+            this.wllama = new Wllama(CONFIG_PATHS);
+            await this.wllama.loadModelFromHF(
+                {
+                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                },
+                {
+                    ...modelConfig,
+                    n_threads: preferredThreads,
+                    progressCallback: modelConfig.progressCallback
+                }
+            );
+            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
+            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
         }
 
         console.log('Wllama initialized successfully');
@@ -1466,10 +1464,30 @@ class ChatPlayground {
                 this.updateProgress(100, 'CPU model ready!');
             }
         } catch (error) {
-            console.log('Cache warming failed (non-critical):', error.message);
-            // Still show ready message even if cache warming failed
-            if (!isLazyLoad && updateFinalProgress) {
-                this.updateProgress(100, 'CPU model ready!');
+            const errorMessage = error.message || error.toString();
+
+            // Check if this is a WebGPU-specific error that needs to propagate
+            const isWebGPUError =
+                errorMessage.includes('Buffer was destroyed') ||
+                errorMessage.includes('unreachable') ||
+                errorMessage.includes('memory access out of bounds') ||
+                errorMessage.includes('GGML_ASSERT') ||
+                errorMessage.includes('ggml_webgpu') ||
+                errorMessage.includes('Queue work failed') ||
+                errorMessage.includes('Aborted()') ||
+                errorMessage.includes('Received abort signal from llama.cpp');
+
+            if (isWebGPUError) {
+                console.log('Cache warming failed due to WebGPU error:', errorMessage);
+                // Rethrow WebGPU errors so they can be caught and handled properly
+                throw error;
+            } else {
+                // Non-WebGPU errors are truly non-critical
+                console.log('Cache warming failed (non-critical):', errorMessage);
+                // Still show ready message even if cache warming failed
+                if (!isLazyLoad && updateFinalProgress) {
+                    this.updateProgress(100, 'CPU model ready!');
+                }
             }
         }
     }
@@ -2437,6 +2455,28 @@ class ChatPlayground {
             throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
         }
 
+        // Reload wllama if WebGPU state was corrupted by previous stop
+        if (this.wllamaStateNeedsReset) {
+            console.log('Reloading wllama due to WebGPU corruption from previous stop...');
+            this.updateProgress(0, 'Reloading CPU model after stop...', true);
+
+            try {
+                // Don't try to exit corrupted instance - just abandon it
+                // (exit() hangs when WebGPU state is corrupted)
+                this.wllama = null;
+
+                // Reload fresh instance
+                await this.initializeWllama();
+                this.progressContainer.style.display = 'none';
+                this.wllamaStateNeedsReset = false;
+                console.log('Wllama reloaded successfully - ready for next prompt');
+            } catch (error) {
+                console.error('Failed to reload wllama:', error);
+                this.progressContainer.style.display = 'none';
+                throw new Error('Failed to reload CPU model after stop. Please refresh the page.');
+            }
+        }
+
         // Keep original userMessage for conversation history (without image classification)
         const originalUserMessage = userMessage;
 
@@ -2502,7 +2542,7 @@ class ChatPlayground {
             penalty_repeat: wllamaPenalty
         });
 
-        // Create AbortController for this generation
+        // Create AbortController for proper cancellation
         const controller = new AbortController();
         this.currentAbortController = controller;
 
@@ -2795,9 +2835,9 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
 
-        // Abort wllama generation properly using AbortController
+        // Abort the generation using AbortController
         if (this.currentAbortController) {
-            console.log('Aborting wllama generation via AbortController');
+            console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
@@ -2905,7 +2945,32 @@ class ChatPlayground {
             console.warn('Stream return failed during CPU stop cleanup:', error);
         }
 
-        await this.resetWllamaInterruptState();
+        // Try to reset state immediately (like ask-anton does)
+        try {
+            await this.resetWllamaInterruptState();
+            console.log('Wllama state reset successfully after stop');
+        } catch (error) {
+            // Check if this is a WebGPU-specific error that requires reload
+            const errorMessage = error.message || error.toString();
+            const isWebGPUError =
+                errorMessage.includes('Buffer was destroyed') ||
+                errorMessage.includes('unreachable') ||
+                errorMessage.includes('memory access out of bounds') ||
+                errorMessage.includes('GGML_ASSERT') ||
+                errorMessage.includes('ggml_webgpu') ||
+                errorMessage.includes('Queue work failed') ||
+                errorMessage.includes('Aborted()') ||
+                errorMessage.includes('Received abort signal from llama.cpp');
+
+            if (isWebGPUError) {
+                console.warn('WebGPU state corrupted after stop - will reload wllama before next prompt');
+                console.warn('Error:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            } else {
+                console.warn('Unexpected error during state reset:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            }
+        }
     }
 
     async resetWllamaInterruptState() {
@@ -2919,6 +2984,8 @@ class ChatPlayground {
             await this.warmWllamaCache(true, null, false);
         } catch (error) {
             console.warn('Wllama reset after interruption failed:', error);
+            // Rethrow so caller can handle WebGPU errors appropriately
+            throw error;
         }
     }
 
