@@ -22,6 +22,7 @@ class ChatPlayground {
         this.webllmAvailable = false; // Track if WebLLM model successfully loaded
         this.conversationHistory = [];
         this.isGenerating = false;
+        this.isStoppingGeneration = false;
         this.stopRequested = false;
         this.currentStream = null; // Track current streaming completion
         this.currentAbortController = null; // Track abort controller for wllama
@@ -1780,6 +1781,10 @@ class ChatPlayground {
     }
 
     async handleSendMessage() {
+        if (this.isStoppingGeneration) {
+            return;
+        }
+
         // If already generating, stop instead of sending
         if (this.isGenerating) {
             await this.stopGeneration();
@@ -1939,7 +1944,7 @@ class ChatPlayground {
                 thinkingIndicator.remove();
             }
 
-            const errorMessage = 'Sorry, I encountered an error while generating a response. Please try again.';
+            const errorMessage = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
             const assistantMessageEl = this.addMessage('assistant', '');
             const contentEl = assistantMessageEl.querySelector('.message-content');
 
@@ -1966,29 +1971,47 @@ class ChatPlayground {
             stream: true
         });
 
-        for await (const chunk of completion) {
-            if (!this.isGenerating) break;
+        this.currentStream = completion;
 
-            const content = chunk.choices[0]?.delta?.content || '';
-            if (content) {
-                fullResponse += content;
+        try {
+            for await (const chunk of completion) {
+                if (!this.isGenerating) break;
 
-                // Start output once we have enough content buffered
-                if (!hasStartedOutput && fullResponse.length >= bufferSize) {
-                    // Remove thinking indicator
-                    thinkingIndicator.remove();
+                const content = chunk.choices[0]?.delta?.content || '';
+                if (content) {
+                    fullResponse += content;
 
-                    // Create message container
-                    assistantMessageEl = this.addMessage('assistant', '');
-                    contentEl = assistantMessageEl.querySelector('.message-content');
+                    // Start output once we have enough content buffered
+                    if (!hasStartedOutput && fullResponse.length >= bufferSize) {
+                        // Remove thinking indicator
+                        thinkingIndicator.remove();
 
-                    // Start typing animation
-                    this.startTypingAnimation(contentEl, fullResponse);
-                    hasStartedOutput = true;
-                } else if (hasStartedOutput && contentEl) {
-                    // Update the content for ongoing typing animation
-                    this.updateTypingContent(fullResponse);
+                        // Create message container
+                        assistantMessageEl = this.addMessage('assistant', '');
+                        contentEl = assistantMessageEl.querySelector('.message-content');
+
+                        // Start typing animation
+                        this.startTypingAnimation(contentEl, fullResponse);
+                        hasStartedOutput = true;
+                    } else if (hasStartedOutput && contentEl) {
+                        // Update the content for ongoing typing animation
+                        this.updateTypingContent(fullResponse);
+                    }
                 }
+            }
+        } catch (error) {
+            const isInterrupted = this.stopRequested ||
+                error?.name === 'AbortError' ||
+                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
+
+            if (!isInterrupted) {
+                throw error;
+            }
+
+            console.log('WebLLM streaming interrupted');
+        } finally {
+            if (this.currentStream === completion) {
+                this.currentStream = null;
             }
         }
 
@@ -2504,7 +2527,7 @@ class ChatPlayground {
                 const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
 
                 if (!cleanedResponse) {
-                    contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                    contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.\nIf this happens repeatedly, try switching to a different model.';
                     return;
                 }
 
@@ -2536,7 +2559,7 @@ class ChatPlayground {
 
                 console.log('Stopped response not added to conversation history to prevent corruption');
             } else {
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.\nIf this happens repeatedly, try switching to a different model.';
             }
 
         } catch (error) {
@@ -2556,7 +2579,7 @@ class ChatPlayground {
                 }
             } else {
                 console.error('Error in wllama generation:', error);
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
             }
             this.currentAbortController = null;
         }
@@ -2745,8 +2768,8 @@ class ChatPlayground {
     }
 
     async stopGeneration() {
-        this.isGenerating = false;
         this.stopRequested = true;
+        this.isGenerating = false;
 
         // Stop typing animation
         if (this.typingState) {
@@ -2760,10 +2783,98 @@ class ChatPlayground {
             this.currentAbortController = null;
         }
 
-        // Clear current stream reference
-        this.currentStream = null;
+        const activeStream = this.currentStream;
+
+        if (activeStream && this.currentMode === 'phi3-gpu' && this.engine) {
+            this.isStoppingGeneration = true;
+            try {
+                await this.safeStopWebLLMStream(activeStream);
+            } catch (error) {
+                console.warn('WebLLM stop cleanup failed:', error);
+            } finally {
+                this.isStoppingGeneration = false;
+                if (this.currentStream === activeStream) {
+                    this.currentStream = null;
+                }
+            }
+        } else {
+            this.currentStream = null;
+        }
 
         this.updateUIForGeneration(false);
+    }
+
+    async safeStopWebLLMStream(stream) {
+        if (!this.engine || !stream) {
+            return;
+        }
+
+        try {
+            if (typeof this.engine.interruptGenerate === 'function') {
+                await this.engine.interruptGenerate();
+            }
+        } catch (error) {
+            console.warn('engine.interruptGenerate failed:', error);
+        }
+
+        // Workaround for WebLLM lock not always being released immediately.
+        for (let i = 0; i < 3; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 150))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during stop cleanup:', error);
+        }
+
+        await this.resetWebLLMInterruptState();
+    }
+
+    async resetWebLLMInterruptState() {
+        if (!this.engine) {
+            return;
+        }
+
+        // Defensive reset for known WebLLM interruption edge cases.
+        if (Object.prototype.hasOwnProperty.call(this.engine, 'interruptSignal')) {
+            this.engine.interruptSignal = false;
+        }
+
+        const lockMap = this.engine.loadedModelIdToLock;
+        if (lockMap && typeof lockMap.values === 'function') {
+            for (const lock of lockMap.values()) {
+                if (lock && lock.acquired && typeof lock.release === 'function') {
+                    try {
+                        await lock.release();
+                    } catch (error) {
+                        console.warn('Failed to release WebLLM lock:', error);
+                    }
+                }
+            }
+        }
+
+        if (typeof this.engine.resetChat === 'function') {
+            try {
+                await this.engine.resetChat();
+            } catch (error) {
+                console.warn('engine.resetChat failed after interruption:', error);
+            }
+        }
     }
 
     async restartConversation(reason = 'user-action') {
@@ -3792,12 +3903,30 @@ class ChatPlayground {
                     stream: true
                 });
 
-                for await (const chunk of completion) {
-                    if (!this.isGenerating) break;
+                this.currentStream = completion;
 
-                    const content = chunk.choices[0]?.delta?.content || '';
-                    if (content) {
-                        responseText += content;
+                try {
+                    for await (const chunk of completion) {
+                        if (!this.isGenerating) break;
+
+                        const content = chunk.choices[0]?.delta?.content || '';
+                        if (content) {
+                            responseText += content;
+                        }
+                    }
+                } catch (error) {
+                    const isInterrupted = this.stopRequested ||
+                        error?.name === 'AbortError' ||
+                        /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
+
+                    if (!isInterrupted) {
+                        throw error;
+                    }
+
+                    console.log('WebLLM voice generation interrupted');
+                } finally {
+                    if (this.currentStream === completion) {
+                        this.currentStream = null;
                     }
                 }
                 console.log('WebLLM streaming complete, response length:', responseText.length);
@@ -4019,10 +4148,9 @@ class ChatPlayground {
 
         // Stop generation if in progress
         if (this.isGenerating) {
-            this.stopRequested = true;
-            if (this.currentAbortController) {
-                this.currentAbortController.abort();
-            }
+            this.stopGeneration().catch((error) => {
+                console.warn('Failed to stop generation during voice cancel:', error);
+            });
         }
 
         // Show all messages when user cancels
