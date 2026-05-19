@@ -2474,6 +2474,7 @@ class ChatPlayground {
 
         // Use wllama for generation with streaming
         let fullResponse = '';
+        let completion = null;
 
         // Log current model parameters from config
         console.log('Current model parameters from config:', this.config.modelParameters);
@@ -2497,7 +2498,7 @@ class ChatPlayground {
         this.currentAbortController = controller;
 
         try {
-            const completion = await this.wllama.createCompletion({
+            completion = await this.wllama.createCompletion({
                 prompt: chatMLPrompt,
                 max_tokens: 200,
                 temperature: wllamaTemp,
@@ -2505,12 +2506,18 @@ class ChatPlayground {
                 top_p: wllamaTopP,
                 frequency_penalty: wllamaPenalty,
                 stop: ['<|im_end|>', '<|im_start|>'],
+                signal: controller.signal,
                 stream: true
             });
 
             this.currentStream = completion;
 
             for await (const chunk of completion) {
+                if (this.stopRequested) {
+                    console.log('Wllama generation stopped by user');
+                    break;
+                }
+
                 if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
                     fullResponse += chunk.choices[0].text;
                     contentEl.textContent = fullResponse;
@@ -2564,7 +2571,7 @@ class ChatPlayground {
 
         } catch (error) {
             // Check if this was an abort (expected when user clicks stop)
-            if (error.name === 'AbortError' || error.message?.includes('abort')) {
+            if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
 
                 // Display stopped response but don't add to history
@@ -2582,6 +2589,10 @@ class ChatPlayground {
                 contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
             }
             this.currentAbortController = null;
+        } finally {
+            if (this.currentStream === completion) {
+                this.currentStream = null;
+            }
         }
     }
 
@@ -2769,7 +2780,6 @@ class ChatPlayground {
 
     async stopGeneration() {
         this.stopRequested = true;
-        this.isGenerating = false;
 
         // Stop typing animation
         if (this.typingState) {
@@ -2791,6 +2801,18 @@ class ChatPlayground {
                 await this.safeStopWebLLMStream(activeStream);
             } catch (error) {
                 console.warn('WebLLM stop cleanup failed:', error);
+            } finally {
+                this.isStoppingGeneration = false;
+                if (this.currentStream === activeStream) {
+                    this.currentStream = null;
+                }
+            }
+        } else if (activeStream && this.usingWllama) {
+            this.isStoppingGeneration = true;
+            try {
+                await this.safeStopWllamaStream(activeStream);
+            } catch (error) {
+                console.warn('Wllama stop cleanup failed:', error);
             } finally {
                 this.isStoppingGeneration = false;
                 if (this.currentStream === activeStream) {
@@ -2843,6 +2865,52 @@ class ChatPlayground {
         }
 
         await this.resetWebLLMInterruptState();
+    }
+
+    async safeStopWllamaStream(stream) {
+        if (!stream) {
+            return;
+        }
+
+        for (let i = 0; i < 2; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 120))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during CPU stop cleanup:', error);
+        }
+
+        await this.resetWllamaInterruptState();
+    }
+
+    async resetWllamaInterruptState() {
+        if (!this.wllama) {
+            return;
+        }
+
+        // Prime a clean prompt after interruption so the next turn does not reuse
+        // an unfinished decode path from the previous streamed generation.
+        try {
+            await this.warmWllamaCache(true, null);
+        } catch (error) {
+            console.warn('Wllama reset after interruption failed:', error);
+        }
     }
 
     async resetWebLLMInterruptState() {
