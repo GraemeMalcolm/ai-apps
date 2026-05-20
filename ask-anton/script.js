@@ -330,6 +330,7 @@ IMPORTANT: Follow these guidelines when responding:
         if (isMobileDevice) {
             this.availableModes.gpu = this.checkWebGPUSupport();
             console.log('Mobile device detected on startup. Defaulting to Basic mode.');
+            document.body.classList.add('mobile-layout');
             this.initializeBasicMode(
                 'Ready to chat! (Basic mode)',
                 'Basic mode was selected automatically for mobile startup. You can switch modes anytime from the mode selector.'
