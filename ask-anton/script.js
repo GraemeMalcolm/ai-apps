@@ -297,17 +297,22 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     isLikelyMobileDevice() {
-        // Prefer userAgentData when available, fall back to UA/touch heuristics.
+        // Prefer userAgentData when available, then fall back to UA + touch heuristics.
         if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
             return navigator.userAgentData.mobile;
         }
 
         const ua = navigator.userAgent || '';
-        const mobileUaPattern = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+        const mobileUaPattern = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|EdgA/i;
         const isMobileUa = mobileUaPattern.test(ua);
         const isTouchMac = /Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1;
+        const hasTouch = (navigator.maxTouchPoints || 0) > 0 || ('ontouchstart' in window);
+        const hasCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+        const shortestScreenSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+        const isSmallScreen = shortestScreenSide > 0 && shortestScreenSide <= 900;
+        const isTouchSmallScreen = hasTouch && hasCoarsePointer && isSmallScreen;
 
-        return isMobileUa || isTouchMac;
+        return isMobileUa || isTouchMac || isTouchSmallScreen;
     }
 
     async initializeEngine() {
