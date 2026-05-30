@@ -269,34 +269,27 @@ function renderFirstResult(result) {
         return `<p><em>No results returned.</em></p>${debug}`;
     }
 
-    const item = items[0];
-    const title = item.title || item.name || item.heading || '';
-    const url = item.contentUrl || item.url || item.uri || item.link || '';
-    const rawContent = item.content || item.snippet || item.text || item.description
-        || item.body || item.summary || '';
-    const para = firstParagraph(rawContent);
-
-    if (!title && !url && !rawContent) {
-        return `<p><em>The first result had no recognisable fields.</em></p>` +
-               debugBlock('First item (unknown shape)', item) + debug;
+    const links = [];
+    for (const item of items) {
+        const title = item.title || item.name || item.heading || '';
+        const url = item.contentUrl || item.url || item.uri || item.link || '';
+        if (!url) continue;
+        // De-duplicate by URL (the Learn server often returns multiple chunks of the same article).
+        if (links.some(l => l.url === url)) continue;
+        links.push({ title: title || url, url });
+        if (links.length >= 5) break;
     }
 
-    let html = '<div class="result-item">';
-    html += '<div class="result-title">';
-    const shownTitle = title || url || 'Result';
-    html += url
-        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(shownTitle)}</a>`
-        : escapeHtml(shownTitle);
-    html += '</div>';
-    if (para) {
-        html += `<div class="result-snippet">${renderMarkdown(para)}</div>`;
-    } else if (rawContent) {
-        html += `<div class="result-snippet"><em>(could not extract a clean paragraph)</em></div>`;
+    if (!links.length) {
+        return `<p><em>No articles with links were returned.</em></p>` +
+               debugBlock('First item (unknown shape)', items[0]) + debug;
     }
-    if (url) {
-        html += `<p class="read-more"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Read the full article →</a></p>`;
+
+    let html = '<p>Check out the following documentation articles:</p><ul class="result-links">';
+    for (const l of links) {
+        html += `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.title)}</a></li>`;
     }
-    html += '</div>';
+    html += '</ul>';
     html += debug;
     return html;
 }
