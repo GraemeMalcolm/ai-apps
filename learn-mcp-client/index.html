@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learn MCP Client</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>📚 Learn MCP Client</h1>
+            <p class="subtitle">A simple chat client for the Microsoft Learn MCP Server</p>
+        </header>
+
+        <div class="chat-wrapper">
+            <div class="chat-header">
+                <h2>💬 Ask about Microsoft technologies</h2>
+                <div class="status" id="status" aria-live="polite">Not connected</div>
+            </div>
+
+            <div class="chat-messages" id="chat-messages" role="log" aria-live="polite">
+                <div class="message assistant-message">
+                    <div class="avatar">📚</div>
+                    <div class="message-content">
+                        <p class="message-author">Learn MCP</p>
+                        <p>Hi! I'm connected to the <strong>Microsoft Learn MCP Server</strong>. Ask me a question
+                            about a Microsoft product, service, or technology, and I'll search the official Learn
+                            documentation for you.</p>
+                        <p>This is a raw MCP client &mdash; there is no language model in the loop. You'll see the
+                            documentation excerpts the MCP server returns directly.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <div class="input-wrapper">
+                    <label for="user-input" class="visually-hidden">Your question</label>
+                    <textarea id="user-input" placeholder="Ask about a Microsoft technology..." rows="1"></textarea>
+                    <button id="send-btn" class="send-btn" title="Send message" aria-label="Send message">
+                        <span aria-hidden="true">▶</span>
+                    </button>
+                </div>
+                <div class="example-questions">
+                    <p class="example-label">Try asking:</p>
+                    <div class="example-buttons">
+                        <button class="example-btn" data-q="How do I create an Azure Function in Python?">How do I create an Azure Function in Python?</button>
+                        <button class="example-btn" data-q="What is Microsoft Foundry?">What is Microsoft Foundry?</button>
+                        <button class="example-btn" data-q="How do I deploy a container to Azure Container Apps?">Deploy a container to Azure Container Apps</button>
+                        <button class="example-btn" data-q="What is Model Context Protocol?">What is Model Context Protocol?</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>MCP endpoint: <code>https://learn.microsoft.com/api/mcp</code></p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
