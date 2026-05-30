@@ -15,6 +15,26 @@ let nextId = 1;
 let tools = [];
 let initializing = null;
 
+// Debug mode is on by default while CORS / payload-shape issues are being diagnosed.
+// Disable by appending ?debug=0 to the URL.
+const DEBUG = new URLSearchParams(location.search).get('debug') !== '0';
+
+function debugBlock(label, data) {
+    if (!DEBUG) return '';
+    let text;
+    try { text = typeof data === 'string' ? data : JSON.stringify(data, null, 2); }
+    catch { text = String(data); }
+    return `<details class="debug-block"><summary>${escapeHtml(label)}</summary><pre>${escapeHtml(text)}</pre></details>`;
+}
+
+function errorDetails(err) {
+    const lines = [];
+    lines.push(`name: ${err && err.name}`);
+    lines.push(`message: ${err && err.message}`);
+    if (err && err.stack) lines.push('stack:\n' + err.stack);
+    return lines.join('\n');
+}
+
 function setStatus(text, cls) {
     statusEl.textContent = text;
     statusEl.className = 'status' + (cls ? ' ' + cls : '');
@@ -225,24 +245,46 @@ function firstParagraph(text) {
 }
 
 function renderFirstResult(result) {
+    const debug = debugBlock('Raw MCP result', result);
+
+    if (result && result.isError) {
+        return `<p><strong>Tool returned an error.</strong></p>${debug}`;
+    }
+
     const items = extractItems(result);
-    if (!items.length) return '<p><em>No results returned.</em></p>';
+    if (!items.length) {
+        return `<p><em>No results returned.</em></p>${debug}`;
+    }
+
     const item = items[0];
-    const title = item.title || item.name || item.heading || 'Result';
+    const title = item.title || item.name || item.heading || '';
     const url = item.contentUrl || item.url || item.uri || item.link || '';
-    const para = firstParagraph(item.content || item.snippet || item.text || item.description || '');
+    const rawContent = item.content || item.snippet || item.text || item.description
+        || item.body || item.summary || '';
+    const para = firstParagraph(rawContent);
+
+    if (!title && !url && !rawContent) {
+        return `<p><em>The first result had no recognisable fields.</em></p>` +
+               debugBlock('First item (unknown shape)', item) + debug;
+    }
 
     let html = '<div class="result-item">';
     html += '<div class="result-title">';
+    const shownTitle = title || url || 'Result';
     html += url
-        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>`
-        : escapeHtml(title);
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(shownTitle)}</a>`
+        : escapeHtml(shownTitle);
     html += '</div>';
-    if (para) html += `<div class="result-snippet">${renderMarkdown(para)}</div>`;
+    if (para) {
+        html += `<div class="result-snippet">${renderMarkdown(para)}</div>`;
+    } else if (rawContent) {
+        html += `<div class="result-snippet"><em>(could not extract a clean paragraph)</em></div>`;
+    }
     if (url) {
         html += `<p class="read-more"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Read the full article →</a></p>`;
     }
     html += '</div>';
+    html += debug;
     return html;
 }
 
@@ -279,7 +321,13 @@ async function handleSend() {
     } catch (err) {
         console.error(err);
         setStatus('Error', 'error');
-        thinking.innerHTML = `<p><strong>Error:</strong> ${escapeHtml(err.message || String(err))}</p>`;
+        const hint = (err && /Failed to fetch|NetworkError|TypeError/i.test(err.message || ''))
+            ? '<p>This usually means the browser blocked the request (CORS) or the network call failed before a response was received. Open DevTools → Network to see the blocked request.</p>'
+            : '';
+        thinking.innerHTML =
+            `<p><strong>Error:</strong> ${escapeHtml(err.message || String(err))}</p>` +
+            hint +
+            debugBlock('Error details', errorDetails(err));
     } finally {
         sendBtn.disabled = false;
         userInput.focus();
@@ -309,8 +357,28 @@ document.querySelectorAll('.example-btn').forEach(btn => {
 ensureInitialized().catch(err => {
     console.error(err);
     setStatus('Connection failed', 'error');
+    const hint = (err && /Failed to fetch|NetworkError|TypeError/i.test(err.message || ''))
+        ? '<p>The browser likely blocked the request via CORS, or the network call failed. Open DevTools → Network to inspect the failed request to <code>' + escapeHtml(MCP_ENDPOINT) + '</code>.</p>'
+        : '';
     addMessage('assistant',
-        `<p><strong>Could not connect to the MCP server.</strong></p><p>${escapeHtml(err.message || String(err))}</p>` +
-        '<p>This page calls <code>https://learn.microsoft.com/api/mcp</code> directly from the browser, so a CORS or network error here means the server rejected the request.</p>',
+        `<p><strong>Could not connect to the MCP server.</strong></p>` +
+        `<p>${escapeHtml(err.message || String(err))}</p>` +
+        hint +
+        debugBlock('Error details', errorDetails(err)),
+        'Learn MCP');
+});
+
+// Surface uncaught errors in the chat too — useful on GitHub Pages where DevTools may not be open.
+window.addEventListener('error', (e) => {
+    addMessage('assistant',
+        `<p><strong>Uncaught error:</strong> ${escapeHtml(e.message || 'unknown')}</p>` +
+        debugBlock('Source', `${e.filename}:${e.lineno}:${e.colno}`),
+        'Learn MCP');
+});
+window.addEventListener('unhandledrejection', (e) => {
+    const reason = e.reason;
+    addMessage('assistant',
+        `<p><strong>Unhandled rejection:</strong> ${escapeHtml((reason && reason.message) || String(reason))}</p>` +
+        debugBlock('Error details', errorDetails(reason || {})),
         'Learn MCP');
 });

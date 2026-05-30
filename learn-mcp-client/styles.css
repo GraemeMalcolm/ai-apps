@@ -230,6 +230,33 @@ header h1 {
     font-weight: 500;
 }
 
+.debug-block {
+    margin-top: 10px;
+    font-size: 0.8em;
+    background: #f0f2f5;
+    border: 1px solid #d0d8e0;
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
+.debug-block summary {
+    cursor: pointer;
+    color: #1a3a6c;
+    font-weight: 500;
+}
+
+.debug-block pre {
+    margin-top: 6px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    max-height: 320px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .tool-trace {
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 0.8em;
