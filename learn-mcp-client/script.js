@@ -270,13 +270,16 @@ function renderFirstResult(result) {
     }
 
     const links = [];
+    const seenBase = new Set();
     for (const item of items) {
         const title = item.title || item.name || item.heading || '';
         const url = item.contentUrl || item.url || item.uri || item.link || '';
         if (!url) continue;
-        // De-duplicate by URL (the Learn server often returns multiple chunks of the same article).
-        if (links.some(l => l.url === url)) continue;
-        links.push({ title: title || url, url });
+        // Collapse multiple chunks of the same article (same URL ignoring #section anchor).
+        const base = url.split('#')[0];
+        if (seenBase.has(base)) continue;
+        seenBase.add(base);
+        links.push({ title: title || base, url: base });
         if (links.length >= 5) break;
     }
 
