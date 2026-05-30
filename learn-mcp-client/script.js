@@ -212,6 +212,12 @@ function extractItems(result) {
             if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
                 try { parsed = JSON.parse(trimmed); } catch { /* not JSON */ }
             }
+            // Unwrap common envelope shapes like { results: [...] }, { items: [...] }, { data: [...] }
+            if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {
+                for (const key of ['results', 'items', 'data', 'value', 'hits', 'documents']) {
+                    if (Array.isArray(parsed[key])) { parsed = parsed[key]; break; }
+                }
+            }
             if (Array.isArray(parsed)) items.push(...parsed);
             else if (parsed && typeof parsed === 'object') items.push(parsed);
             else items.push({ content: part.text });
@@ -221,16 +227,17 @@ function extractItems(result) {
 }
 
 // Take the first non-empty paragraph from a markdown/plain-text blob.
-// Skips headings, front-matter, and very short fragments.
+// Skips headings, front-matter, code fences, lists, tables, and very short fragments.
 function firstParagraph(text) {
     if (!text) return '';
     let s = String(text).replace(/\r\n/g, '\n').trim();
-    // Strip YAML front-matter (--- ... ---) often present in Learn doc chunks.
+    // Strip YAML front-matter (--- ... ---).
     if (s.startsWith('---')) {
         const end = s.indexOf('\n---', 3);
         if (end !== -1) s = s.slice(end + 4).trim();
     }
     const blocks = s.split(/\n\s*\n/);
+    let fallback = '';
     for (const raw of blocks) {
         const b = raw.trim();
         if (!b) continue;
@@ -238,10 +245,16 @@ function firstParagraph(text) {
         if (b.startsWith('```')) continue;           // code fence
         if (b.startsWith('|')) continue;             // table row
         if (b.startsWith('>')) continue;             // blockquote
+        if (/^[-*+]\s/.test(b)) continue;            // bulleted list
+        if (/^\d+\.\s/.test(b)) {                    // numbered list step
+            // Keep as a fallback in case there is no plain prose paragraph.
+            if (!fallback) fallback = b.replace(/\n+/g, ' ');
+            continue;
+        }
         if (b.length < 40 && !/[.!?]/.test(b)) continue; // probably a label
         return b.replace(/\n+/g, ' ');
     }
-    return blocks[0] ? blocks[0].replace(/\n+/g, ' ') : '';
+    return fallback || (blocks[0] ? blocks[0].replace(/\n+/g, ' ') : '');
 }
 
 function renderFirstResult(result) {
