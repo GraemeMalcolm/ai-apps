@@ -1,0 +1,2703 @@
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
+
+class AskAnton {
+    constructor() {
+        // Debug flags for testing failover (can be set via URL params or console)
+        this.debugConfig = this.parseDebugConfig();
+
+        this.wllama = null;
+        this.conversationHistory = [];
+        this.isGenerating = false;
+        this.indexData = null;
+        this.stopRequested = false;
+        this.currentStream = null;
+        this.currentAbortController = null;
+        this.isStoppingGeneration = false;
+        this.usingWllama = false;
+        this.wllamaRuntimeBackend = 'unknown';
+        this.wllamaStateNeedsReset = false;
+        this.currentMode = 'basic';
+        this.availableModes = {
+            cpu: true,
+            basic: true
+        };
+        this.isLoadingModel = false;
+        this.currentModal = null;
+        this.lastFocusedElement = null;
+        this.modalFocusTrapHandler = null;
+        this.videoPopupWidth = 800;
+        this.videoPopupHeight = 600;
+        this.usedVoiceInput = false;
+        this.cpuModeFailureMessage = "I'm sorry, something went wrong in Phi 3.1 mode. If this keeps happening, please try switching to Basic mode.";
+        this.lastWllamaCompletionErrored = false;
+
+        // Vosk speech recognition (lazy-loaded fallback)
+        this.voskModel = null;
+        this.voskRecognizer = null;
+        this.voskLoaded = false;
+        this.voskLoadingFailed = false;
+        this.isRecording = false;
+        this.mediaStream = null;
+        this.audioContext = null;
+        this.processorNode = null;
+        this.sourceNode = null;
+        // Calculate speech model path relative to the base path
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        const rootPath = basePath.substring(0, basePath.lastIndexOf('/'));
+        this.speechModelUrl = `${rootPath}/speech-model/speech-model.tar.gz`;
+        this.silenceTimer = null;
+        this.noSpeechTimer = null;
+        this.lastSpeechTime = null;
+        this.hasSpeech = false;
+        this.silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
+        this.noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
+        this.usingWebSpeech = true; // Try Web Speech API first
+
+        this.elements = {
+            progressSection: document.getElementById('progress-section'),
+            progressFill: document.getElementById('progress-fill'),
+            progressText: document.getElementById('progress-text'),
+            chatContainer: document.getElementById('chat-container'),
+            chatMessages: document.getElementById('chat-messages'),
+            userInput: document.getElementById('user-input'),
+            sendBtn: document.getElementById('send-btn'),
+            micBtn: document.getElementById('mic-btn'),
+            restartBtn: document.getElementById('restart-btn'),
+            searchStatus: document.getElementById('search-status'),
+            modeSelect: document.getElementById('mode-select'),
+            aboutBtn: document.getElementById('about-btn'),
+            aboutModal: document.getElementById('about-modal'),
+            aboutModalClose: document.getElementById('about-modal-close'),
+            aboutModalOk: document.getElementById('about-modal-ok')
+        };
+
+        this.systemPrompt = `You are Anton, a knowledgeable and friendly AI learning assistant who helps students understand AI concepts.
+
+IMPORTANT: Follow these guidelines when responding:
+- Do not engage in conversation on topics other than artificial intelligence and computing. For questions outside of these topics, politely decline to answer.
+- Explain concepts clearly and concisely in a single paragraph based only on the provided context.
+- Use simple language suitable for learners in a conversational, friendly tone.
+- Provide a general descriptions and overviews, but do NOT provide explicit steps or instructions for developing AI solutions.
+- Do NOT provide links for more information.`;
+
+        // Prohibited words for content moderation (whole words only)
+        this.prohibitedWords = [];
+
+        this.initialize();
+    }
+
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+
+    parseDebugConfig() {
+        // Parse URL parameters for debug flags
+        // Usage: ?debug=true&forceWllamaFail=true
+        const params = new URLSearchParams(window.location.search);
+        const config = {
+            enabled: params.has('debug'),
+            forceWllamaFail: params.has('forceWllamaFail') || params.get('forceWllamaFail') === 'true',
+            forceBasicMode: params.has('forceBasicMode') || params.get('forceBasicMode') === 'true'
+        };
+
+        if (config.enabled) {
+            console.log('🧪 Debug mode enabled:', config);
+            console.log('💡 To force failures, add URL params: ?debug=true&forceWllamaFail=true');
+            console.log('💡 Or use console: window.askAnton.debugConfig.forceWllamaFail = true');
+        }
+
+        return config;
+    }
+
+    async initialize() {
+        try {
+            // Load prohibited words used by content moderation
+            await this.loadProhibitedWords();
+
+            // Load the index (no longer loading Vosk upfront)
+            await this.loadIndex();
+
+            // Try to initialize wllama first, then fall back to basic mode.
+            await this.initializeEngine();
+
+            // Setup event listeners
+            this.setupEventListeners();
+
+        } catch (error) {
+            console.error('Initialization error:', error);
+            this.showError('Failed to initialize. Please refresh the page.');
+        }
+    }
+
+    // ============================================================================
+    // UTILITY METHODS
+    // ============================================================================
+
+    reverseWord(text) {
+        return text.split('').reverse().join('');
+    }
+
+    shiftWord(text, amount) {
+        return text
+            .split('')
+            .map(char => String.fromCharCode(char.charCodeAt(0) + amount))
+            .join('');
+    }
+
+    async loadProhibitedWords() {
+        try {
+            const response = await fetch('moderation/mod.txt', { cache: 'no-store' });
+            if (!response.ok) throw new Error('Failed to load prohibited words');
+
+            const encodedWordsText = await response.text();
+            this.prohibitedWords = encodedWordsText
+                .split(/\r?\n/)
+                .map(word => word.trim())
+                .filter(word => word.length > 0)
+                .map(word => this.shiftWord(this.reverseWord(word.toLowerCase()), 1));
+
+            console.log('Loaded prohibited words:', this.prohibitedWords.length);
+        } catch (error) {
+            console.error('Error loading prohibited words:', error);
+            throw error;
+        }
+    }
+
+    async loadIndex() {
+        try {
+            this.updateProgress(5, 'Loading knowledge base...');
+            const response = await fetch('index.json', { cache: 'no-store' });
+            if (!response.ok) throw new Error('Failed to load index');
+            this.indexData = await response.json();
+            console.log('Loaded index with', this.indexData.length, 'categories');
+
+            // Build a flat lookup map: keyword -> {document, category, link}
+            this.keywordMap = new Map();
+            this.indexData.forEach(category => {
+                category.documents.forEach(doc => {
+                    doc.keywords.forEach(keyword => {
+                        const normalizedKeyword = keyword.toLowerCase().trim();
+                        if (normalizedKeyword) {
+                            this.keywordMap.set(normalizedKeyword, {
+                                document: doc,
+                                category: category.category,
+                                link: category.link
+                            });
+                        }
+                    });
+                });
+            });
+            console.log('Built keyword map with', this.keywordMap.size, 'keywords');
+        } catch (error) {
+            console.error('Error loading index:', error);
+            throw error;
+        }
+    }
+
+    async loadVoskModel() {
+        if (this.voskLoaded || this.voskLoadingFailed) {
+            return this.voskLoaded;
+        }
+
+        try {
+            console.log('Loading Vosk speech model from', this.speechModelUrl);
+
+            if (!window.Vosk || typeof Vosk.createModel !== 'function') {
+                console.warn('Vosk library not loaded');
+                this.voskLoadingFailed = true;
+                return false;
+            }
+
+            const loadingMsg = this.addSystemMessage('Loading offline speech model... This may take a moment.');
+            this.disableInput();
+            this.elements.micBtn.disabled = true;
+
+            this.voskModel = await Vosk.createModel(this.speechModelUrl);
+            this.voskRecognizer = new this.voskModel.KaldiRecognizer(16000);
+
+            // Set up recognizer event handlers
+            this.voskRecognizer.on("result", (message) => {
+                const result = message.result;
+                if (result && result.text) {
+                    // Clear no-speech timer since we got speech
+                    if (this.noSpeechTimer) {
+                        clearTimeout(this.noSpeechTimer);
+                        this.noSpeechTimer = null;
+                    }
+
+                    // Append the recognized text to the input
+                    const currentText = this.elements.userInput.value;
+                    this.elements.userInput.value = currentText + (currentText ? " " : "") + result.text;
+                    this.autoResizeTextarea();
+                    this.hasSpeech = true;
+                    this.lastSpeechTime = Date.now();
+                    this.resetSilenceTimer();
+                }
+            });
+
+            this.voskRecognizer.on("partialresult", (message) => {
+                // Reset silence timer on partial results too
+                const result = message.result;
+                if (result && result.partial && result.partial.trim()) {
+                    // Clear no-speech timer on partial results
+                    if (this.noSpeechTimer) {
+                        clearTimeout(this.noSpeechTimer);
+                        this.noSpeechTimer = null;
+                    }
+
+                    this.lastSpeechTime = Date.now();
+                    this.resetSilenceTimer();
+                }
+            });
+
+            this.voskLoaded = true;
+            console.log('Vosk speech model loaded successfully');
+
+            // Update the loading message
+            const msgP = loadingMsg.querySelector('p');
+            if (msgP) {
+                msgP.textContent = 'Offline speech model ready! Please try your voice input again.';
+            }
+
+            // Only re-enable inputs if we're not currently loading a model
+            if (!this.isLoadingModel) {
+                this.enableInput();
+                this.elements.micBtn.disabled = false;
+            }
+            return true;
+        } catch (error) {
+            console.error('Error loading Vosk model:', error);
+            this.voskLoadingFailed = true;
+            this.addSystemMessage('Failed to load offline speech model. Voice input is unavailable.');
+            // Only re-enable inputs if we're not currently loading a model
+            if (!this.isLoadingModel) {
+                this.enableInput();
+                this.elements.micBtn.disabled = false;
+            }
+            return false;
+        }
+    }
+
+    // ============================================================================
+    // LLM ENGINE INITIALIZATION (wllama)
+    // ============================================================================
+
+    checkWebGPUSupport() {
+        if (!navigator.gpu) {
+            console.log('WebGPU not supported in this browser');
+            return false;
+        }
+        return true;
+    }
+
+    isWebGpuRuntimeError(errorOrMessage) {
+        const errorText = (typeof errorOrMessage === 'string'
+            ? errorOrMessage
+            : errorOrMessage?.message || errorOrMessage?.toString?.() || '').toLowerCase();
+
+        return errorText.includes('buffer was destroyed') ||
+            errorText.includes('unreachable') ||
+            errorText.includes('memory access out of bounds') ||
+            errorText.includes('ggml_assert') ||
+            errorText.includes('ggml_webgpu') ||
+            errorText.includes('queue work failed') ||
+            errorText.includes('queue wait timed out') ||
+            errorText.includes('aborted()') ||
+            errorText.includes('cannot find waiting task') ||
+            errorText.includes('received abort signal from llama.cpp');
+    }
+
+    async initializeEngine() {
+        // 🧪 DEBUG: Force Basic mode for testing
+        if (this.debugConfig.enabled && this.debugConfig.forceBasicMode) {
+            console.log('🧪 DEBUG: Forcing Basic mode');
+            this.initializeBasicMode(
+                'Ready to chat! (Basic mode)',
+                '🧪 DEBUG: Running in forced Basic mode for testing.'
+            );
+            return;
+        }
+
+        try {
+            await this.initializeWllama(null, {
+                activateMode: true,
+                showChatInterface: true,
+                showFatalError: false
+            });
+            return;
+        } catch (error) {
+            console.log('Phi 3.1 model initialization failed, falling back to Basic mode');
+            this.availableModes.cpu = false;
+        }
+
+        this.initializeBasicMode(
+            'Ready to chat! (Basic mode)',
+            'Using Basic mode because the Phi 3.1 model could not be loaded.'
+        );
+    }
+
+    async initializeWllama(progressCallback = null, options = {}) {
+        const {
+            activateMode = true,
+            showChatInterface = true,
+            showFatalError = false
+        } = options;
+
+        try {
+            // Check if already initialized
+            if (this.wllama) {
+                console.log('Wllama already initialized');
+                this.availableModes.cpu = true;
+                if (activateMode) {
+                    this.setCurrentMode('cpu');
+                }
+                return;
+            }
+
+            const isLazyLoad = progressCallback !== null || !showChatInterface;
+
+            // 🧪 DEBUG: Force Wllama initialization failure for testing error handling
+            if (this.debugConfig.enabled && this.debugConfig.forceWllamaFail) {
+                console.log('🧪 DEBUG: Forcing Wllama initialization to fail (testing error handling)');
+                if (!isLazyLoad) {
+                    this.updateProgress(15, 'Loading Phi 3.1 model...');
+                }
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate some initialization time
+                throw new Error('DEBUG: Forced Wllama initialization failure');
+            }
+
+            if (!isLazyLoad) {
+                this.updateProgress(15, 'Loading Phi 3.1 model...');
+            }
+
+            // Configure WASM paths for CDN
+            const CONFIG_PATHS = {
+                default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
+            };
+
+            // Try multithreaded first if cross-origin isolated, fall back to single-threaded
+            const useMultiThread = window.crossOriginIsolated === true;
+            const availableThreads = navigator.hardwareConcurrency || 4; // Fallback to 4 if not available
+            const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+            const hasWebGPU = this.checkWebGPUSupport();
+            console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
+            console.log(`WebGPU available for wllama: ${hasWebGPU}`);
+
+            const baseModelConfig = {
+                n_ctx: 384,
+                progressCallback: ({ loaded, total }) => {
+                    // Cap at 98% to leave room for final ready message.
+                    const percentage = Math.min(98, Math.max(15, Math.round((loaded / total) * 85) + 15));
+                    const progress = loaded / total;
+
+                    if (!isLazyLoad) {
+                        this.updateProgress(
+                            percentage,
+                            `Loading model: ${Math.round((loaded / total) * 100)}%`
+                        );
+                    } else {
+                        console.log(`Loading wllama: ${Math.round((loaded / total) * 100)}%`);
+                        if (progressCallback) {
+                            progressCallback(progress);
+                        }
+                    }
+                }
+            };
+
+            const modelRef = {
+                repo: 'ngxson/wllama-split-models',
+                file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
+            };
+
+            const attemptLoad = async ({ gpuEnabled, threadCount }) => {
+                this.wllama = new Wllama(CONFIG_PATHS);
+                await this.wllama.loadModelFromHF(
+                    modelRef,
+                    {
+                        ...baseModelConfig,
+                        n_gpu_layers: gpuEnabled ? 16 : 0,
+                        offload_kqv: false,
+                        n_batch: gpuEnabled ? 48 : 32,
+                        n_ubatch: gpuEnabled ? 24 : 16,
+                        n_threads: threadCount,
+                        progressCallback: baseModelConfig.progressCallback
+                    }
+                );
+            };
+
+            try {
+                const runtimeThreads = Math.max(1, Math.min(preferredThreads, hasWebGPU ? 4 : preferredThreads));
+
+                if (hasWebGPU) {
+                    console.log(`Attempting wllama WebGPU config (threads=${runtimeThreads}, gpu_layers=16, batch=48, ubatch=24, n_ctx=384)`);
+                    await attemptLoad({ gpuEnabled: true, threadCount: runtimeThreads });
+                    this.wllamaRuntimeBackend = 'webgpu';
+                } else {
+                    console.log(`Attempting wllama CPU config (threads=${runtimeThreads}, n_ctx=384)`);
+                    await attemptLoad({ gpuEnabled: false, threadCount: runtimeThreads });
+                    this.wllamaRuntimeBackend = 'cpu';
+                }
+            } catch (primaryError) {
+                if (hasWebGPU) {
+                    console.warn('WebGPU initialization failed, retrying in CPU mode', primaryError?.message || primaryError);
+                    this.wllama = null;
+                    try {
+                        await attemptLoad({ gpuEnabled: false, threadCount: 1 });
+                        this.wllamaRuntimeBackend = 'cpu';
+                        console.log('Wllama initialized successfully in CPU fallback mode');
+                    } catch (cpuFallbackError) {
+                        throw cpuFallbackError;
+                    }
+                } else {
+                    console.warn('CPU initialization failed, retrying in single-thread mode', primaryError?.message || primaryError);
+                    this.wllama = null;
+                    try {
+                        await attemptLoad({ gpuEnabled: false, threadCount: 1 });
+                        this.wllamaRuntimeBackend = 'cpu';
+                        console.log('Wllama initialized successfully in CPU single-thread fallback mode');
+                    } catch (cpuFallbackError) {
+                        throw cpuFallbackError;
+                    }
+                }
+            }
+
+            // Skip startup cache warming. This app always sends fresh system/user context,
+            // so warming is usually not worth the extra startup delay.
+            if (!isLazyLoad) {
+                this.updateProgress(100, 'Ready to chat! (Phi 3.1 mode)');
+            } else if (progressCallback) {
+                progressCallback(1);
+            }
+            console.log(`Wllama initialized successfully with Phi 3.1 (${this.wllamaRuntimeBackend} backend)`);
+            this.availableModes.cpu = true;
+            this.updateModeSelector();
+
+            if (activateMode) {
+                this.setCurrentMode('cpu');
+            }
+
+            if (showChatInterface) {
+                setTimeout(() => {
+                    this.showChatInterface();
+                }, 500);
+            }
+
+        } catch (error) {
+            console.error('Failed to initialize wllama:', error);
+            this.availableModes.cpu = false;
+            this.wllamaRuntimeBackend = 'unknown';
+            this.updateModeSelector();
+            if (showFatalError) {
+                this.showError('Failed to load AI model. Please refresh the page.');
+            }
+            throw error;
+        }
+    }
+
+    async warmWllamaCache(isLazyLoad = true, progressCallback = null, updateFinalProgress = false) {
+        // Warm the cache with the system instruction to improve first response time
+        if (!this.wllama) return;
+
+        try {
+            const systemInstruction = '<|im_start|>system\n' +
+                'You are Anton, a teacher of AI and computing concepts.\n' +
+                'Discuss AI and computing topics only\n' +
+                'Do not provide specific steps or instructions\n\n' +
+                'Provide factual and accurate information\n\n' +
+                '<|im_end|>\n\n';
+
+            console.log('Warming cache with system instruction...');
+
+            // Update progress message
+            if (!isLazyLoad) {
+                this.updateProgress(99, 'Optimizing model...');
+            } else if (progressCallback) {
+                // For lazy loading, pass progress as 0.99
+                progressCallback(0.99);
+            }
+
+            await this.wllama.createCompletion({
+                prompt: systemInstruction,
+                max_tokens: 1,
+                temperature: 0.0,
+                stream: false
+            });
+            console.log('Cache warmed successfully');
+
+            // Update to final ready state if requested
+            if (!isLazyLoad && updateFinalProgress) {
+                this.updateProgress(100, 'Ready to chat! (Phi 3.1 mode)');
+            }
+        } catch (error) {
+            const errorMessage = error.message || error.toString();
+            const isWebGPUError = this.isWebGpuRuntimeError(errorMessage);
+
+            if (isWebGPUError) {
+                console.log('Cache warming failed due to WebGPU error:', errorMessage);
+                // Rethrow WebGPU errors so they can be caught and handled properly
+                throw error;
+            } else {
+                // Non-WebGPU errors are truly non-critical
+                console.log('Cache warming failed (non-critical):', errorMessage);
+                // Still show ready message even if cache warming failed
+                if (!isLazyLoad && updateFinalProgress) {
+                    this.updateProgress(100, 'Ready to chat! (Phi 3.1 mode)');
+                }
+            }
+        }
+    }
+
+    // ============================================================================
+    // UI STATE MANAGEMENT
+    // ============================================================================
+
+    updateProgress(percentage, text) {
+        this.elements.progressFill.style.width = `${percentage}%`;
+        this.elements.progressText.textContent = text;
+
+        // Update progress bar ARIA attributes
+        const progressBar = document.querySelector('.progress-bar');
+        if (progressBar) {
+            progressBar.setAttribute('aria-valuenow', percentage);
+            progressBar.setAttribute('aria-label', text);
+        }
+    }
+
+    showChatInterface() {
+        this.elements.progressSection.style.display = 'none';
+        this.elements.chatContainer.style.display = 'flex';
+        this.updateModeSelector();
+        this.elements.userInput.focus();
+    }
+
+    initializeBasicMode(progressText = 'Ready to chat! (Basic mode)', notice = null) {
+        this.setCurrentMode('basic');
+        this.updateProgress(100, progressText);
+
+        setTimeout(() => {
+            this.showChatInterface();
+            if (notice) {
+                this.addSystemMessage(notice);
+            }
+        }, 500);
+    }
+
+    setCurrentMode(mode) {
+        this.currentMode = mode;
+        this.usingWllama = mode === 'cpu';
+    }
+
+    getModeLabel(mode = this.currentMode) {
+        if (mode === 'cpu') {
+            return 'Phi 3.1 (wllama)';
+        }
+
+        return 'None (Basic Q&A)';
+    }
+
+    showError(message) {
+        this.elements.progressText.textContent = message;
+        this.elements.progressFill.style.backgroundColor = '#dc3545';
+    }
+
+    disableInput() {
+        this.elements.userInput.disabled = true;
+        this.elements.sendBtn.disabled = true;
+        this.elements.micBtn.disabled = true;
+        this.elements.userInput.placeholder = 'Loading model...';
+    }
+
+    enableInput() {
+        this.elements.userInput.disabled = false;
+        this.elements.sendBtn.disabled = false;
+        this.elements.micBtn.disabled = false;
+        this.elements.userInput.placeholder = 'Ask a question about AI...';
+        this.elements.userInput.focus();
+    }
+
+    // ============================================================================
+    // EVENT LISTENERS
+    // ============================================================================
+
+    setupEventListeners() {
+        // Send button click
+        this.elements.sendBtn.addEventListener('click', () => {
+            if (this.isGenerating) {
+                this.stopGeneration();
+            } else {
+                this.sendMessage();
+            }
+        });
+
+        // Enter key to send (Shift+Enter for new line)
+        this.elements.userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !this.isGenerating) {
+                e.preventDefault();
+                this.sendMessage();
+            }
+        });
+
+        // Auto-resize textarea
+        this.elements.userInput.addEventListener('input', () => {
+            this.autoResizeTextarea();
+        });
+
+        // Keyboard navigation
+        this.elements.userInput.addEventListener('keydown', (e) => {
+            // Enter to send (without Shift)
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!this.isGenerating) {
+                    this.sendMessage();
+                }
+            }
+            // Escape to stop generation
+            if (e.key === 'Escape' && this.isGenerating) {
+                this.stopGeneration();
+            }
+        });
+
+        // Global keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + K to focus input
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                this.elements.userInput.focus();
+            }
+            // Ctrl/Cmd + N for new chat
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                this.restartConversation();
+            }
+        });
+
+        // Microphone button
+        this.elements.micBtn.addEventListener('click', () => {
+            this.handleMicClick();
+        });
+
+        // Restart button
+        this.elements.restartBtn.addEventListener('click', () => {
+            this.restartConversation();
+        });
+
+        // Mode selector
+        this.elements.modeSelect.addEventListener('change', (event) => {
+            this.switchMode(event.target.value);
+        });
+
+        // About button
+        this.elements.aboutBtn.addEventListener('click', () => {
+            this.lastFocusedElement = this.elements.aboutBtn;
+            this.showAboutModal();
+        });
+
+        // About modal handlers
+        this.elements.aboutModalClose.addEventListener('click', () => {
+            this.hideAboutModal();
+        });
+
+        this.elements.aboutModalOk.addEventListener('click', () => {
+            this.hideAboutModal();
+        });
+
+        // Close about modal on overlay click
+        this.elements.aboutModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.aboutModal || e.target.classList.contains('modal-overlay')) {
+                this.hideAboutModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (this.elements.aboutModal.style.display === 'flex') {
+                    this.hideAboutModal();
+                }
+            }
+        });
+
+        // Example question buttons
+        const exampleBtns = document.querySelectorAll('.example-btn');
+        exampleBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const question = btn.getAttribute('data-question');
+                this.elements.userInput.value = question;
+                this.elements.userInput.focus();
+                this.autoResizeTextarea();
+            });
+        });
+
+        this.elements.chatMessages.addEventListener('click', (e) => {
+            const videoLink = e.target.closest('.video-link');
+            if (!videoLink) {
+                return;
+            }
+
+            e.preventDefault();
+            this.openVideoPopup(videoLink.href);
+        });
+
+        this.elements.chatMessages.addEventListener('keydown', (e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('video-link')) {
+                e.preventDefault();
+                this.openVideoPopup(e.target.href);
+            }
+        });
+    }
+
+    // ============================================================================
+    // CONTENT MODERATION & TEXT PROCESSING
+    // ============================================================================
+
+    autoResizeTextarea() {
+        const textarea = this.elements.userInput;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    }
+
+    containsProhibitedWords(text) {
+        // Convert to lowercase for case-insensitive matching
+        const lowerText = text.toLowerCase();
+
+        // Create word boundaries regex pattern for whole word matching
+        for (const word of this.prohibitedWords) {
+            // Use word boundary to match whole words only
+            const regex = new RegExp(`\\b${word}\\b`, 'i');
+            if (regex.test(lowerText)) {
+                console.log(`Content moderation: blocked word "${word}" detected`);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    normalizeSearchText(text) {
+        return text.toLowerCase().trim().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    getSearchIntentQuery(text) {
+        const trimmedText = text.trim();
+        const lowerText = trimmedText.toLowerCase();
+
+        if (lowerText.startsWith('search ')) {
+            return trimmedText.slice(7).trim();
+        }
+
+        if (lowerText.startsWith('find ')) {
+            return trimmedText.slice(5).trim();
+        }
+
+        if (lowerText.includes('documentation') || lowerText.includes('docs') || lowerText.includes('microsoft learn') || lowerText.includes('how to') || lowerText.includes('how do i') || lowerText.includes('how can i')) {
+            return trimmedText;
+        }
+
+        return null;
+    }
+
+    extractBingSearchKeywords(text) {
+        const normalizedText = this.normalizeSearchText(text);
+        const words = normalizedText.split(' ').filter(Boolean);
+        const stopWords = new Set([
+            // Articles, prepositions, conjunctions
+            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+            'after', 'before', 'between', 'during', 'into', 'through', 'over',
+            'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+            // Pronouns
+            'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
+            'us', 'them', 'my', 'your', 'his', 'our', 'their', 'i\'m',
+            'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
+            // Determiners and quantifiers
+            'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+            'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+            'own', 'same', 'other', 'another', 'much', 'many',
+            // Verbs (auxiliary, modal, and common generic)
+            'am', 'was', 'were', 'been', 'being', 'have', 'has',
+            'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+            'may', 'might', 'must', 'shall', 'ought', 'will',
+            'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+            'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
+            'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
+            'describe', 'define',
+            // Question words
+            'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
+            'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
+            'hows',
+            // Common adverbs
+            'also', 'just', 'now', 'here', 'there', 'very', 'too',
+            'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
+            'perhaps', 'about',
+            // Other common words
+            'yes', 'no', 'thing', 'something', 'anything', 'nothing',
+            'everything', 'someone', 'anyone', 'everyone', 'understand',
+            'think', 'believe', 'feel', 'appear', 'say',
+            'anton', 'please', 'using', 'search', 'docs',
+            'documentation', 'learn', 'details', 'overview'
+        ]);
+        const uniqueWords = [];
+        const seenWords = new Set();
+
+        words.forEach(word => {
+            if (word.length < 2 || stopWords.has(word) || seenWords.has(word)) {
+                return;
+            }
+
+            seenWords.add(word);
+            uniqueWords.push(word);
+        });
+
+        return uniqueWords.join(' ');
+    }
+
+    // ============================================================================
+    // SEARCH & CONTEXT RETRIEVAL
+    // ============================================================================
+
+    performSearch(userQuestion) {
+        const lowerQuestion = userQuestion.toLowerCase().trim();
+
+        // Normalize the question: remove punctuation, extra spaces
+        const normalizedQuestion = this.normalizeSearchText(lowerQuestion);
+        const words = normalizedQuestion.split(' ');
+
+        // Extract all n-grams (trigrams, bigrams, unigrams)
+        const nGrams = [];
+
+        // Trigrams (3-word phrases)
+        for (let i = 0; i <= words.length - 3; i++) {
+            nGrams.push({
+                text: words.slice(i, i + 3).join(' '),
+                length: 3
+            });
+        }
+
+        // Bigrams (2-word phrases)
+        for (let i = 0; i <= words.length - 2; i++) {
+            nGrams.push({
+                text: words.slice(i, i + 2).join(' '),
+                length: 2
+            });
+        }
+
+        // Unigrams (single words) - filter out very short words and common stop words
+        const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give', 'anton', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'why', 'which', 'whom', 'whose', 'why', 'all', 'any', 'this', 'that', 'these', 'those'];
+        words.forEach(word => {
+            if (word.length >= 2 && !stopWords.includes(word)) {
+                nGrams.push({
+                    text: word,
+                    length: 1
+                });
+            }
+        });
+
+        console.log('Extracted n-grams:', nGrams.map(ng => `"${ng.text}" (${ng.length})`));
+
+        // Match n-grams to keywords in the index
+        const matchedKeywords = new Set();
+        const documentMatches = new Map(); // doc id -> {doc, category, link, matchedKeywords[]}
+
+        nGrams.forEach(ngram => {
+            const match = this.keywordMap.get(ngram.text);
+            if (match) {
+                matchedKeywords.add(ngram.text);
+
+                const docId = match.document.id;
+                if (!documentMatches.has(docId)) {
+                    documentMatches.set(docId, {
+                        document: match.document,
+                        category: match.category,
+                        link: match.link,
+                        matchedKeywords: []
+                    });
+                }
+                documentMatches.get(docId).matchedKeywords.push(ngram.text);
+            }
+        });
+
+        // Filter out keywords that are subsets of longer matched keywords
+        // Example: if "large language model" is matched, remove "language model" and "language"
+        const filteredKeywords = new Set();
+        const sortedKeywords = Array.from(matchedKeywords).sort((a, b) => {
+            const aWords = a.split(' ').length;
+            const bWords = b.split(' ').length;
+            return bWords - aWords; // Longer phrases first
+        });
+
+        sortedKeywords.forEach(keyword => {
+            // Check if this keyword is a subset of any already-added keyword
+            let isSubset = false;
+            for (const existing of filteredKeywords) {
+                if (existing !== keyword && existing.includes(keyword)) {
+                    isSubset = true;
+                    break;
+                }
+            }
+            if (!isSubset) {
+                filteredKeywords.add(keyword);
+            }
+        });
+
+        console.log('Matched keywords (before filtering):', Array.from(matchedKeywords));
+        console.log('Filtered keywords (after removing subsets):', Array.from(filteredKeywords));
+
+        // Rebuild document matches using only filtered keywords
+        const finalDocumentMatches = [];
+        documentMatches.forEach((match, docId) => {
+            // Only include if at least one of its keywords survived filtering
+            const validKeywords = match.matchedKeywords.filter(kw => filteredKeywords.has(kw));
+            if (validKeywords.length > 0) {
+                finalDocumentMatches.push({
+                    ...match,
+                    matchedKeywords: validKeywords
+                });
+            }
+        });
+
+        console.log(`Found ${finalDocumentMatches.length} matching documents`);
+        if (finalDocumentMatches.length > 0) {
+            console.log('Matched documents:', finalDocumentMatches.map(m => ({
+                id: m.document.id,
+                title: m.document.title,
+                category: m.category,
+                keywords: m.matchedKeywords
+            })));
+        }
+
+        return {
+            matches: finalDocumentMatches,
+            matchedKeywords: Array.from(filteredKeywords)
+        };
+    }
+
+    searchContext(userQuestion) {
+        const { matches, matchedKeywords } = this.performSearch(userQuestion);
+
+        // If no matches, return null context
+        if (matches.length === 0) {
+            this.elements.searchStatus.textContent = '🔍 No specific context found';
+            return { context: null, categories: [], links: [], documents: [], videos: [] };
+        }
+
+        // Rank documents by match quality (documents with longer/better keyword matches come first)
+        const rankedMatches = matches.sort((a, b) => {
+            // Calculate match quality score: sum of matched keyword lengths
+            const aScore = a.matchedKeywords.reduce((sum, kw) => sum + kw.split(' ').length, 0);
+            const bScore = b.matchedKeywords.reduce((sum, kw) => sum + kw.split(' ').length, 0);
+            return bScore - aScore; // Higher score first
+        });
+
+        // Build context from all matched documents - use full content, no summarization
+        const contextParts = rankedMatches.map(match => {
+            return match.document.content;
+        });
+
+        const categories = [...new Set(rankedMatches.map(m => m.category))];
+        const links = [...new Set(rankedMatches.map(m => m.link))];
+        const documents = rankedMatches.map(m => m.document);
+        const videos = documents.filter(doc => doc.video_id).map(doc => ({
+            video_id: doc.video_id,
+            title: doc.title
+        }));
+
+        this.elements.searchStatus.textContent = `🔍 Found context in: ${categories.join(', ')}`;
+
+        return {
+            context: contextParts.join('\n\n'),
+            categories: categories,
+            links: links,
+            documents: documents,
+            videos: videos
+        };
+    }
+
+    // ============================================================================
+    // MESSAGE HANDLING & RESPONSE GENERATION
+    // ============================================================================
+
+    async sendMessage() {
+        const userMessage = this.elements.userInput.value.trim();
+
+        // Validate input
+        if (!userMessage || this.isGenerating || this.isLoadingModel || this.isStoppingGeneration) return;
+
+        // Limit message length to prevent abuse
+        const MAX_MESSAGE_LENGTH = 1000;
+        if (userMessage.length > MAX_MESSAGE_LENGTH) {
+            this.addSystemMessage(`Message too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.`);
+            return;
+        }
+
+        // Store voice input flag before any processing
+        const usedVoice = this.usedVoiceInput;
+        this.usedVoiceInput = false;
+
+        // Content moderation: check for prohibited words (whole words only)
+        if (this.containsProhibitedWords(userMessage)) {
+            // Clear input and reset height
+            this.elements.userInput.value = '';
+            this.elements.userInput.style.height = 'auto';
+
+            // Add user message to chat
+            this.addMessage('user', userMessage);
+
+            // Play audio if voice input was used
+            if (usedVoice) {
+                this.playModerationAudio();
+            }
+
+            // Add moderation response
+            this.addMessage('assistant', "I'm sorry, I can't help with that because it triggered a content-safety filtering policy. I can only help with information about AI and computing.");
+            this.elements.userInput.focus();
+            return;
+        }
+
+        // Check if wllama is still loading when in Phi 3.1 mode
+        if (this.currentMode === 'cpu' && !this.wllama) {
+            this.addSystemMessage('Phi 3.1 mode is still loading. Please wait...');
+            return;
+        }
+
+        // Clear input and reset height
+        this.elements.userInput.value = '';
+        this.elements.userInput.style.height = 'auto';
+
+        // Add user message to chat
+        this.addMessage('user', userMessage);
+
+        // Check if this is an initial greeting (only if no messages yet)
+        const messageCount = this.elements.chatMessages.querySelectorAll('.message').length;
+        if (messageCount <= 1) { // Only user's message is in chat
+            const greetingPattern = /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[\s!?]*$/i;
+            if (greetingPattern.test(userMessage)) {
+                // Respond with greeting without searching
+                const greetingResponse = "Hello, I'm Anton. I'm here to help you learn about AI concepts. What would you like to know?";
+                this.addMessage('assistant', greetingResponse);
+                this.elements.userInput.focus();
+                return;
+            }
+        }
+
+        const searchQuery = this.getSearchIntentQuery(userMessage);
+        if (searchQuery) {
+            await this.respondWithSearchLink(userMessage, searchQuery, usedVoice);
+            return;
+        }
+
+        // Search for relevant context
+        const searchResult = this.searchContext(userMessage);
+
+        // If no results found, provide Microsoft Learn search link
+        if (!searchResult.context || searchResult.documents.length === 0) {
+            await this.respondWithNoResultsSearchLink(userMessage, usedVoice);
+            return;
+        }
+
+        // Generate response
+        await this.generateResponse(userMessage, searchResult, usedVoice);
+    }
+
+    updateSendButton(isGenerating) {
+        const sendIcon = this.elements.sendBtn.querySelector('.send-icon');
+        if (isGenerating) {
+            sendIcon.textContent = '■';
+            this.elements.sendBtn.title = 'Stop generation';
+            this.elements.sendBtn.setAttribute('aria-label', 'Stop generation');
+        } else {
+            sendIcon.textContent = '▶';
+            this.elements.sendBtn.title = 'Send message';
+            this.elements.sendBtn.setAttribute('aria-label', 'Send message');
+        }
+    }
+
+    stopGeneration() {
+        this.stopRequested = true;
+
+        // Abort the generation properly using AbortController
+        if (this.currentAbortController) {
+            console.log('Aborting generation via AbortController');
+            this.currentAbortController.abort();
+            this.currentAbortController = null;
+        }
+
+        const activeStream = this.currentStream;
+
+        if (activeStream && this.currentMode === 'cpu') {
+            this.isStoppingGeneration = true;
+            this.safeStopWllamaStream(activeStream)
+                .catch((error) => {
+                    console.warn('Wllama stop cleanup failed:', error);
+                })
+                .finally(() => {
+                    this.isStoppingGeneration = false;
+                    if (this.currentStream === activeStream) {
+                        this.currentStream = null;
+                    }
+                });
+        } else {
+            this.currentStream = null;
+        }
+
+        this.updateSendButton(false);
+        console.log('Stop requested');
+    }
+
+    async safeStopWllamaStream(stream) {
+        if (!stream) {
+            return;
+        }
+
+        for (let i = 0; i < 2; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 120))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during CPU stop cleanup:', error);
+        }
+
+        // Try to reset state immediately
+        try {
+            await this.resetWllamaInterruptState();
+            console.log('Wllama state reset successfully after stop');
+        } catch (error) {
+            // Check if this is a WebGPU-specific error that requires reload
+            const errorMessage = error.message || error.toString();
+            const isWebGPUError = this.isWebGpuRuntimeError(errorMessage);
+
+            if (isWebGPUError) {
+                console.warn('WebGPU state corrupted after stop - will reload wllama before next prompt');
+                console.warn('Error:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            } else {
+                console.warn('Unexpected error during state reset:', errorMessage);
+                this.wllamaStateNeedsReset = true;
+            }
+        }
+    }
+
+    async resetWllamaInterruptState() {
+        if (!this.wllama) {
+            return;
+        }
+
+        // Prime a clean prompt after interruption so the next turn does not reuse
+        // an unfinished decode path from the previous streamed generation.
+        try {
+            await this.warmWllamaCache(true, null, false);
+        } catch (error) {
+            console.warn('Wllama reset after interruption failed:', error);
+            // Rethrow so caller can handle WebGPU errors appropriately
+            throw error;
+        }
+    }
+
+    async switchMode(targetMode) {
+        if (targetMode === this.currentMode) {
+            this.updateModeSelector();
+            return;
+        }
+
+        if (targetMode === 'basic') {
+            this.disableInput();
+            this.setCurrentMode('basic');
+            this.updateModeSelector();
+            this.addSystemMessage('Switched to Basic mode');
+            this.enableInput();
+            return;
+        }
+
+        if (!this.availableModes.cpu) {
+            this.updateModeSelector();
+            this.addSystemMessage('Phi 3.1 mode is unavailable on this device.');
+            return;
+        }
+
+        if (this.wllama) {
+            this.disableInput();
+            this.setCurrentMode('cpu');
+            this.updateModeSelector();
+            this.addSystemMessage('Switched to Phi 3.1 mode');
+            this.enableInput();
+            return;
+        }
+
+        this.isLoadingModel = true;
+        this.elements.modeSelect.disabled = true;
+        this.disableInput();
+        const loadingMsg = this.addSystemMessage('Switching to Phi 3.1 mode - loading model... 0%');
+        const loadingMsgElement = loadingMsg.querySelector('p');
+
+        try {
+            await this.initializeWllama((progress) => {
+                if (loadingMsgElement) {
+                    const percentage = Math.round(progress * 100);
+                    if (percentage >= 99) {
+                        loadingMsgElement.textContent = 'Switching to Phi 3.1 mode - optimizing model...';
+                    } else {
+                        loadingMsgElement.textContent = `Switching to Phi 3.1 mode - loading model... ${percentage}%`;
+                    }
+                }
+            }, {
+                activateMode: true,
+                showChatInterface: false,
+                showFatalError: false
+            });
+
+            if (loadingMsgElement) {
+                loadingMsgElement.textContent = 'Switched to Phi 3.1 mode';
+            }
+        } catch (error) {
+            console.error('Failed to load Phi 3.1 mode:', error);
+            this.availableModes.cpu = false;
+
+            const fallbackMode = 'basic';
+            this.setCurrentMode('basic');
+
+            if (loadingMsgElement) {
+                loadingMsgElement.textContent = `Failed to load Phi 3.1 mode. Switched to ${this.getModeLabel(fallbackMode)} mode.`;
+            }
+        } finally {
+            this.updateModeSelector();
+            this.isLoadingModel = false;
+            this.enableInput();
+            this.elements.modeSelect.disabled = false;
+        }
+    }
+
+    updateModeSelector() {
+        const { modeSelect } = this.elements;
+        if (!modeSelect) {
+            return;
+        }
+
+        const modeIcons = {
+            cpu: { enabled: '🟢', disabled: '◯' },
+            basic: { enabled: '⚪', disabled: '◯' }
+        };
+
+        Array.from(modeSelect.options).forEach(option => {
+            const mode = option.value;
+            const isAvailable = mode === 'basic' ? true : this.availableModes[mode];
+            const icon = isAvailable ? modeIcons[mode].enabled : modeIcons[mode].disabled;
+            option.textContent = `${icon} ${this.getModeLabel(mode)}`;
+            option.disabled = !isAvailable;
+        });
+
+        modeSelect.value = this.currentMode;
+
+        const modeDescriptions = {
+            cpu: 'Phi 3.1 mode uses wllama with WebGPU when available, otherwise CPU.',
+            basic: 'Basic mode returns matching content directly from the knowledge base.'
+        };
+
+        modeSelect.title = `Current mode: ${this.getModeLabel()}. ${modeDescriptions[this.currentMode]}`;
+        modeSelect.setAttribute('aria-label', `Choose a response mode. Current mode: ${this.getModeLabel()}.`);
+    }
+
+    // ============================================================================
+    // MESSAGE UI RENDERING
+    // ============================================================================
+
+    addSystemMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'system-message';
+        messageDiv.setAttribute('role', 'status');
+        messageDiv.setAttribute('aria-live', 'polite');
+        // Sanitize message to prevent XSS
+        const p = document.createElement('p');
+        p.textContent = message;
+        messageDiv.appendChild(p);
+        this.elements.chatMessages.appendChild(messageDiv);
+        this.scrollToBottom();
+        return messageDiv;
+    }
+
+    addMessage(role, content, isTyping = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${role}-message`;
+        messageDiv.setAttribute('role', 'article');
+        messageDiv.setAttribute('aria-label', `Message from ${role === 'assistant' ? 'Anton' : 'You'}`);
+
+        if (role === 'assistant') {
+            messageDiv.innerHTML = `
+                <div class="avatar anton-avatar" aria-hidden="true">
+                    <img src="images/anton-icon.png" alt="Anton the AI assistant avatar" class="avatar-image">
+                </div>
+                <div class="message-content">
+                    <p class="message-author" aria-label="From Anton">Anton</p>
+                    <div class="message-text" ${isTyping ? 'aria-live="polite" aria-busy="true"' : ''}>
+                        ${isTyping
+                    ? '<span class="typing-indicator" aria-label="Anton is typing">●●●</span>'
+                    : this.escapeHtml(content)}
+                    </div>
+                </div>
+            `;
+        } else {
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    <p class="message-author" aria-label="From You">You</p>
+                    <div class="message-text">${this.escapeHtml(content)}</div>
+                </div>
+                <div class="avatar user-avatar" aria-hidden="true">👤</div>
+            `;
+        }
+
+        this.elements.chatMessages.appendChild(messageDiv);
+        this.scrollToBottom();
+
+        return messageDiv;
+    }
+
+    renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], videos = [], placeholders = {}) {
+        let displayMessage = assistantMessage;
+
+        // Add video links if available (before Learn more links)
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                displayMessage += '\n\nWatch this video for more details: [[VIDEO_LINK_0]]';
+            } else {
+                displayMessage += '\n\nThese videos might provide more information:\n[[VIDEO_LINKS]]';
+            }
+        }
+
+        // Add learn more links after videos
+        if (links && links.length > 0 && categories && categories.length > 0) {
+            displayMessage += '\n\n---\n\n**Learn more:** [[LEARN_MORE_LINKS]]';
+        }
+
+        let formattedMessage = this.formatResponse(displayMessage);
+
+        // Replace video links - popup window avoids the blocked iframe embed path
+        if (videos && videos.length > 0) {
+            if (videos.length === 1) {
+                const video = videos[0];
+                const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
+                const videoLinkHtml = `<a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
+            } else {
+                const videoLinksHtml = videos.map(video => {
+                    const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
+                    return `• <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
+                }).join('<br>');
+                formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
+            }
+        }
+
+        if (links && links.length > 0 && categories && categories.length > 0) {
+            const linkHtml = links.map((link, index) => {
+                const categoryName = categories[Math.min(index, categories.length - 1)];
+                return `<a href="${link}" target="_blank" rel="noopener noreferrer">${categoryName}</a>`;
+            }).join(' • ');
+            formattedMessage = formattedMessage.replace(/\[\[LEARN_MORE_LINKS\]\]/g, linkHtml);
+        }
+
+        Object.entries(placeholders).forEach(([placeholder, replacement]) => {
+            formattedMessage = formattedMessage.split(placeholder).join(replacement);
+        });
+
+        messageTextDiv.innerHTML = formattedMessage;
+    }
+
+    hasPreviousUserPrompt() {
+        return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
+    }
+
+    // === Microsoft Learn MCP server integration ============================
+    // Mirrors the streamable HTTP client used by learn-mcp-client: lazy
+    // initialize → tools/list → tools/call, parses the returned JSON envelope,
+    // and returns up to `max` deduplicated {title, url} article references.
+
+    async queryLearnMcp(query, max = 5) {
+        if (!query || !query.trim()) return [];
+        const tool = await this.ensureLearnMcpReady();
+        if (!tool) return [];
+
+        const args = this.buildLearnMcpArgs(tool, query.trim());
+        const result = await this.mcpRpc('tools/call', { name: tool.name, arguments: args });
+
+        const items = this.extractLearnMcpItems(result);
+        const links = [];
+        const seenBase = new Set();
+        for (const item of items) {
+            const url = item.contentUrl || item.url || item.uri || item.link || '';
+            if (!url) continue;
+            const base = url.split('#')[0];
+            if (seenBase.has(base)) continue;
+            seenBase.add(base);
+            const title = item.title || item.name || item.heading || base;
+            links.push({ title, url: base });
+            if (links.length >= max) break;
+        }
+        return links;
+    }
+
+    async ensureLearnMcpReady() {
+        if (!this._mcp) {
+            this._mcp = {
+                endpoint: 'https://learn.microsoft.com/api/mcp',
+                protocolVersion: '2025-06-18',
+                sessionId: null,
+                nextId: 1,
+                tool: null,
+                initPromise: null,
+            };
+        }
+        if (this._mcp.tool) return this._mcp.tool;
+        if (!this._mcp.initPromise) {
+            this._mcp.initPromise = (async () => {
+                await this.mcpRpc('initialize', {
+                    protocolVersion: this._mcp.protocolVersion,
+                    capabilities: {},
+                    clientInfo: { name: 'ask-anton', version: '0.1.0' },
+                });
+                await this.mcpRpc('notifications/initialized', undefined, { isNotification: true });
+                const listed = await this.mcpRpc('tools/list', {});
+                const tools = (listed && listed.tools) || [];
+                this._mcp.tool = tools.find(t => /search/i.test(t.name)) || tools[0] || null;
+                return this._mcp.tool;
+            })().catch(err => {
+                // Reset so a later question can retry.
+                this._mcp.initPromise = null;
+                throw err;
+            });
+        }
+        return this._mcp.initPromise;
+    }
+
+    buildLearnMcpArgs(tool, query) {
+        const props = (tool.inputSchema && tool.inputSchema.properties) || {};
+        const candidates = ['query', 'question', 'q', 'search', 'searchQuery', 'text', 'prompt'];
+        const key = candidates.find(k => k in props) || Object.keys(props)[0];
+        const args = {};
+        if (key) args[key] = query;
+        return args;
+    }
+
+    extractLearnMcpItems(result) {
+        const items = [];
+        const parts = (result && result.content) || [];
+        for (const part of parts) {
+            if (part.type !== 'text' || typeof part.text !== 'string') continue;
+            const trimmed = part.text.trim();
+            let parsed = null;
+            if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+                try { parsed = JSON.parse(trimmed); } catch { /* not JSON */ }
+            }
+            if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {
+                for (const key of ['results', 'items', 'data', 'value', 'hits', 'documents']) {
+                    if (Array.isArray(parsed[key])) { parsed = parsed[key]; break; }
+                }
+            }
+            if (Array.isArray(parsed)) items.push(...parsed);
+            else if (parsed && typeof parsed === 'object') items.push(parsed);
+        }
+        return items;
+    }
+
+    async mcpRpc(method, params, { isNotification = false } = {}) {
+        const id = isNotification ? undefined : this._mcp.nextId++;
+        const body = { jsonrpc: '2.0', method, ...(params !== undefined ? { params } : {}) };
+        if (!isNotification) body.id = id;
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            'MCP-Protocol-Version': this._mcp.protocolVersion,
+        };
+        if (this._mcp.sessionId) headers['Mcp-Session-Id'] = this._mcp.sessionId;
+
+        const res = await fetch(this._mcp.endpoint, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+        });
+
+        const sid = res.headers.get('Mcp-Session-Id') || res.headers.get('mcp-session-id');
+        if (sid) this._mcp.sessionId = sid;
+
+        if (isNotification) {
+            if (!res.ok && res.status !== 202) {
+                throw new Error(`MCP notification ${method} failed: ${res.status}`);
+            }
+            return null;
+        }
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`MCP ${method} failed: ${res.status} ${res.statusText} ${text}`);
+        }
+
+        const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+        if (ct.includes('text/event-stream')) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let idx;
+                while ((idx = buffer.indexOf('\n\n')) !== -1) {
+                    const evt = buffer.slice(0, idx);
+                    buffer = buffer.slice(idx + 2);
+                    const data = evt.split('\n')
+                        .filter(l => l.startsWith('data:'))
+                        .map(l => l.slice(5).trimStart())
+                        .join('\n');
+                    if (!data) continue;
+                    let msg;
+                    try { msg = JSON.parse(data); } catch { continue; }
+                    if (msg.id === id) {
+                        if (msg.error) throw new Error(`MCP ${method}: ${msg.error.message}`);
+                        return msg.result;
+                    }
+                }
+            }
+            throw new Error(`MCP ${method}: stream ended without a response`);
+        }
+
+        const msg = await res.json();
+        if (msg.error) throw new Error(`MCP ${method}: ${msg.error.message}`);
+        return msg.result;
+    }
+    // === end MCP integration ===============================================
+
+    async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
+        const searchResult = this.searchContext(searchQuery);
+        const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
+        const encodedKeywords = encodeURIComponent(bingKeywords);
+        const bingUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodedKeywords}&category=Documentation`;
+
+        // Try the Microsoft Learn MCP server first to get specific article links.
+        let mcpLinks = [];
+        try {
+            mcpLinks = await this.queryLearnMcp(searchQuery, 5);
+        } catch (err) {
+            console.warn('Learn MCP query failed, falling back to search link:', err);
+        }
+
+        const useMcp = mcpLinks.length > 0;
+        const historyAssistantMessage = useMcp
+            ? `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nCheck out the following documentation articles:`
+            : `OK, I searched the Microsoft Learn documentation for "${bingKeywords}".\nHere's what I found.`;
+        const assistantMessage = useMcp
+            ? historyAssistantMessage.replace('Check out the following documentation articles:', '[[SEARCH_RESULT_LINK]]')
+            : historyAssistantMessage.replace("Here's what I found.", '[[SEARCH_RESULT_LINK]]');
+
+        const searchLinkHtml = useMcp
+            ? 'Check out the following documentation articles:<ul class="mcp-results">' +
+              mcpLinks.map(l =>
+                  `<li><a href="${this.escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(l.title)}</a></li>`
+              ).join('') +
+              '</ul>'
+            : `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Here's what I found.</a>`;
+
+        this.isGenerating = true;
+        this.stopRequested = false;
+        this.updateSendButton(true);
+
+        const responseMessage = this.addMessage('assistant', '', false);
+        const messageTextDiv = responseMessage.querySelector('.message-text');
+
+        if (this.currentMode === 'cpu') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in Phi 3.1 mode. Thanks for your patience!)</p>';
+        } else if (this.currentMode === 'basic') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
+        } else {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        }
+
+        try {
+            await new Promise(resolve => setTimeout(resolve, 250));
+
+            if (usedVoiceInput) {
+                this.playSearchResultsAudio();
+            }
+
+            const animationCompleted = await this.animateTyping(
+                messageTextDiv,
+                historyAssistantMessage,
+                (partialMessage) => this.formatResponse(partialMessage),
+                25
+            );
+
+            if (!animationCompleted) {
+                return;
+            }
+
+            this.renderAssistantMessage(
+                messageTextDiv,
+                assistantMessage,
+                searchResult.categories,
+                searchResult.links,
+                searchResult.videos || [],
+                { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
+            );
+
+            this.conversationHistory.push({
+                role: 'user',
+                content: userMessage
+            });
+            this.conversationHistory.push({
+                role: 'assistant',
+                content: historyAssistantMessage
+            });
+        } finally {
+            this.isGenerating = false;
+            this.stopRequested = false;
+            this.updateSendButton(false);
+            this.elements.userInput.focus();
+
+            setTimeout(() => {
+                this.elements.searchStatus.textContent = '';
+            }, 2000);
+        }
+    }
+
+    async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
+        const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
+        const encodedKeywords = encodeURIComponent(bingKeywords);
+        const bingUrl = `https://www.bing.com/search?q=${encodedKeywords}`;
+        const historyAssistantMessage = `I don't have any information about that specific topic; but you may find what you're looking for here.`;
+        const assistantMessage = historyAssistantMessage.replace('here.', 'here: [[SEARCH_RESULT_LINK]].');
+        const shouldTryConversationFallback = this.currentMode === 'cpu' && this.hasPreviousUserPrompt();
+        const fallbackNote = '\n\nYou can ask me to "Search for details about X" or "Find documentation for Y" to look for more information in Microsoft Learn.';
+
+        this.isGenerating = true;
+        this.stopRequested = false;
+        this.updateSendButton(true);
+
+        const responseMessage = this.addMessage('assistant', '', false);
+        const messageTextDiv = responseMessage.querySelector('.message-text');
+        const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Bing search results</a>`;
+
+        if (this.currentMode === 'cpu') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in Phi 3.1 mode. Thanks for your patience!)</p>';
+        } else if (this.currentMode === 'basic') {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
+        } else {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        }
+
+        try {
+            await new Promise(resolve => setTimeout(resolve, 250));
+
+            if (shouldTryConversationFallback) {
+                const modelResponse = await this.generateWithWllama(userMessage, null, messageTextDiv, usedVoiceInput);
+
+                if (this.stopRequested) {
+                    return;
+                }
+
+                if (modelResponse.trim()) {
+                    const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
+                    messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
+
+                    this.conversationHistory.push({
+                        role: 'user',
+                        content: userMessage
+                    });
+                    this.conversationHistory.push({
+                        role: 'assistant',
+                        content: modelResponse.trim()
+                    });
+                    return;
+                }
+
+                if (this.currentMode === 'cpu' && this.lastWllamaCompletionErrored) {
+                    messageTextDiv.innerHTML = this.formatResponse(this.cpuModeFailureMessage);
+                    return;
+                }
+            }
+
+            if (usedVoiceInput) {
+                this.playNoResultsAudio();
+            }
+
+            const animationCompleted = await this.animateTyping(
+                messageTextDiv,
+                historyAssistantMessage,
+                (partialMessage) => this.formatResponse(partialMessage),
+                25
+            );
+
+            if (!animationCompleted) {
+                return;
+            }
+
+            this.renderAssistantMessage(
+                messageTextDiv,
+                assistantMessage,
+                [],
+                [],
+                [],
+                { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
+            );
+
+            // Don't add to conversation history when no context is found
+            // to avoid the model repeating this message on the next turn
+        } finally {
+            this.isGenerating = false;
+            this.stopRequested = false;
+            this.updateSendButton(false);
+            this.elements.userInput.focus();
+
+            setTimeout(() => {
+                this.elements.searchStatus.textContent = '';
+            }, 2000);
+        }
+    }
+
+    async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
+        const { context, categories, links, videos } = searchResult;
+
+        this.isGenerating = true;
+        this.stopRequested = false;
+        this.updateSendButton(true);
+
+        // Add empty message that we'll stream into
+        const responseMessage = this.addMessage('assistant', '', false);
+        const messageTextDiv = responseMessage.querySelector('.message-text');
+
+        // Show thinking indicator with CPU mode notice if applicable
+        if (this.usingWllama) {
+            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in Phi 3.1 mode. Thanks for your patience!)</p>';
+        } else {
+            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
+        }
+
+        try {
+            // Route to the appropriate engine
+            let assistantMessage = '';
+
+            if (this.currentMode === 'cpu') {
+                assistantMessage = await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
+            } else {
+                assistantMessage = await this.generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput);
+            }
+
+            if (!assistantMessage.trim()) {
+                if (this.currentMode === 'cpu' && this.lastWllamaCompletionErrored) {
+                    messageTextDiv.innerHTML = this.formatResponse(this.cpuModeFailureMessage);
+                    return;
+                }
+            }
+
+            // Add learn more links and videos
+            if (links && links.length > 0 && categories && categories.length > 0) {
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, categories, links, videos, {});
+            } else if (videos && videos.length > 0) {
+                this.renderAssistantMessage(messageTextDiv, assistantMessage, [], [], videos, {});
+            }
+
+            // Only add to conversation history if not stopped (to prevent corruption)
+            if (!this.stopRequested && assistantMessage.trim()) {
+                this.conversationHistory.push({
+                    role: 'user',
+                    content: userMessage // Store original question, not the one with context
+                });
+                this.conversationHistory.push({
+                    role: 'assistant',
+                    content: assistantMessage
+                });
+            } else if (this.stopRequested) {
+                console.log('Stopped response not added to conversation history to prevent corruption');
+            }
+
+        } catch (error) {
+            console.error('Error generating response:', error);
+            responseMessage.remove();
+
+            if (this.currentMode === 'cpu') {
+                this.addMessage('assistant', this.cpuModeFailureMessage);
+            } else {
+                this.addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+            }
+        } finally {
+            this.isGenerating = false;
+            this.stopRequested = false;
+            this.currentStream = null;
+            this.updateSendButton(false);
+            this.elements.userInput.focus();
+
+            // Clear search status after response is complete
+            setTimeout(() => {
+                this.elements.searchStatus.textContent = '';
+            }, 2000);
+        }
+    }
+
+    // ============================================================================
+    // LLM RESPONSE GENERATION (wllama)
+    // ============================================================================
+
+    // Helper function to extract first sentence or first 30 characters
+    extractFirstSentence(text) {
+        if (!text) return '';
+
+        // Find the first occurrence of sentence-ending punctuation
+        const match = text.match(/^[^.!?:]*[.!?:]/);
+        if (match) {
+            return match[0].trim();
+        }
+
+        // If no sentence-ending punctuation, use first 30 characters
+        return text.substring(0, 30).trim();
+    }
+
+    truncateParagraphsForCPU(context, options = {}) {
+        if (!context) return context;
+
+        const {
+            maxSectionChars = 600,
+            maxTotalChars = 2200
+        } = options;
+
+        // Split context into sections by blank lines, then concatenate into one flow.
+        const sections = context
+            .split(/\n\s*\n+/)
+            .map(section => section.replace(/\s+/g, ' ').trim())
+            .filter(Boolean);
+
+        const truncatedSections = sections.map(section => {
+            // If section is short enough, keep it as is.
+            if (section.length <= maxSectionChars) return section;
+
+            // Find first sentence ending (., !, ?) after maxSectionChars.
+            const searchFrom = maxSectionChars;
+            let endPos = -1;
+
+            for (let i = searchFrom; i < section.length; i++) {
+                if (section[i] === '.' || section[i] === '!' || section[i] === '?') {
+                    endPos = i + 1; // Include the punctuation
+                    break;
+                }
+            }
+
+            // If found a sentence ending, truncate there
+            if (endPos > 0) {
+                return section.substring(0, endPos);
+            }
+
+            // Otherwise, hard truncate at maxSectionChars with ellipsis.
+            return section.substring(0, maxSectionChars) + '...';
+        });
+
+        let combined = '';
+        for (const section of truncatedSections) {
+            const prefix = !combined ? '' : (!/[.!?]\s*$/.test(combined) ? '. ' : ' ');
+            const candidate = combined + prefix + section;
+
+            if (candidate.length <= maxTotalChars) {
+                combined = candidate;
+                continue;
+            }
+
+            if (!combined) {
+                combined = candidate.substring(0, maxTotalChars).trim();
+            }
+
+            if (!/[.!?]\s*$/.test(combined)) {
+                combined = combined.replace(/\s+[^\s]*$/, '').trim();
+            }
+
+            if (!combined.endsWith('...')) {
+                combined += '...';
+            }
+
+            break;
+        }
+
+        return combined;
+    }
+
+    trimIncompleteSentenceForCPU(text) {
+        if (!text) return text;
+
+        let trimmedText = text.trim();
+        if (!trimmedText) return trimmedText;
+
+        const hasCompleteSentenceEnding = (value) => /[.!?]["')\]]*\s*$/.test(value);
+
+        if (hasCompleteSentenceEnding(trimmedText)) {
+            return trimmedText;
+        }
+
+        const trailingLeadInPattern = /(?:\b(?:and|or|but|so|because|which|that|who|when|where|while|with|for|to|of|in|on|at|by|as|like|including)\b|\b(?:such as|for example|for instance|for example,|for instance,)\b|[,;:\-–—(]\s*)$/i;
+
+        while (trailingLeadInPattern.test(trimmedText)) {
+            trimmedText = trimmedText.replace(trailingLeadInPattern, '').trim();
+        }
+
+        if (!trimmedText) {
+            return '';
+        }
+
+        if (hasCompleteSentenceEnding(trimmedText)) {
+            return trimmedText;
+        }
+
+        let lastSentenceEnd = -1;
+
+        for (let i = 0; i < trimmedText.length; i++) {
+            if (trimmedText[i] === '.' || trimmedText[i] === '!' || trimmedText[i] === '?') {
+                let endIndex = i + 1;
+                while (endIndex < trimmedText.length && /["')\]]/.test(trimmedText[endIndex])) {
+                    endIndex++;
+                }
+                lastSentenceEnd = endIndex;
+            }
+        }
+
+        if (lastSentenceEnd > 0) {
+            return trimmedText.substring(0, lastSentenceEnd).trim();
+        }
+
+        return trimmedText;
+    }
+
+    buildBasicResponse(searchResult) {
+        const { documents = [] } = searchResult;
+
+        if (!documents.length) {
+            return "Sorry, I couldn't find any specific information on that topic. Please try rephrasing your question or explore other AI concepts.";
+        }
+
+        return documents.map(document => document.content).join('\n\n');
+    }
+
+    async generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput = false) {
+        const assistantMessage = this.buildBasicResponse(searchResult);
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+
+        if (this.stopRequested) {
+            return '';
+        }
+
+        if (usedVoiceInput) {
+            this.playRandomResponseAudio();
+        }
+
+        const animationCompleted = await this.animateTyping(
+            messageTextDiv,
+            assistantMessage,
+            (partialMessage) => this.formatResponse(partialMessage),
+            12
+        );
+
+        return animationCompleted ? assistantMessage : '';
+    }
+
+    async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
+        this.lastWllamaCompletionErrored = false;
+
+        // Ensure wllama is loaded
+        if (!this.wllama) {
+            throw new Error('Wllama is not initialized. Please wait for Phi 3.1 mode to finish loading.');
+        }
+
+        // Reload wllama if state was corrupted by a previous stop.
+        if (this.wllamaStateNeedsReset) {
+            console.log('Reloading wllama due to interrupted state from previous stop...');
+            const loadingMsg = this.addSystemMessage('Reloading Phi 3.1 model after stop... 0%');
+            const loadingMsgElement = loadingMsg.querySelector('p');
+
+            try {
+                // Don't try to exit corrupted instance - just abandon it
+                // (exit() hangs when WebGPU state is corrupted)
+                this.wllama = null;
+
+                // Reload fresh instance with progress callback.
+
+                await this.initializeWllama((progress) => {
+                    if (loadingMsgElement) {
+                        const percentage = Math.round(progress * 100);
+                        if (percentage >= 99) {
+                            loadingMsgElement.textContent = 'Reloading Phi 3.1 model after stop - optimizing...';
+                        } else {
+                            loadingMsgElement.textContent = `Reloading Phi 3.1 model after stop... ${percentage}%`;
+                        }
+                    }
+                }, {
+                    activateMode: false,
+                    showChatInterface: false,
+                    showFatalError: false
+                });
+
+                this.wllamaStateNeedsReset = false;
+                if (loadingMsgElement) {
+                    loadingMsgElement.textContent = 'Phi 3.1 model reloaded successfully';
+                }
+                console.log('Wllama reloaded successfully - ready for next prompt');
+            } catch (error) {
+                console.error('Failed to reload wllama:', error);
+                if (loadingMsgElement) {
+                    loadingMsgElement.textContent = 'Failed to reload Phi 3.1 model. Please refresh the page.';
+                }
+                throw new Error('Failed to reload Phi 3.1 model after stop. Please refresh the page.');
+            }
+        }
+
+        // Build ChatML formatted prompt
+        let chatMLPrompt = '<|im_start|>system\n';
+        chatMLPrompt += 'You are Anton, a teacher of AI and computing concepts.\n';
+        chatMLPrompt += 'Discuss AI and computing topics only\n';
+        chatMLPrompt += 'Do not provide specific steps or instructions\n';
+        chatMLPrompt += 'Provide factual and accurate information\n';
+        chatMLPrompt += 'Follow all instructions exactly\n';
+        chatMLPrompt += '<|im_end|>\n\n';
+
+        // Add truncated previous prompt and response if available
+        if (this.conversationHistory.length >= 2) {
+            // Get the last user message and assistant response
+            const prevUser = this.conversationHistory[this.conversationHistory.length - 2];
+            const prevAssistant = this.conversationHistory[this.conversationHistory.length - 1];
+
+            if (prevUser.role === 'user' && prevAssistant.role === 'assistant') {
+                const prevUserSentence = this.extractFirstSentence(prevUser.content);
+                const prevAssistantSentence = this.extractFirstSentence(prevAssistant.content);
+
+                chatMLPrompt += '<|im_start|>user\n';
+                chatMLPrompt += prevUserSentence + '\n';
+                chatMLPrompt += '<|im_end|>\n\n';
+                chatMLPrompt += '<|im_start|>assistant\n';
+                chatMLPrompt += prevAssistantSentence + '\n';
+                chatMLPrompt += '<|im_end|>\n\n';
+            }
+        }
+
+        // Add current user message
+        chatMLPrompt += '<|im_start|>user\n';
+        if (context) {
+            // Add context from index.json if available (truncate paragraphs to prevent context overflow)
+            const truncatedContext = this.truncateParagraphsForCPU(context);
+            chatMLPrompt += userMessage + ' (Respond by summarizing the relevant details in the following text):\n' + truncatedContext;
+        } else {
+            // No context - use conversation history with instruction to stay focused
+            chatMLPrompt += userMessage + ' (Respond concisely, continuing the conversation about artificial intelligence and computing. For questions outside of these topics, politely decline to answer.)';
+        }
+        chatMLPrompt += '\n<|im_end|>\n\n';
+        chatMLPrompt += '<|im_start|>assistant\n';
+
+        console.log('Sending prompt to wllama (length:', chatMLPrompt.length, 'chars)');
+        console.log('ChatML Prompt:', chatMLPrompt);
+
+        let assistantMessage = '';
+        let completion = null;
+
+        // Create AbortController for consistency with other generation paths.
+        const controller = new AbortController();
+        this.currentAbortController = controller;
+
+        // Use streaming completion for progressive rendering.
+        try {
+            completion = await this.wllama.createCompletion({
+                prompt: chatMLPrompt,
+                max_tokens: 200,
+                temperature: 0.2,
+                top_k: 40,
+                top_p: 0.9,
+                frequency_penalty: 1.1,
+                stop: ['<|im_end|>', '<|im_start|>'],
+                cache_prompt: false,
+                signal: controller.signal,
+                stream: true
+            });
+
+            this.currentStream = completion;
+            let audioPlayed = false;
+
+            for await (const chunk of completion) {
+                if (this.stopRequested) {
+                    console.log('Wllama generation stopped by user');
+                    break;
+                }
+
+                if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                    if (!audioPlayed && usedVoiceInput) {
+                        this.playRandomResponseAudio();
+                        audioPlayed = true;
+                    }
+
+                    assistantMessage += chunk.choices[0].text;
+                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                    this.scrollToBottom();
+                }
+            }
+
+            const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
+            if (cleanedAssistantMessage !== assistantMessage) {
+                assistantMessage = cleanedAssistantMessage;
+                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                this.scrollToBottom();
+            }
+
+            // Clear abort controller on successful completion
+            this.currentAbortController = null;
+
+        } catch (error) {
+            // Check if this was an abort (expected when user clicks stop)
+            if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
+                console.log('Generation aborted by user');
+                this.lastWllamaCompletionErrored = false;
+            } else {
+                const errorMessage = error.message || error.toString() || 'unknown error';
+                console.log('Wllama generation error:', errorMessage);
+                this.lastWllamaCompletionErrored = true;
+            }
+            this.currentAbortController = null;
+        } finally {
+            this.currentStream = null;
+        }
+
+        console.log('Wllama response complete, length:', assistantMessage.length);
+
+        return assistantMessage;
+    }
+
+    formatResponse(text) {
+        // Split out the learn more section and note if they exist
+        const learnMoreMatch = text.match(/([\s\S]*?)(---\s*\n\n\*\*Learn more:\*\*.*?)(\n\n\*Note:.*)?$/);
+
+        if (learnMoreMatch) {
+            const mainContent = learnMoreMatch[1];
+            const learnMoreSection = learnMoreMatch[2];
+            const noteSection = learnMoreMatch[3] || '';
+
+            // Format main content (escape HTML)
+            let formatted = this.escapeHtml(mainContent);
+
+            // Convert **bold** to <strong>
+            formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+            // Convert *italic* to <em>
+            formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+            // Convert line breaks to paragraphs
+            formatted = formatted.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+
+            // Add learn more section - preserve placeholders and HTML structure
+            const learnMoreFormatted = learnMoreSection
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/---\s*\n\n/g, '<hr style="margin: 15px 0; border: none; border-top: 1px solid #e0e0e0;">\n\n');
+
+            // Format note section - preserve placeholders
+            let noteFormatted = '';
+            if (noteSection) {
+                // Extract the note text (remove leading \n\n*Note: and trailing *)
+                let noteText = noteSection.replace(/^\n\n\*Note:\s*/g, '').replace(/\*$/g, '');
+                // Wrap in styled paragraph - placeholders will be replaced by caller
+                noteFormatted = `<p style="font-style: italic; color: #666; font-size: 0.9em; margin-top: 10px;">Note: ${noteText}</p>`;
+            }
+
+            return formatted + learnMoreFormatted + noteFormatted;
+        }
+
+        // No learn more section, process normally
+        let formatted = this.escapeHtml(text);
+
+        // Convert **bold** to <strong>
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+        // Convert *italic* to <em>
+        formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+        // Convert line breaks to paragraphs
+        formatted = formatted.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+
+        return formatted;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async animateTyping(element, text, formatter = null, speed = 5) {
+        element.innerHTML = '';
+        const segments = text.split(/(\s+)/).filter(segment => segment.length > 0);
+        let currentText = '';
+
+        for (const segment of segments) {
+            if (this.stopRequested) {
+                return false;
+            }
+
+            currentText += segment;
+            element.innerHTML = formatter ? formatter(currentText) : this.escapeHtml(currentText);
+            this.scrollToBottom();
+            await new Promise(resolve => setTimeout(resolve, speed));
+        }
+
+        return true;
+    }
+
+    scrollToBottom() {
+        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+    }
+
+    // ============================================================================
+    // SPEECH RECOGNITION HELPER METHODS
+    // ============================================================================
+
+    setMicButtonState(isActive, label = null) {
+        if (isActive) {
+            this.elements.micBtn.style.opacity = '0.6';
+            this.elements.micBtn.classList.add('active');
+            this.elements.micBtn.title = label || 'Listening...';
+            this.elements.micBtn.setAttribute('aria-label', label || 'Listening to your voice input');
+        } else {
+            this.elements.micBtn.style.opacity = '1';
+            this.elements.micBtn.classList.remove('active');
+            this.elements.micBtn.title = label || 'Voice input';
+            this.elements.micBtn.setAttribute('aria-label', label || 'Voice input');
+        }
+    }
+
+    clearSpeechTimers() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
+        if (this.noSpeechTimer) {
+            clearTimeout(this.noSpeechTimer);
+            this.noSpeechTimer = null;
+        }
+    }
+
+    cleanupAudioResources() {
+        if (this.processorNode) {
+            this.processorNode.disconnect();
+            this.processorNode = null;
+        }
+        if (this.sourceNode) {
+            this.sourceNode.disconnect();
+            this.sourceNode = null;
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+    }
+
+    // ============================================================================
+    // AUDIO PLAYBACK
+    // ============================================================================
+
+    playRandomResponseAudio() {
+        // Randomly select one of the 7 audio files
+        const audioNumber = Math.floor(Math.random() * 7) + 1;
+        const audioPath = `audio/response_${audioNumber}.wav`;
+
+        const audio = new Audio(audioPath);
+        audio.play().catch(error => {
+            console.error('Error playing audio:', error);
+        });
+    }
+
+    playModerationAudio() {
+        const audio = new Audio('moderation/sorry.wav');
+        audio.play().catch(error => {
+            console.error('Error playing moderation audio:', error);
+        });
+    }
+
+    playNoResultsAudio() {
+        const audio = new Audio('audio/no_results.wav');
+        audio.play().catch(error => {
+            console.error('Error playing no results audio:', error);
+        });
+    }
+
+    playSearchResultsAudio() {
+        const audio = new Audio('audio/search_results.wav');
+        audio.play().catch(error => {
+            console.error('Error playing search results audio:', error);
+        });
+    }
+
+    // ============================================================================
+    // SPEECH RECOGNITION - WEB SPEECH API & VOSK
+    // ============================================================================
+
+    async handleMicClick() {
+        // Try Web Speech API first
+        if (this.usingWebSpeech) {
+            const webSpeechWorked = await this.tryWebSpeech();
+            if (!webSpeechWorked) {
+                // Web Speech failed, switch to Vosk
+                console.log('Web Speech API not available, loading Vosk fallback...');
+                this.usingWebSpeech = false;
+
+                // Load Vosk model if not already loaded
+                if (!this.voskLoaded) {
+                    const loaded = await this.loadVoskModel();
+                    if (!loaded) {
+                        return; // Vosk failed to load
+                    }
+                }
+
+                // Now try Vosk
+                await this.startVoskRecording();
+            }
+        } else {
+            // Already using Vosk
+            if (this.isRecording) {
+                this.stopVoskRecording(true);
+            } else {
+                await this.startVoskRecording();
+            }
+        }
+    }
+
+    async tryWebSpeech() {
+        return new Promise((resolve) => {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!SpeechRecognition) {
+                resolve(false);
+                return;
+            }
+
+            try {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+
+                let hasResolved = false;
+                let noSpeechTimer = null;
+
+                // Set active state
+                this.setMicButtonState(true);
+
+                // Start no-speech timeout
+                noSpeechTimer = setTimeout(() => {
+                    if (!hasResolved) {
+                        console.log('No speech detected in 5 seconds, cancelling...');
+                        recognition.stop();
+                        if (!hasResolved) {
+                            hasResolved = true;
+                            this.setMicButtonState(false);
+                            this.addMessage('assistant', 'No speech detected. Please try again.');
+                            resolve(true); // Don't fallback, just inform user
+                        }
+                    }
+                }, this.noSpeechTimeout);
+
+                recognition.onresult = (event) => {
+                    // Clear no-speech timer since we got speech
+                    if (noSpeechTimer) {
+                        clearTimeout(noSpeechTimer);
+                        noSpeechTimer = null;
+                    }
+
+                    const transcript = event.results[0][0].transcript;
+                    this.elements.userInput.value = transcript;
+                    this.autoResizeTextarea();
+                    this.usedVoiceInput = true;
+                    this.sendMessage();
+
+                    if (!hasResolved) {
+                        hasResolved = true;
+                        resolve(true);
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+
+                    // Clear no-speech timer
+                    if (noSpeechTimer) {
+                        clearTimeout(noSpeechTimer);
+                        noSpeechTimer = null;
+                    }
+
+                    // Reset visual state
+                    this.setMicButtonState(false);
+
+                    if (!hasResolved) {
+                        hasResolved = true;
+                        // If it's a permission error, don't fallback
+                        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                            this.addMessage('assistant', 'Microphone access was denied.');
+                            resolve(true); // Don't fallback, user denied permission
+                        } else {
+                            // Any other error (network, no-speech, etc.) triggers fallback
+                            resolve(false); // Fallback to Vosk
+                        }
+                    }
+                };
+
+                recognition.onend = () => {
+                    // Clear no-speech timer
+                    if (noSpeechTimer) {
+                        clearTimeout(noSpeechTimer);
+                        noSpeechTimer = null;
+                    }
+
+                    this.setMicButtonState(false);
+                };
+
+                recognition.start();
+                console.log('Web Speech recognition started');
+                // Don't resolve here - wait for result or error
+            } catch (error) {
+                console.error('Error starting Web Speech recognition:', error);
+                this.setMicButtonState(false);
+                resolve(false);
+            }
+        });
+    }
+
+    resetSilenceTimer() {
+        // Clear existing timer
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+        }
+
+        // Set new timer to auto-stop after silence
+        if (this.isRecording) {
+            this.silenceTimer = setTimeout(() => {
+                if (this.isRecording && this.hasSpeech) {
+                    console.log('Silence detected, auto-stopping...');
+                    this.stopVoskRecording(false);
+                }
+            }, this.silenceTimeout);
+        }
+    }
+
+    async startVoskRecording() {
+        if (!this.voskRecognizer) {
+            this.addMessage('assistant', 'Speech input is not available.');
+            return;
+        }
+
+        try {
+            // Request microphone access
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    channelCount: 1,
+                    sampleRate: 16000
+                }
+            });
+
+            // Create audio context
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+            this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+            // Process audio data
+            this.processorNode.onaudioprocess = (event) => {
+                try {
+                    if (this.isRecording && this.voskRecognizer) {
+                        this.voskRecognizer.acceptWaveform(event.inputBuffer);
+                    }
+                } catch (e) {
+                    console.error('Audio processing error:', e);
+                }
+            };
+
+            this.sourceNode.connect(this.processorNode);
+            this.processorNode.connect(this.audioContext.destination);
+
+            this.isRecording = true;
+            this.usedVoiceInput = true;
+            this.hasSpeech = false;
+            this.lastSpeechTime = Date.now();
+
+            // Start silence detection timer
+            this.resetSilenceTimer();
+
+            // Start no-speech timeout
+            this.noSpeechTimer = setTimeout(() => {
+                if (this.isRecording && !this.hasSpeech) {
+                    console.log('No speech detected in 5 seconds, cancelling...');
+                    this.stopVoskRecording(true);
+                    this.addMessage('assistant', 'No speech detected. Please try again.');
+                }
+            }, this.noSpeechTimeout);
+
+            // Set active state
+            this.setMicButtonState(true);
+
+            console.log('Vosk recording started');
+        } catch (error) {
+            console.error('Microphone access denied:', error);
+            this.addMessage('assistant', 'Microphone access was denied. Please allow microphone access to use voice input.');
+        }
+    }
+
+    stopVoskRecording(isCancelled = false) {
+        this.isRecording = false;
+
+        // Clear all timers
+        this.clearSpeechTimers();
+
+        // Clean up audio resources
+        this.cleanupAudioResources();
+
+        // Reset button state
+        this.setMicButtonState(false);
+
+        console.log('Vosk recording stopped');
+
+        // Auto-send the message if there's text and it wasn't manually cancelled
+        if (!isCancelled && this.elements.userInput.value.trim()) {
+            this.sendMessage();
+        }
+    }
+
+    // ============================================================================
+    // UI CONTROLS & MODAL MANAGEMENT
+    // ============================================================================
+
+    restartConversation() {
+        if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
+            // Clear conversation history
+            this.conversationHistory = [];
+
+            // Clear chat messages (keep welcome message)
+            const messages = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message)');
+            messages.forEach(msg => msg.remove());
+
+            // Clear search status
+            this.elements.searchStatus.textContent = '';
+
+            console.log('Conversation restarted');
+        }
+    }
+
+    showAboutModal() {
+        this.elements.aboutModal.style.display = 'flex';
+        this.currentModal = this.elements.aboutModal;
+        // Store the previously focused element
+        this.lastFocusedElement = document.activeElement;
+        // Announce modal to screen readers
+        this.elements.aboutModal.setAttribute('aria-hidden', 'false');
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.aboutModalClose.focus();
+            this.setupModalFocusTrap(this.elements.aboutModal);
+        }, 100);
+    }
+
+    hideAboutModal() {
+        this.elements.aboutModal.style.display = 'none';
+        this.elements.aboutModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+        // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    getSynthesiaVideoUrl(videoId) {
+        return videoId.startsWith('http') ? videoId : `https://share.synthesia.io/embeds/videos/${videoId}`;
+    }
+
+    openVideoPopup(videoUrl) {
+        const left = Math.max(0, Math.round(window.screenX + ((window.outerWidth - this.videoPopupWidth) / 2)));
+        const top = Math.max(0, Math.round(window.screenY + ((window.outerHeight - this.videoPopupHeight) / 2)));
+        const popupFeatures = [
+            'popup=yes',
+            `width=${this.videoPopupWidth}`,
+            `height=${this.videoPopupHeight}`,
+            `left=${left}`,
+            `top=${top}`,
+            'resizable=yes',
+            'scrollbars=yes'
+        ].join(',');
+
+        const popup = window.open(videoUrl, 'ask-anton-video', popupFeatures);
+        if (!popup) {
+            window.location.href = videoUrl;
+            return;
+        }
+
+        popup.opener = null;
+        popup.focus();
+    }
+
+    setupModalFocusTrap(modalElement) {
+        // Get all focusable elements within the modal
+        const focusableElements = modalElement.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        // Store the trap handler for cleanup
+        this.modalFocusTrapHandler = (e) => {
+            if (e.key !== 'Tab') return;
+
+            if (e.shiftKey) {
+                // Shift+Tab - going backwards
+                if (document.activeElement === firstElement) {
+                    e.preventDefault();
+                    lastElement.focus();
+                }
+            } else {
+                // Tab - going forwards
+                if (document.activeElement === lastElement) {
+                    e.preventDefault();
+                    firstElement.focus();
+                }
+            }
+        };
+
+        modalElement.addEventListener('keydown', this.modalFocusTrapHandler);
+    }
+
+    removeModalFocusTrap() {
+        if (this.currentModal && this.modalFocusTrapHandler) {
+            this.currentModal.removeEventListener('keydown', this.modalFocusTrapHandler);
+            this.modalFocusTrapHandler = null;
+        }
+    }
+}
+
+// Make instance globally accessible for onclick handler
+window.askAnton = null;
+
+// Initialize the app when DOM is loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        window.askAnton = new AskAnton();
+    });
+} else {
+    window.askAnton = new AskAnton();
+}
+
