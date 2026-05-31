@@ -396,7 +396,7 @@ IMPORTANT: Follow these guidelines when responding:
                         vram_required_MB: 3672.07,
                         low_resource_required: false,
                         overrides: {
-                            context_window_size: 4096
+                            context_window_size: 2048
                         }
                     }
                 ]
@@ -481,6 +481,9 @@ IMPORTANT: Follow these guidelines when responding:
             const modelConfig = {
                 n_ctx: 384,      // Smaller context for faster processing
                 n_threads: preferredThreads,
+                // In wllama v3, WebGPU is auto-enabled when available unless n_gpu_layers is set.
+                // CPU mode must force 0 GPU layers to avoid WebGPU backend crashes on some devices.
+                n_gpu_layers: 0,
                 progressCallback: ({ loaded, total }) => {
                     // Cap at 98% to leave room for cache warming message
                     const percentage = Math.min(98, Math.max(15, Math.round((loaded / total) * 85) + 15));
