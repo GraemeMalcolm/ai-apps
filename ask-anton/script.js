@@ -1,6 +1,14 @@
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
+// Delay (ms) before clearing the search-status hint shown beneath the input
+// after a response finishes streaming. Tuned to stay visible long enough to read.
+const SEARCH_STATUS_CLEAR_DELAY = 2000;
+
+// Inline styles for the small italic note that accompanies the typing indicator
+// in CPU and Basic modes (kept inline so a single innerHTML write covers both).
+const TYPING_NOTE_STYLE = 'font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;';
+
 class AskAnton {
     constructor() {
         // Debug flags for testing failover (can be set via URL params or console)
@@ -16,7 +24,6 @@ class AskAnton {
         this.currentAbortController = null;
         this.isStoppingGeneration = false;
         this.webGPUAvailable = false;
-        this.usingWllama = false;
         this.wllamaStateNeedsReset = false;
         this.currentMode = 'basic';
         this.availableModes = {
@@ -98,6 +105,13 @@ IMPORTANT: Follow these guidelines when responding:
     // INITIALIZATION
     // ============================================================================
 
+    /**
+     * Read URL query string for debug overrides used to force engine-init
+     * failure paths (?debug=true&forceWebGPUFail=true&forceWllamaFail=true
+     * &forceBasicMode=true). Returns a config object consumed by
+     * {@link initializeEngine}, {@link initializeWebLLM}, {@link initializeWllama}.
+     * @returns {{enabled:boolean, forceWebGPUFail:boolean, forceWllamaFail:boolean, forceBasicMode:boolean}}
+     */
     parseDebugConfig() {
         // Parse URL parameters for debug flags
         // Usage: ?debug=true&forceWebGPUFail=true&forceWllamaFail=true
@@ -118,6 +132,11 @@ IMPORTANT: Follow these guidelines when responding:
         return config;
     }
 
+    /**
+     * Top-level boot sequence: load moderation list, load knowledge-base
+     * index, pick & initialize an inference engine (with mode fallback),
+     * then wire DOM event listeners. Surface errors via {@link showError}.
+     */
     async initialize() {
         try {
             // Load prohibited words used by content moderation
@@ -142,10 +161,12 @@ IMPORTANT: Follow these guidelines when responding:
     // UTILITY METHODS
     // ============================================================================
 
+    /** Reverse a string character-by-character. */
     reverseWord(text) {
         return text.split('').reverse().join('');
     }
 
+    /** Caesar-shift each character's code point by `amount`. */
     shiftWord(text, amount) {
         return text
             .split('')
@@ -153,6 +174,12 @@ IMPORTANT: Follow these guidelines when responding:
             .join('');
     }
 
+    /**
+     * Load `moderation/mod.txt` and decode each line. Entries are stored
+     * lightly obfuscated (reversed + shifted by 1) so the raw word list is
+     * not visible in the repo or network tab; decoding here yields the
+     * lowercase words used by {@link containsProhibitedWords}.
+     */
     async loadProhibitedWords() {
         try {
             const response = await fetch('moderation/mod.txt', { cache: 'no-store' });
@@ -172,6 +199,12 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Fetch `index.json` (the knowledge base) and build `this.keywordMap`,
+     * a flat lookup from normalized keyword -> Array<{document, category, link}>
+     * used by {@link performSearch} for n-gram matching. Arrays (rather than
+     * a single value) preserve every document that declares a shared keyword.
+     */
     async loadIndex() {
         try {
             this.updateProgress(5, 'Loading knowledge base...');
@@ -180,19 +213,24 @@ IMPORTANT: Follow these guidelines when responding:
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
 
-            // Build a flat lookup map: keyword -> {document, category, link}
+            // Build a flat lookup map: keyword -> [{document, category, link}, ...]
+            // (multiple entries per keyword so collisions don't drop documents.)
             this.keywordMap = new Map();
             this.indexData.forEach(category => {
                 category.documents.forEach(doc => {
                     doc.keywords.forEach(keyword => {
                         const normalizedKeyword = keyword.toLowerCase().trim();
-                        if (normalizedKeyword) {
-                            this.keywordMap.set(normalizedKeyword, {
-                                document: doc,
-                                category: category.category,
-                                link: category.link
-                            });
+                        if (!normalizedKeyword) return;
+                        let entries = this.keywordMap.get(normalizedKeyword);
+                        if (!entries) {
+                            entries = [];
+                            this.keywordMap.set(normalizedKeyword, entries);
                         }
+                        entries.push({
+                            document: doc,
+                            category: category.category,
+                            link: category.link
+                        });
                     });
                 });
             });
@@ -203,6 +241,12 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Lazy-load the Vosk WASM speech model used as a fallback when the
+     * browser's Web Speech API is unavailable. Idempotent: returns the
+     * cached load result after the first call.
+     * @returns {Promise<boolean>} true if the model is ready, false if loading failed.
+     */
     async loadVoskModel() {
         if (this.voskLoaded || this.voskLoadingFailed) {
             return this.voskLoaded;
@@ -291,6 +335,7 @@ IMPORTANT: Follow these guidelines when responding:
     // LLM ENGINE INITIALIZATION (WebLLM & Wllama)
     // ============================================================================
 
+    /** @returns {boolean} true when WebGPU is exposed by the browser. */
     checkWebGPUSupport() {
         // Check if WebGPU is available in the browser
         if (!navigator.gpu) {
@@ -300,6 +345,12 @@ IMPORTANT: Follow these guidelines when responding:
         return true;
     }
 
+    /**
+     * Run `task` with `navigator.gpu` hidden so any code path inside it
+     * cannot detect or use WebGPU. Restores the original descriptor on
+     * exit even if `task` throws. Used to force the CPU code path in
+     * libraries that auto-detect WebGPU.
+     */
     async withWebGpuTemporarilyDisabled(task) {
         const nav = navigator;
         const hadOwnGpu = Object.prototype.hasOwnProperty.call(nav, 'gpu');
@@ -342,6 +393,12 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Run `task` while transparently rewriting `new Worker(url)` so worker
+     * scripts also see WebGPU as unavailable. Pairs with
+     * {@link withWebGpuTemporarilyDisabled} for libraries (e.g. wllama)
+     * that spawn workers which would otherwise re-enable the GPU backend.
+     */
     async withWebGpuDisabledForWorkers(task) {
         const NativeWorker = window.Worker;
         let workerPatched = false;
@@ -387,6 +444,10 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Best-effort mobile detection used to skip GPU-model load on devices
+     * that typically lack the memory/bandwidth for it.
+     */
     isLikelyMobileDevice() {
         // Prefer userAgentData when available, then fall back to UA + touch heuristics.
         if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
@@ -406,6 +467,12 @@ IMPORTANT: Follow these guidelines when responding:
         return isMobileUa || isTouchMac || isTouchSmallScreen;
     }
 
+    /**
+     * Decide which inference engine to bring up at startup. Order of
+     * preference: forced basic (debug) -> WebLLM/WebGPU (desktop only) ->
+     * wllama/CPU -> basic (no model). Sets `this.availableModes` along
+     * the way so the UI can offer manual mode switches later.
+     */
     async initializeEngine() {
         // 🧪 DEBUG: Force Basic mode for testing
         if (this.debugConfig.enabled && this.debugConfig.forceBasicMode) {
@@ -460,6 +527,11 @@ IMPORTANT: Follow these guidelines when responding:
         );
     }
 
+    /**
+     * Bring up the WebLLM (WebGPU) engine with the Phi-3.5 model and wire
+     * its progress callback to the loading UI. Resolves once the model is
+     * ready to chat; rejects if WebGPU init or model download fails.
+     */
     async initializeWebLLM() {
         try {
             this.updateProgress(15, 'Loading AI model (WebGPU)...');
@@ -520,6 +592,16 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Bring up the wllama (CPU/WASM) engine with the Phi-2 model. Reuses
+     * an existing instance if one is already loaded.
+     * @param {(p:number)=>void|null} [progressCallback] Forwarded download progress (0..1).
+     * @param {{isLazyLoad?:boolean, activateMode?:boolean, showChatInterface?:boolean, showFatalError?:boolean}} [options]
+     *   - isLazyLoad: hide progress UI when triggered by mode switch.
+     *   - activateMode: set `currentMode='cpu'` on success.
+     *   - showChatInterface: reveal the chat UI on success.
+     *   - showFatalError: surface error via {@link showError} on failure.
+     */
     async initializeWllama(progressCallback = null, options = {}) {
         const {
             activateMode = !this.availableModes.gpu,
@@ -659,6 +741,11 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Run a short throwaway completion to warm wllama's KV cache and
+     * surface any unstable-backend errors (especially WebGPU) before the
+     * first user prompt.
+     */
     async warmWllamaCache(isLazyLoad = true, progressCallback = null, updateFinalProgress = false) {
         // Warm the cache with the system instruction to improve first response time
         if (!this.wllama) return;
@@ -726,6 +813,7 @@ IMPORTANT: Follow these guidelines when responding:
     // UI STATE MANAGEMENT
     // ============================================================================
 
+    /** Update the loading progress bar and status text. */
     updateProgress(percentage, text) {
         this.elements.progressFill.style.width = `${percentage}%`;
         this.elements.progressText.textContent = text;
@@ -738,6 +826,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Hide the loading screen and reveal the chat UI. */
     showChatInterface() {
         this.elements.progressSection.style.display = 'none';
         this.elements.chatContainer.style.display = 'flex';
@@ -745,6 +834,11 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.userInput.focus();
     }
 
+    /**
+     * Enter Basic mode (no model). Used as the final fallback when both
+     * WebLLM and wllama fail to initialize, and when the user explicitly
+     * selects Basic from the mode dropdown.
+     */
     initializeBasicMode(progressText = 'Ready to chat! (Basic mode)', notice = null) {
         this.setCurrentMode('basic');
         this.updateProgress(100, progressText);
@@ -757,11 +851,12 @@ IMPORTANT: Follow these guidelines when responding:
         }, 500);
     }
 
+    /** Set the active inference mode. @param {'gpu'|'cpu'|'basic'} mode */
     setCurrentMode(mode) {
         this.currentMode = mode;
-        this.usingWllama = mode === 'cpu';
     }
 
+    /** Human-readable label for the mode selector and aria descriptions. */
     getModeLabel(mode = this.currentMode) {
         if (mode === 'gpu') {
             return 'Phi 3.5 (GPU)';
@@ -774,11 +869,13 @@ IMPORTANT: Follow these guidelines when responding:
         return 'None (Basic Q&A)';
     }
 
+    /** Show an error in the loading section (red progress bar). */
     showError(message) {
         this.elements.progressText.textContent = message;
         this.elements.progressFill.style.backgroundColor = '#dc3545';
     }
 
+    /** Disable input controls while a model is loading. */
     disableInput() {
         this.elements.userInput.disabled = true;
         this.elements.sendBtn.disabled = true;
@@ -786,6 +883,7 @@ IMPORTANT: Follow these guidelines when responding:
         this.elements.userInput.placeholder = 'Loading model...';
     }
 
+    /** Re-enable input controls and refocus the text field. */
     enableInput() {
         this.elements.userInput.disabled = false;
         this.elements.sendBtn.disabled = false;
@@ -798,6 +896,7 @@ IMPORTANT: Follow these guidelines when responding:
     // EVENT LISTENERS
     // ============================================================================
 
+    /** Bind all DOM event listeners. Called once from {@link initialize}. */
     setupEventListeners() {
         // Send button click
         this.elements.sendBtn.addEventListener('click', () => {
@@ -808,32 +907,22 @@ IMPORTANT: Follow these guidelines when responding:
             }
         });
 
-        // Enter key to send (Shift+Enter for new line)
+        // Input keyboard handling: Enter to send (Shift+Enter for newline), Escape to stop.
+        // Consolidated to a single listener to avoid double-firing sendMessage.
         this.elements.userInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !this.isGenerating) {
+            if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                this.sendMessage();
+                if (!this.isGenerating) {
+                    this.sendMessage();
+                }
+            } else if (e.key === 'Escape' && this.isGenerating) {
+                this.stopGeneration();
             }
         });
 
         // Auto-resize textarea
         this.elements.userInput.addEventListener('input', () => {
             this.autoResizeTextarea();
-        });
-
-        // Keyboard navigation
-        this.elements.userInput.addEventListener('keydown', (e) => {
-            // Enter to send (without Shift)
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (!this.isGenerating) {
-                    this.sendMessage();
-                }
-            }
-            // Escape to stop generation
-            if (e.key === 'Escape' && this.isGenerating) {
-                this.stopGeneration();
-            }
         });
 
         // Global keyboard shortcuts
@@ -955,12 +1044,18 @@ IMPORTANT: Follow these guidelines when responding:
     // CONTENT MODERATION & TEXT PROCESSING
     // ============================================================================
 
+    /** Grow the user textarea to fit its content, up to its CSS max-height. */
     autoResizeTextarea() {
         const textarea = this.elements.userInput;
         textarea.style.height = 'auto';
         textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
     }
 
+    /**
+     * Case-insensitive whole-word check against the (decoded) moderation
+     * word list loaded by {@link loadProhibitedWords}.
+     * @returns {boolean}
+     */
     containsProhibitedWords(text) {
         // Convert to lowercase for case-insensitive matching
         const lowerText = text.toLowerCase();
@@ -978,10 +1073,16 @@ IMPORTANT: Follow these guidelines when responding:
         return false;
     }
 
+    /** Lowercase + collapse whitespace + strip punctuation for search. */
     normalizeSearchText(text) {
         return text.toLowerCase().trim().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
+    /**
+     * Detect explicit web-search intent in a user message ("search for X",
+     * "find docs about Y", "how do I ...") and return the keywords to
+     * forward to a search engine, or null when no intent is detected.
+     */
     getSearchIntentQuery(text) {
         const trimmedText = text.trim();
         const lowerText = trimmedText.toLowerCase();
@@ -1001,6 +1102,7 @@ IMPORTANT: Follow these guidelines when responding:
         return null;
     }
 
+    /** Strip stop words and dedupe to a compact keyword string for Bing. */
     extractBingSearchKeywords(text) {
         const normalizedText = this.normalizeSearchText(text);
         const words = normalizedText.split(' ').filter(Boolean);
@@ -1061,6 +1163,13 @@ IMPORTANT: Follow these guidelines when responding:
     // SEARCH & CONTEXT RETRIEVAL
     // ============================================================================
 
+    /**
+     * Match the user question against the knowledge-base keyword map
+     * using 3-gram, 2-gram and unigram lookups, then drop keyword hits
+     * that are subsets of longer ones (e.g. drop "language model" if
+     * "large language model" also matched).
+     * @returns {{matches:Array, matchedKeywords:string[]}}
+     */
     performSearch(userQuestion) {
         const lowerQuestion = userQuestion.toLowerCase().trim();
 
@@ -1100,15 +1209,17 @@ IMPORTANT: Follow these guidelines when responding:
 
         console.log('Extracted n-grams:', nGrams.map(ng => `"${ng.text}" (${ng.length})`));
 
-        // Match n-grams to keywords in the index
+        // Match n-grams to keywords in the index. Each keyword may map to
+        // multiple documents; record a per-document match for each one.
         const matchedKeywords = new Set();
         const documentMatches = new Map(); // doc id -> {doc, category, link, matchedKeywords[]}
 
         nGrams.forEach(ngram => {
-            const match = this.keywordMap.get(ngram.text);
-            if (match) {
-                matchedKeywords.add(ngram.text);
+            const matches = this.keywordMap.get(ngram.text);
+            if (!matches) return;
+            matchedKeywords.add(ngram.text);
 
+            matches.forEach(match => {
                 const docId = match.document.id;
                 if (!documentMatches.has(docId)) {
                     documentMatches.set(docId, {
@@ -1118,8 +1229,11 @@ IMPORTANT: Follow these guidelines when responding:
                         matchedKeywords: []
                     });
                 }
-                documentMatches.get(docId).matchedKeywords.push(ngram.text);
-            }
+                const matchRecord = documentMatches.get(docId);
+                if (!matchRecord.matchedKeywords.includes(ngram.text)) {
+                    matchRecord.matchedKeywords.push(ngram.text);
+                }
+            });
         });
 
         // Filter out keywords that are subsets of longer matched keywords
@@ -1177,6 +1291,11 @@ IMPORTANT: Follow these guidelines when responding:
         };
     }
 
+    /**
+     * Build the retrieval context handed to the model: matching document
+     * snippets, learn-more link metadata and any associated videos.
+     * Returns `{context:null, ...}` when nothing matched.
+     */
     searchContext(userQuestion) {
         const { matches, matchedKeywords } = this.performSearch(userQuestion);
 
@@ -1222,6 +1341,11 @@ IMPORTANT: Follow these guidelines when responding:
     // MESSAGE HANDLING & RESPONSE GENERATION
     // ============================================================================
 
+    /**
+     * Handle a user submission end-to-end: validate, moderate, search the
+     * knowledge base, then dispatch to the search-link, no-results or
+     * model-generation response path depending on intent and matches.
+     */
     async sendMessage() {
         const userMessage = this.elements.userInput.value.trim();
 
@@ -1304,6 +1428,7 @@ IMPORTANT: Follow these guidelines when responding:
         await this.generateResponse(userMessage, searchResult, usedVoice);
     }
 
+    /** Toggle the send button between its "Send" and "Stop" affordances. */
     updateSendButton(isGenerating) {
         const sendIcon = this.elements.sendBtn.querySelector('.send-icon');
         if (isGenerating) {
@@ -1317,6 +1442,11 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Cooperative cancel for the in-flight response. Signals the active
+     * stream, aborts any HTTP request, and asks the engine to interrupt
+     * generation; per-engine cleanup runs in `safeStop*` helpers.
+     */
     stopGeneration() {
         this.stopRequested = true;
 
@@ -1363,6 +1493,11 @@ IMPORTANT: Follow these guidelines when responding:
         console.log('Stop requested');
     }
 
+    /**
+     * Drain a wllama stream after interruption so its WASM state is left
+     * in a clean condition for the next prompt. Safe to call with a null
+     * or already-closed stream.
+     */
     async safeStopWllamaStream(stream) {
         if (!stream) {
             return;
@@ -1420,6 +1555,11 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Clear lingering interrupt flags inside wllama after a stop so the
+     * next prompt isn't immediately cancelled. May rethrow WebGPU errors;
+     * callers handle those by flipping the engine to CPU.
+     */
     async resetWllamaInterruptState() {
         if (!this.wllama) {
             return;
@@ -1436,6 +1576,10 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Drain a WebLLM stream after interruption and release any pipeline
+     * locks so the engine accepts the next prompt.
+     */
     async safeStopWebLLMStream(stream) {
         if (!this.engine || !stream) {
             return;
@@ -1477,6 +1621,10 @@ IMPORTANT: Follow these guidelines when responding:
         await this.resetWebLLMInterruptState();
     }
 
+    /**
+     * Reset internal WebLLM state (interrupt signal, pipeline locks, KV
+     * cache) after a cancelled generation.
+     */
     async resetWebLLMInterruptState() {
         if (!this.engine) {
             return;
@@ -1509,6 +1657,11 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * User-driven mode change. Lazily initializes wllama the first time
+     * CPU mode is selected and shows a transient loading indicator.
+     * @param {'gpu'|'cpu'|'basic'} targetMode
+     */
     async switchMode(targetMode) {
         if (targetMode === this.currentMode) {
             this.updateModeSelector();
@@ -1598,6 +1751,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Sync the <select> options and labels with `availableModes`/`currentMode`. */
     updateModeSelector() {
         const { modeSelect } = this.elements;
         if (!modeSelect) {
@@ -1634,6 +1788,35 @@ IMPORTANT: Follow these guidelines when responding:
     // MESSAGE UI RENDERING
     // ============================================================================
 
+    /**
+     * Build the HTML for the "Anton is typing" indicator, with a mode-specific
+     * note appended in CPU and Basic modes. Used to seed an assistant message
+     * bubble before the real response is streamed/animated into it.
+     * @param {('gpu'|'cpu'|'basic')} [mode=this.currentMode] Mode whose note to show.
+     * @returns {string} HTML string to assign to `messageTextDiv.innerHTML`.
+     */
+    getTypingIndicatorHtml(mode = this.currentMode) {
+        const dots = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span>';
+        if (mode === 'cpu') {
+            return `${dots}<p style="${TYPING_NOTE_STYLE}">(Responses may be slow in CPU mode. Thanks for your patience!)</p>`;
+        }
+        if (mode === 'basic') {
+            return `${dots}<p style="${TYPING_NOTE_STYLE}">(Basic mode returns matching knowledge-base content without model inference.)</p>`;
+        }
+        return '<span class="typing-indicator">●●●</span>';
+    }
+
+    /**
+     * Schedule the "Searching..." hint to disappear after a short delay so the
+     * user has time to read it once a response finishes.
+     */
+    scheduleSearchStatusClear() {
+        setTimeout(() => {
+            this.elements.searchStatus.textContent = '';
+        }, SEARCH_STATUS_CLEAR_DELAY);
+    }
+
+    /** Append a status/system bubble (e.g. "Switched to Basic mode"). */
     addSystemMessage(message) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'system-message';
@@ -1648,6 +1831,13 @@ IMPORTANT: Follow these guidelines when responding:
         return messageDiv;
     }
 
+    /**
+     * Create and append a chat-message bubble for the given role.
+     * @param {'assistant'|'user'} role
+     * @param {string} content Raw text (escaped before insertion).
+     * @param {boolean} [isTyping] If true, seed the bubble with the typing indicator.
+     * @returns {HTMLElement} The created message element.
+     */
     addMessage(role, content, isTyping = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}-message`;
@@ -1684,6 +1874,11 @@ IMPORTANT: Follow these guidelines when responding:
         return messageDiv;
     }
 
+    /**
+     * Finalize an assistant message bubble: append any video and
+     * "Learn more" link sections, then substitute placeholder tokens
+     * (e.g. `[[VIDEO_LINK_0]]`, `[[SEARCH_RESULT_LINK]]`) with HTML.
+     */
     renderAssistantMessage(messageTextDiv, assistantMessage, categories = [], links = [], videos = [], placeholders = {}) {
         let displayMessage = assistantMessage;
 
@@ -1734,6 +1929,7 @@ IMPORTANT: Follow these guidelines when responding:
         messageTextDiv.innerHTML = formattedMessage;
     }
 
+    /** @returns {boolean} true if at least one user turn exists in history. */
     hasPreviousUserPrompt() {
         return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
     }
@@ -1743,6 +1939,12 @@ IMPORTANT: Follow these guidelines when responding:
     // initialize → tools/list → tools/call, parses the returned JSON envelope,
     // and returns up to `max` deduplicated {title, url} article references.
 
+    /**
+     * Query the Microsoft Learn MCP server for documentation links
+     * relevant to a user question. Best-effort: returns `[]` on any error.
+     * @param {string} query Search text.
+     * @param {number} [max] Maximum number of dedup'd links to return.
+     */
     async queryLearnMcp(query, max = 5) {
         if (!query || !query.trim()) return [];
         const tool = await this.ensureLearnMcpReady();
@@ -1767,6 +1969,11 @@ IMPORTANT: Follow these guidelines when responding:
         return links;
     }
 
+    /**
+     * Lazily initialize the Learn MCP connection (initialize + tools/list)
+     * and cache the discovered search tool descriptor. Returns the tool or
+     * null if MCP is unreachable.
+     */
     async ensureLearnMcpReady() {
         if (!this._mcp) {
             this._mcp = {
@@ -1800,6 +2007,7 @@ IMPORTANT: Follow these guidelines when responding:
         return this._mcp.initPromise;
     }
 
+    /** Map a free-form query into the MCP tool's expected input shape. */
     buildLearnMcpArgs(tool, query) {
         const props = (tool.inputSchema && tool.inputSchema.properties) || {};
         const candidates = ['query', 'question', 'q', 'search', 'searchQuery', 'text', 'prompt'];
@@ -1809,6 +2017,11 @@ IMPORTANT: Follow these guidelines when responding:
         return args;
     }
 
+    /**
+     * Pull search-result items out of an MCP tool/call response. Handles
+     * both plain-array and `{results|items|data|value|hits|documents}`
+     * envelope payloads, parsing JSON text parts as needed.
+     */
     extractLearnMcpItems(result) {
         const items = [];
         const parts = (result && result.content) || [];
@@ -1830,6 +2043,12 @@ IMPORTANT: Follow these guidelines when responding:
         return items;
     }
 
+    /**
+     * Send a JSON-RPC request over the MCP transport.
+     * @param {string} method
+     * @param {object} params
+     * @param {{isNotification?:boolean}} [opts] When true, no id is sent and no response is awaited.
+     */
     async mcpRpc(method, params, { isNotification = false } = {}) {
         const id = isNotification ? undefined : this._mcp.nextId++;
         const body = { jsonrpc: '2.0', method, ...(params !== undefined ? { params } : {}) };
@@ -1898,6 +2117,10 @@ IMPORTANT: Follow these guidelines when responding:
     }
     // === end MCP integration ===============================================
 
+    /**
+     * Reply to an explicit "search for X" intent with a curated link
+     * (Learn MCP results when available, otherwise a Bing fallback).
+     */
     async respondWithSearchLink(userMessage, searchQuery, usedVoiceInput = false) {
         const searchResult = this.searchContext(searchQuery);
         const bingKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
@@ -1935,13 +2158,7 @@ IMPORTANT: Follow these guidelines when responding:
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
 
-        if (this.currentMode === 'cpu') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
-        } else if (this.currentMode === 'basic') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
-        } else {
-            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
-        }
+        messageTextDiv.innerHTML = this.getTypingIndicatorHtml();
 
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
@@ -1984,12 +2201,15 @@ IMPORTANT: Follow these guidelines when responding:
             this.updateSendButton(false);
             this.elements.userInput.focus();
 
-            setTimeout(() => {
-                this.elements.searchStatus.textContent = '';
-            }, 2000);
+            this.scheduleSearchStatusClear();
         }
     }
 
+    /**
+     * Reply when the knowledge-base search returned nothing. May try a
+     * brief contextual model continuation first (if a prior turn exists)
+     * and otherwise offers a Bing search link.
+     */
     async respondWithNoResultsSearchLink(userMessage, usedVoiceInput = false) {
         const bingKeywords = this.extractBingSearchKeywords(userMessage) || this.normalizeSearchText(userMessage);
         const encodedKeywords = encodeURIComponent(bingKeywords);
@@ -2007,13 +2227,7 @@ IMPORTANT: Follow these guidelines when responding:
         const messageTextDiv = responseMessage.querySelector('.message-text');
         const searchLinkHtml = `<a href="${bingUrl}" target="_blank" rel="noopener noreferrer">Bing search results</a>`;
 
-        if (this.currentMode === 'cpu') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
-        } else if (this.currentMode === 'basic') {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Basic mode returns matching knowledge-base content without model inference.)</p>';
-        } else {
-            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
-        }
+        messageTextDiv.innerHTML = this.getTypingIndicatorHtml();
 
         try {
             await new Promise(resolve => setTimeout(resolve, 250));
@@ -2089,12 +2303,15 @@ IMPORTANT: Follow these guidelines when responding:
             this.updateSendButton(false);
             this.elements.userInput.focus();
 
-            setTimeout(() => {
-                this.elements.searchStatus.textContent = '';
-            }, 2000);
+            this.scheduleSearchStatusClear();
         }
     }
 
+    /**
+     * Stream a response for a question that has knowledge-base context.
+     * Routes to WebLLM, wllama, or the basic fallback based on
+     * `currentMode`, then appends learn-more links and videos.
+     */
     async generateResponse(userMessage, searchResult, usedVoiceInput = false) {
         const { context, categories, links, videos } = searchResult;
 
@@ -2106,12 +2323,8 @@ IMPORTANT: Follow these guidelines when responding:
         const responseMessage = this.addMessage('assistant', '', false);
         const messageTextDiv = responseMessage.querySelector('.message-text');
 
-        // Show thinking indicator with CPU mode notice if applicable
-        if (this.usingWllama) {
-            messageTextDiv.innerHTML = '<span class="typing-indicator" aria-label="Anton is typing">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
-        } else {
-            messageTextDiv.innerHTML = '<span class="typing-indicator">●●●</span>';
-        }
+        // Show thinking indicator with a mode-specific note where applicable.
+        messageTextDiv.innerHTML = this.getTypingIndicatorHtml();
 
         try {
             // Route to the appropriate engine
@@ -2178,9 +2391,7 @@ IMPORTANT: Follow these guidelines when responding:
             this.elements.userInput.focus();
 
             // Clear search status after response is complete
-            setTimeout(() => {
-                this.elements.searchStatus.textContent = '';
-            }, 2000);
+            this.scheduleSearchStatusClear();
         }
     }
 
@@ -2189,6 +2400,12 @@ IMPORTANT: Follow these guidelines when responding:
     // ============================================================================
 
 
+    /**
+     * Run a streamed chat completion against the WebLLM engine, writing
+     * tokens into `messageTextDiv` as they arrive. Honors stop requests
+     * and records error state in `lastWebLLMCompletionErrored`.
+     * @returns {Promise<string>} The full assistant text (may be empty on stop/error).
+     */
     async generateWithWebLLM(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         this.lastWebLLMCompletionErrored = false;
 
@@ -2370,6 +2587,10 @@ IMPORTANT: Follow these guidelines when responding:
         return trimmedText;
     }
 
+    /**
+     * Compose a Basic-mode reply directly from the search result (no
+     * model inference) by stitching together matching document summaries.
+     */
     buildBasicResponse(searchResult) {
         const { documents = [] } = searchResult;
 
@@ -2380,6 +2601,7 @@ IMPORTANT: Follow these guidelines when responding:
         return documents.map(document => document.content).join('\n\n');
     }
 
+    /** Animate the Basic-mode reply into the message bubble. */
     async generateBasicResponse(searchResult, messageTextDiv, usedVoiceInput = false) {
         const assistantMessage = this.buildBasicResponse(searchResult);
 
@@ -2403,6 +2625,12 @@ IMPORTANT: Follow these guidelines when responding:
         return animationCompleted ? assistantMessage : '';
     }
 
+    /**
+     * Run a streamed chat completion against the wllama (CPU) engine,
+     * writing tokens into `messageTextDiv` as they arrive. Honors stop
+     * requests and records error state in `lastWllamaCompletionErrored`.
+     * @returns {Promise<string>} The full assistant text (may be empty on stop/error).
+     */
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         this.lastWllamaCompletionErrored = false;
 
@@ -2566,6 +2794,7 @@ IMPORTANT: Follow these guidelines when responding:
         return assistantMessage;
     }
 
+    /** Convert model markdown-ish output to safe display HTML. */
     formatResponse(text) {
         // Split out the learn more section and note if they exist
         const learnMoreMatch = text.match(/([\s\S]*?)(---\s*\n\n\*\*Learn more:\*\*.*?)(\n\n\*Note:.*)?$/);
@@ -2619,12 +2848,18 @@ IMPORTANT: Follow these guidelines when responding:
         return formatted;
     }
 
+    /** Escape `&<>"'` to prevent HTML injection. */
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
 
+    /**
+     * Type `text` into `element` one character at a time, re-applying
+     * `formatter` after each step. Returns false if cancelled via
+     * `stopRequested`, true on natural completion.
+     */
     async animateTyping(element, text, formatter = null, speed = 5) {
         element.innerHTML = '';
         const segments = text.split(/(\s+)/).filter(segment => segment.length > 0);
@@ -2644,6 +2879,7 @@ IMPORTANT: Follow these guidelines when responding:
         return true;
     }
 
+    /** Scroll the chat view to its newest message. */
     scrollToBottom() {
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
@@ -2652,6 +2888,7 @@ IMPORTANT: Follow these guidelines when responding:
     // SPEECH RECOGNITION HELPER METHODS
     // ============================================================================
 
+    /** Toggle the mic button's pressed/listening styling and aria label. */
     setMicButtonState(isActive, label = null) {
         if (isActive) {
             this.elements.micBtn.style.opacity = '0.6';
@@ -2666,6 +2903,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Cancel the silence + no-speech timers used during voice capture. */
     clearSpeechTimers() {
         if (this.silenceTimer) {
             clearTimeout(this.silenceTimer);
@@ -2677,6 +2915,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Close the AudioContext and stop the mic stream after voice capture. */
     cleanupAudioResources() {
         if (this.processorNode) {
             this.processorNode.disconnect();
@@ -2700,6 +2939,7 @@ IMPORTANT: Follow these guidelines when responding:
     // AUDIO PLAYBACK
     // ============================================================================
 
+    /** Play one of the 7 spoken response confirmations after voice input. */
     playRandomResponseAudio() {
         // Randomly select one of the 7 audio files
         const audioNumber = Math.floor(Math.random() * 7) + 1;
@@ -2711,6 +2951,7 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
+    /** Spoken "sorry" cue when a prompt fails moderation. */
     playModerationAudio() {
         const audio = new Audio('moderation/sorry.wav');
         audio.play().catch(error => {
@@ -2718,6 +2959,7 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
+    /** Spoken cue when the search returns no results. */
     playNoResultsAudio() {
         const audio = new Audio('audio/no_results.wav');
         audio.play().catch(error => {
@@ -2725,6 +2967,7 @@ IMPORTANT: Follow these guidelines when responding:
         });
     }
 
+    /** Spoken cue when search-link results are about to be shown. */
     playSearchResultsAudio() {
         const audio = new Audio('audio/search_results.wav');
         audio.play().catch(error => {
@@ -2736,6 +2979,10 @@ IMPORTANT: Follow these guidelines when responding:
     // SPEECH RECOGNITION - WEB SPEECH API & VOSK
     // ============================================================================
 
+    /**
+     * Toggle voice input. Prefers the Web Speech API; on failure or in
+     * unsupported browsers, lazy-loads Vosk and uses the WASM model.
+     */
     async handleMicClick() {
         // Try Web Speech API first
         if (this.usingWebSpeech) {
@@ -2766,6 +3013,10 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Attempt one capture using the browser's Web Speech API.
+     * @returns {Promise<boolean>} true if recognition started successfully.
+     */
     async tryWebSpeech() {
         return new Promise((resolve) => {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2883,6 +3134,11 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Open the mic, pipe PCM frames into the loaded Vosk recognizer, and
+     * auto-stop on silence (or no-speech timeout). Results are written
+     * into the input field via the recognizer callback in {@link loadVoskModel}.
+     */
     async startVoskRecording() {
         if (!this.voskRecognizer) {
             this.addMessage('assistant', 'Speech input is not available.');
@@ -2946,6 +3202,10 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /**
+     * Tear down the Vosk capture pipeline.
+     * @param {boolean} [isCancelled] If true, discard any partial recognition result.
+     */
     stopVoskRecording(isCancelled = false) {
         this.isRecording = false;
 
@@ -2970,6 +3230,7 @@ IMPORTANT: Follow these guidelines when responding:
     // UI CONTROLS & MODAL MANAGEMENT
     // ============================================================================
 
+    /** Clear chat history and the message list, keeping the welcome message. */
     restartConversation() {
         if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
             // Clear conversation history
@@ -2986,6 +3247,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Open the AI-mode explainer modal and install a focus trap. */
     showAiModeModal() {
         this.elements.aiModeModal.style.display = 'flex';
         this.currentModal = this.elements.aiModeModal;
@@ -2996,6 +3258,7 @@ IMPORTANT: Follow these guidelines when responding:
         }, 100);
     }
 
+    /** Close the AI-mode modal and restore focus to the trigger. */
     hideAiModeModal() {
         this.elements.aiModeModal.style.display = 'none';
         this.elements.aiModeModal.setAttribute('aria-hidden', 'true');
@@ -3008,6 +3271,7 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Open the About modal and install a focus trap. */
     showAboutModal() {
         this.elements.aboutModal.style.display = 'flex';
         this.currentModal = this.elements.aboutModal;
@@ -3022,6 +3286,7 @@ IMPORTANT: Follow these guidelines when responding:
         }, 100);
     }
 
+    /** Close the About modal and restore focus to the trigger. */
     hideAboutModal() {
         this.elements.aboutModal.style.display = 'none';
         this.elements.aboutModal.setAttribute('aria-hidden', 'true');
@@ -3035,10 +3300,15 @@ IMPORTANT: Follow these guidelines when responding:
         }
     }
 
+    /** Resolve a Synthesia video id (or already-full URL) to an embed URL. */
     getSynthesiaVideoUrl(videoId) {
         return videoId.startsWith('http') ? videoId : `https://share.synthesia.io/embeds/videos/${videoId}`;
     }
 
+    /**
+     * Open `videoUrl` in a centered popup window; if popups are blocked,
+     * fall back to navigating the current tab.
+     */
     openVideoPopup(videoUrl) {
         const left = Math.max(0, Math.round(window.screenX + ((window.outerWidth - this.videoPopupWidth) / 2)));
         const top = Math.max(0, Math.round(window.screenY + ((window.outerHeight - this.videoPopupHeight) / 2)));
@@ -3062,6 +3332,10 @@ IMPORTANT: Follow these guidelines when responding:
         popup.focus();
     }
 
+    /**
+     * Install a Tab/Shift+Tab focus trap that keeps keyboard focus inside
+     * `modalElement` until {@link removeModalFocusTrap} is called.
+     */
     setupModalFocusTrap(modalElement) {
         // Get all focusable elements within the modal
         const focusableElements = modalElement.querySelectorAll(
@@ -3095,6 +3369,7 @@ IMPORTANT: Follow these guidelines when responding:
         modalElement.addEventListener('keydown', this.modalFocusTrapHandler);
     }
 
+    /** Remove the focus trap installed by {@link setupModalFocusTrap}. */
     removeModalFocusTrap() {
         if (this.currentModal && this.modalFocusTrapHandler) {
             this.currentModal.removeEventListener('keydown', this.modalFocusTrapHandler);
