@@ -9,6 +9,59 @@ const SEARCH_STATUS_CLEAR_DELAY = 2000;
 // in CPU and Basic modes (kept inline so a single innerHTML write covers both).
 const TYPING_NOTE_STYLE = 'font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;';
 
+// Stop words for n-gram search (performSearch). Hoisted so the Set isn't
+// reallocated on every keystroke / question. Tuned for short question forms.
+const SEARCH_STOP_WORDS = new Set([
+    'what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about',
+    'tell', 'me', 'explain', 'describe', 'show', 'give', 'anton',
+    'i', 'you', 'he', 'she', 'it', 'we', 'they',
+    'my', 'your', 'his', 'her', 'its', 'our', 'their',
+    'why', 'which', 'whom', 'whose',
+    'all', 'any', 'this', 'that', 'these', 'those'
+]);
+
+// Stop words for the Bing keyword extractor (extractBingSearchKeywords).
+// Broader than SEARCH_STOP_WORDS because we strip common verbs / pronouns
+// to keep the resulting query short and on-topic.
+const BING_STOP_WORDS = new Set([
+    // Articles, prepositions, conjunctions
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+    'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+    'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+    'after', 'before', 'between', 'during', 'into', 'through', 'over',
+    'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+    // Pronouns
+    'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
+    'us', 'them', 'my', 'your', 'his', 'our', 'their', "i'm",
+    "you're", "he's", "she's", "we're", "they're",
+    // Determiners and quantifiers
+    'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+    'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+    'own', 'same', 'other', 'another', 'much', 'many',
+    // Verbs (auxiliary, modal, and common generic)
+    'am', 'was', 'were', 'been', 'being', 'have', 'has',
+    'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+    'may', 'might', 'must', 'shall', 'ought', 'will',
+    'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+    'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
+    'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
+    'describe', 'define',
+    // Question words
+    'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
+    'whose', 'whether', "what's", 'whats', "who's", 'whos', "how's",
+    'hows',
+    // Common adverbs
+    'also', 'just', 'now', 'here', 'there', 'very', 'too',
+    'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
+    'perhaps', 'about',
+    // Other common words
+    'yes', 'no', 'thing', 'something', 'anything', 'nothing',
+    'everything', 'someone', 'anyone', 'everyone', 'understand',
+    'think', 'believe', 'feel', 'appear', 'say',
+    'anton', 'please', 'using', 'search', 'docs',
+    'documentation', 'learn', 'details', 'overview'
+]);
+
 class AskAnton {
     constructor() {
         // Debug flags for testing failover (can be set via URL params or console)
@@ -23,7 +76,6 @@ class AskAnton {
         this.currentStream = null;
         this.currentAbortController = null;
         this.isStoppingGeneration = false;
-        this.webGPUAvailable = false;
         this.wllamaStateNeedsReset = false;
         this.currentMode = 'basic';
         this.availableModes = {
@@ -179,6 +231,8 @@ IMPORTANT: Follow these guidelines when responding:
      * lightly obfuscated (reversed + shifted by 1) so the raw word list is
      * not visible in the repo or network tab; decoding here yields the
      * lowercase words used by {@link containsProhibitedWords}.
+     * Also precompiles a whole-word regex per term into `prohibitedPatterns`
+     * so moderation checks don't rebuild regexes on every message.
      */
     async loadProhibitedWords() {
         try {
@@ -191,6 +245,13 @@ IMPORTANT: Follow these guidelines when responding:
                 .map(word => word.trim())
                 .filter(word => word.length > 0)
                 .map(word => this.shiftWord(this.reverseWord(word.toLowerCase()), 1));
+
+            // Escape regex metacharacters in each decoded word, then compile
+            // a case-insensitive whole-word matcher once.
+            this.prohibitedPatterns = this.prohibitedWords.map(word => ({
+                word,
+                regex: new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+            }));
 
             console.log('Loaded prohibited words:', this.prohibitedWords.length);
         } catch (error) {
@@ -577,7 +638,6 @@ IMPORTANT: Follow these guidelines when responding:
 
             this.updateProgress(100, 'Ready to chat!');
             console.log('WebLLM engine initialized successfully');
-            this.webGPUAvailable = true;
             this.availableModes.gpu = true;
             this.setCurrentMode('gpu');
 
@@ -1014,14 +1074,6 @@ IMPORTANT: Follow these guidelines when responding:
             });
         });
 
-        // Dynamic AI mode link keyboard handling (for links added to messages)
-        this.elements.chatMessages.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.classList.contains('ai-mode-link')) {
-                e.preventDefault();
-                e.target.click();
-            }
-        });
-
         this.elements.chatMessages.addEventListener('click', (e) => {
             const videoLink = e.target.closest('.video-link');
             if (!videoLink) {
@@ -1057,19 +1109,13 @@ IMPORTANT: Follow these guidelines when responding:
      * @returns {boolean}
      */
     containsProhibitedWords(text) {
-        // Convert to lowercase for case-insensitive matching
         const lowerText = text.toLowerCase();
-
-        // Create word boundaries regex pattern for whole word matching
-        for (const word of this.prohibitedWords) {
-            // Use word boundary to match whole words only
-            const regex = new RegExp(`\\b${word}\\b`, 'i');
+        for (const { word, regex } of this.prohibitedPatterns) {
             if (regex.test(lowerText)) {
                 console.log(`Content moderation: blocked word "${word}" detected`);
                 return true;
             }
         }
-
         return false;
     }
 
@@ -1106,49 +1152,11 @@ IMPORTANT: Follow these guidelines when responding:
     extractBingSearchKeywords(text) {
         const normalizedText = this.normalizeSearchText(text);
         const words = normalizedText.split(' ').filter(Boolean);
-        const stopWords = new Set([
-            // Articles, prepositions, conjunctions
-            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
-            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
-            'after', 'before', 'between', 'during', 'into', 'through', 'over',
-            'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
-            // Pronouns
-            'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
-            'us', 'them', 'my', 'your', 'his', 'our', 'their', 'i\'m',
-            'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
-            // Determiners and quantifiers
-            'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
-            'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
-            'own', 'same', 'other', 'another', 'much', 'many',
-            // Verbs (auxiliary, modal, and common generic)
-            'am', 'was', 'were', 'been', 'being', 'have', 'has',
-            'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
-            'may', 'might', 'must', 'shall', 'ought', 'will',
-            'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
-            'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
-            'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
-            'describe', 'define',
-            // Question words
-            'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
-            'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
-            'hows',
-            // Common adverbs
-            'also', 'just', 'now', 'here', 'there', 'very', 'too',
-            'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
-            'perhaps', 'about',
-            // Other common words
-            'yes', 'no', 'thing', 'something', 'anything', 'nothing',
-            'everything', 'someone', 'anyone', 'everyone', 'understand',
-            'think', 'believe', 'feel', 'appear', 'say',
-            'anton', 'please', 'using', 'search', 'docs',
-            'documentation', 'learn', 'details', 'overview'
-        ]);
         const uniqueWords = [];
         const seenWords = new Set();
 
         words.forEach(word => {
-            if (word.length < 2 || stopWords.has(word) || seenWords.has(word)) {
+            if (word.length < 2 || BING_STOP_WORDS.has(word) || seenWords.has(word)) {
                 return;
             }
 
@@ -1197,9 +1205,9 @@ IMPORTANT: Follow these guidelines when responding:
         }
 
         // Unigrams (single words) - filter out very short words and common stop words
-        const stopWords = ['what', 'is', 'are', 'the', 'a', 'an', 'how', 'does', 'do', 'can', 'about', 'tell', 'me', 'explain', 'describe', 'show', 'give', 'anton', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'why', 'which', 'whom', 'whose', 'why', 'all', 'any', 'this', 'that', 'these', 'those'];
+        const stopWords = SEARCH_STOP_WORDS;
         words.forEach(word => {
-            if (word.length >= 2 && !stopWords.includes(word)) {
+            if (word.length >= 2 && !stopWords.has(word)) {
                 nGrams.push({
                     text: word,
                     length: 1
