@@ -2610,10 +2610,24 @@ class AskAnton {
         let assistantMessage = '';
         let audioPlayed = false;
         let completion = null;
+        let firstChunkReceived = false;
+        let timeoutMessageAdded = false;
 
         // Create AbortController for consistency with other generation paths.
         const controller = new AbortController();
         this.currentAbortController = controller;
+
+        // Set up a 20-second timeout for slow responses
+        const slowResponseTimeout = setTimeout(() => {
+            if (!firstChunkReceived && !this.stopRequested) {
+                timeoutMessageAdded = true;
+                // Add a waiting message with animated dots
+                const waitingHtml = 'I\'m looking for information on that...<br><span class="typing-indicator" aria-label="Searching">●●●</span>';
+                messageTextDiv.innerHTML = waitingHtml;
+                this.scrollToBottom();
+                console.log('Wllama slow response: showing waiting message after 20 seconds');
+            }
+        }, 20000);
 
         // Use streaming with proper abort support
         try {
@@ -2638,6 +2652,16 @@ class AskAnton {
                 }
 
                 if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                    // Clear timeout on first chunk
+                    if (!firstChunkReceived) {
+                        clearTimeout(slowResponseTimeout);
+                        firstChunkReceived = true;
+                        // If we showed the waiting message, clear it before showing the real response
+                        if (timeoutMessageAdded) {
+                            messageTextDiv.innerHTML = '';
+                        }
+                    }
+
                     // Play audio on first chunk if voice input was used
                     if (!audioPlayed && usedVoiceInput) {
                         this.playRandomResponseAudio();
@@ -2661,6 +2685,9 @@ class AskAnton {
             this.currentAbortController = null;
 
         } catch (error) {
+            // Clear timeout on error
+            clearTimeout(slowResponseTimeout);
+
             // Check if this was an abort (expected when user clicks stop)
             if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
@@ -2671,6 +2698,9 @@ class AskAnton {
             }
             this.currentAbortController = null;
         } finally {
+            // Ensure timeout is cleared
+            clearTimeout(slowResponseTimeout);
+
             if (this.currentStream === completion) {
                 this.currentStream = null;
             }
