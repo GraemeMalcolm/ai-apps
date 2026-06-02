@@ -2574,7 +2574,7 @@ class AskAnton {
 
         // Build messages array (same format as WebLLM for consistency)
         const messages = [
-            { role: 'system', content: this.SYSTEM_PROMPT.replace("learner-friendly", "concise") }
+            { role: 'system', content: this.SYSTEM_PROMPT }
         ];
 
         // Add truncated previous conversation if available
@@ -2597,7 +2597,7 @@ class AskAnton {
         let userPrompt;
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT.replace("Respond based", "Respond succinctly, based")}\n${truncatedContext}`;
+            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT}\n${truncatedContext}`;
         } else {
             userPrompt = `${userMessage} (${this.PROMPT_WITHOUT_CONTEXT})`;
         }
