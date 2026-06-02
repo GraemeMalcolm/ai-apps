@@ -221,7 +221,7 @@
             },
             {
                 "id": 15,
-                "title": "Retrieval-Augmented Generation (RAG)",
+                "title": "Retrieval Augmented Generation (RAG)",
                 "video_id": "68942c8a-ca1e-490f-840f-6a15d0c7b8f7",
                 "keywords": [
                     "retrieval augmented generation",
@@ -230,7 +230,7 @@
                     "external knowledge",
                     "contextual information"
                 ],
-                "content": "Retrieval Augmented Generation (RAG) is an AI technique that finds and adds contextual data to a prompt; enabling the model to generate a relevant and up-to-date response."
+                "content": "Retrieval Augmented Generation (RAG) combines generative AI models with external knowledge sources to improve the accuracy and relevance of generated content. By retrieving relevant information from databases, documents, or the web; and using it to augment the prompt, RAG systems provide contextual information that enhances the model's responses. This approach is particularly useful for tasks requiring up-to-date or domain-specific knowledge, enabling more informed and reliable outputs. RAG integrates retrieval mechanisms with generation capabilities, offering a powerful solution for applications like question answering, summarization, and personalized content creation."
             },
             {
                 "id": 16,
