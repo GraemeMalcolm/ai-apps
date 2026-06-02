@@ -2597,7 +2597,7 @@ class AskAnton {
         let userPrompt;
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT.replace("Respond based", "Respond succinctly, based")}\n${truncatedContext}`;
+            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT.replace("Respond based on", "Respond by summarizing")}\n${truncatedContext}`;
         } else {
             userPrompt = `${userMessage} (${this.PROMPT_WITHOUT_CONTEXT})`;
         }
