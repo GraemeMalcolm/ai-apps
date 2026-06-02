@@ -733,6 +733,7 @@ class AskAnton {
                     this.wllama = new Wllama(CONFIG_PATHS);
 
                     // Load model from HuggingFace with optimized settings
+
                     await this.wllama.loadModelFromHF(
                         {
                             repo: 'ngxson/wllama-split-models',
@@ -2625,6 +2626,9 @@ class AskAnton {
                 const waitingHtml = 'I\'m looking for information on that...<br><span class="typing-indicator" aria-label="Searching">●●●</span>';
                 messageTextDiv.innerHTML = waitingHtml;
                 this.scrollToBottom();
+                if (usedVoiceInput) {
+                    this.playLookingAudio();
+                }
                 console.log('Wllama slow response: showing waiting message after 20 seconds');
             }
         }, 20000);
@@ -2868,9 +2872,17 @@ class AskAnton {
         });
     }
 
+    /** Spoken cue to indicate the assistant is looking for information. */
+    playLookingAudio() {
+        const audio = new Audio('audio/looking.wav');
+        audio.play().catch(error => {
+            console.error('Error playing looking audio:', error);
+        });
+    }
+
     /** Spoken "sorry" cue when a prompt fails moderation. */
     playModerationAudio() {
-        const audio = new Audio('moderation/sorry.wav');
+        const audio = new Audio('audio/sorry.wav');
         audio.play().catch(error => {
             console.error('Error playing moderation audio:', error);
         });
