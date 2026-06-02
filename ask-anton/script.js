@@ -2442,11 +2442,11 @@ class AskAnton {
             .filter(Boolean);
 
         const truncatedSections = sections.map(section => {
-            // If section is <= 600 chars, keep it as is
-            if (section.length <= 600) return section;
+            // If section is <= 100 chars, keep it as is
+            if (section.length <= 100) return section;
 
-            // Find first sentence ending (., !, ?) after position 600
-            const searchFrom = 600;
+            // Find first sentence ending (., !, ?) after position 100
+            const searchFrom = 100;
             let endPos = -1;
 
             for (let i = searchFrom; i < section.length; i++) {
@@ -2461,8 +2461,8 @@ class AskAnton {
                 return section.substring(0, endPos);
             }
 
-            // Otherwise, truncate at 600 chars with ellipsis
-            return section.substring(0, 600) + '...';
+            // Otherwise, truncate at 100 chars with ellipsis
+            return section.substring(0, 100) + '...';
         });
 
         return truncatedSections.reduce((combined, section) => {
@@ -2597,7 +2597,7 @@ class AskAnton {
         let userPrompt;
         if (context) {
             const truncatedContext = this.truncateParagraphsForCPU(context);
-            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT.replace("Respond based on", "Respond by summarizing")}\n${truncatedContext}`;
+            userPrompt = `${userMessage}\n${this.PROMPT_WITH_CONTEXT.replace("Respond based", "Respond succinctly, based")}\n${truncatedContext}`;
         } else {
             userPrompt = `${userMessage} (${this.PROMPT_WITHOUT_CONTEXT})`;
         }
