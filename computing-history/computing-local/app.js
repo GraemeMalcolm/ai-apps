@@ -403,14 +403,9 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
     }
 
     try {
-        let streamedText = '';
-        const summary = await generateComputingInfo(query, (chunk) => {
-            if (bubble && chunk) {
-                streamedText += chunk;
-                setBubbleContent(bubble, prefixHtml + escapeHtml(streamedText));
-                scrollToBottom();
-            }
-        });
+        const writer = createBatchedStreamWriter(bubble, prefixHtml);
+        const summary = await generateComputingInfo(query, writer);
+        writer.cancel();
 
         if (useTypingIndicator) {
             removeTyping();
@@ -1007,6 +1002,42 @@ function setBubbleContent(bubble, text) {
     }
 }
 
+/**
+ * Returns a writer that accumulates streamed chunks and flushes them to the
+ * bubble at most once per animation frame. This avoids per-token DOM updates
+ * that contend with WebLLM for the GPU on tight-VRAM systems and can
+ * contribute to device-lost errors. Call writer.cancel() after the stream
+ * resolves so any pending flush doesn't overwrite the cleaned final text.
+ */
+function createBatchedStreamWriter(bubble, prefixHtml = '') {
+    let accumulated = '';
+    let rafId = 0;
+
+    const flush = () => {
+        rafId = 0;
+        if (!bubble) return;
+        setBubbleContent(bubble, prefixHtml + escapeHtml(accumulated));
+        scrollToBottom();
+    };
+
+    const writer = (chunk) => {
+        if (!chunk || !bubble) return;
+        accumulated += chunk;
+        if (!rafId) {
+            rafId = requestAnimationFrame(flush);
+        }
+    };
+
+    writer.cancel = () => {
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = 0;
+        }
+    };
+
+    return writer;
+}
+
 function addMessage(text, sender, imageUrl = null, options = {}) {
     const { deferCompletion = false } = options;
     const div = document.createElement('div');
@@ -1451,14 +1482,10 @@ async function handleSend() {
         }
         startResponse();
 
+        const writer = voiceInputForThisQuery ? null : createBatchedStreamWriter(bubble);
         try {
-            const summary = await generateComputingInfo(text, voiceInputForThisQuery ? null : (chunk) => {
-                if (bubble && chunk) {
-                    const currentText = bubble.textContent || '';
-                    setBubbleContent(bubble, escapeHtml(currentText + chunk));
-                    scrollToBottom();
-                }
-            });
+            const summary = await generateComputingInfo(text, writer);
+            writer?.cancel();
 
             if (checkStopResponse()) {
                 removeTyping();
@@ -1970,14 +1997,9 @@ async function performClassification(imgEl, userText = "") {
                         // with WebLLM for the GPU and the user only hears the
                         // final answer); keep the researching dots until done.
                         const voiceInputForThisQuery = isVoiceInput;
-                        let streamedText = '';
-                        const summary = await generateComputingInfo(modelQuery, voiceInputForThisQuery ? null : (chunk) => {
-                            if (bubble && chunk) {
-                                streamedText += chunk;
-                                setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(streamedText));
-                                scrollToBottom();
-                            }
-                        });
+                        const writer = voiceInputForThisQuery ? null : createBatchedStreamWriter(bubble, reply + `<br><br>`);
+                        const summary = await generateComputingInfo(modelQuery, writer);
+                        writer?.cancel();
 
                         if (checkStopResponse()) {
                             return;
@@ -2127,6 +2149,18 @@ async function generateComputingInfo(query, onChunk = null) {
  */
 async function generateWithWebLLM(query, onChunk = null) {
     try {
+        // Force a clean KV cache each turn. We rebuild the full message list
+        // (system + history + current query) below, so WebLLM's cross-turn KV
+        // reuse buys us nothing but does grow VRAM usage and can contribute to
+        // device-lost errors over a session. resetChat is best-effort.
+        try {
+            if (engine && typeof engine.resetChat === 'function') {
+                await engine.resetChat();
+            }
+        } catch (resetErr) {
+            console.warn('engine.resetChat before generation failed (continuing):', resetErr);
+        }
+
         // Build messages array for WebLLM chat format
         const messages = [
             {
