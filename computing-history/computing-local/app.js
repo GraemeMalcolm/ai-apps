@@ -240,17 +240,17 @@ async function init() {
  */
 async function initializeWebLLM() {
     try {
-        updateModelName('Phi-3.5-mini (WebGPU)');
+        updateModelName('Phi-3-mini (WebGPU)');
         updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
 
-        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
 
         const appConfig = {
             model_list: [
                 {
-                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
@@ -3157,7 +3157,7 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
+            modelNameElement.textContent = 'Phi 3 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
             modelNameElement.textContent = 'Phi 2 (CPU - running locally)';
         } else if (currentMode === 'basic') {
