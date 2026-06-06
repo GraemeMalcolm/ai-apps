@@ -243,18 +243,18 @@ async function initializeWebLLM() {
         updateModelName('Phi-3-mini (WebGPU)');
         updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
 
-        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC';
+        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k';
 
         const appConfig = {
             model_list: [
                 {
                     model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
-                    model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k',
                     model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
-                    vram_required_MB: 3672.07,
-                    low_resource_required: false,
+                    vram_required_MB: 2520.07,
+                    low_resource_required: true,
                     overrides: {
-                        context_window_size: 2048
+                        context_window_size: 1024
                     }
                 }
             ]
@@ -2157,7 +2157,7 @@ async function generateWithWebLLM(query, onChunk = null) {
             messages,
             temperature: 0.3,
             top_p: 0.9,
-            max_tokens: 250,
+            max_tokens: 150,
             stream: true
         });
 
@@ -2470,7 +2470,7 @@ function selectMode() {
             return;
         }
         currentMode = 'gpu';
-        addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
+        addMessage('Switched to GPU mode (Phi-3-mini)', 'bot');
         updateModeSelect();
     } else if (selected === 'cpu') {
         if (!availableModes.cpu) {
@@ -2608,7 +2608,7 @@ function updateModeSelect() {
     if (gpuOption) {
         const gpuReady = availableModes.gpu && webGPUAvailable && engine;
         gpuOption.disabled = !gpuReady;
-        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
+        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3-mini)' : '⚫ GPU (unavailable)';
     }
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
@@ -2620,7 +2620,7 @@ function updateModeSelect() {
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
+    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
         : currentMode === 'cpu' ? 'CPU (Phi 2)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
