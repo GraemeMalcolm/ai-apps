@@ -1301,63 +1301,88 @@ async function handleSend() {
             return;
         }
 
-        // Check for Summarization Command
-        const lines = text.split('\n');
-        if (lines.length > 1 && lines[0].trim().toLowerCase().startsWith('summarize')) {
-            const contentToSummarize = lines.slice(1).join('\n');
-            showTyping();
-            // Simulate "reading"
-            setTimeout(() => {
-                // Check if user stopped the response
-                if (checkStopResponse()) {
+        // Text Analysis (Basic mode only - GPU and CPU modes send to model)
+        if (currentMode === 'basic') {
+            const lines = text.split('\n');
+            const firstLine = lines[0].trim().toLowerCase();
+
+            // Check for Summarization Command
+            if (lines.length > 1 && firstLine.startsWith('summarize')) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+                showTyping();
+                // Simulate "reading"
+                setTimeout(() => {
+                    // Check if user stopped the response
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
+
+                    const summary = summarizeText(contentToAnalyze);
                     removeTyping();
-                    return;
-                }
+                    addMessage(`<b>Summary:</b><br><br>${summary}`, "bot");
+                }, 1000);
 
-                const summary = summarizeText(contentToSummarize);
+                return;
+            }
 
-                // Entity Extraction
-                const doc = nlp(contentToSummarize);
-                const people = doc.people().out('array');
-                const places = doc.places().out('array');
-                // Use .match for dates
-                let dates = doc.match('#Date').out('array');
+            // Check for People Extraction Command
+            const peoplePattern = /^(list|extract).*(people|persons|names).*in this text:$/i;
+            if (lines.length > 1 && peoplePattern.test(firstLine)) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+                showTyping();
+                setTimeout(() => {
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
 
-                // Custom regex for years (4 digits between 1900 and current year, allowing 's' suffix)
-                const currentYear = new Date().getFullYear();
-                const yearRegex = /\b(19\d{2}|20\d{2})s?\b/g;
-                const matches = contentToSummarize.match(yearRegex);
+                    const doc = nlp(contentToAnalyze);
+                    const people = doc.people().out('array');
+                    const uniquePeople = [...new Set(people)];
 
-                if (matches) {
-                    matches.forEach(item => {
-                        // Remove 's' for numeric check
-                        const yearNum = parseInt(item.replace('s', ''));
-                        if (yearNum >= 1900 && yearNum <= currentYear) {
-                            dates.push(item);
-                        }
-                    });
-                }
+                    let response = "<b>People mentioned:</b><br><br>";
+                    if (uniquePeople.length > 0) {
+                        response += uniquePeople.join(', ');
+                    } else {
+                        response += "No people found in the text.";
+                    }
 
-                // Deduplicate and Sort
-                dates = [...new Set(dates)].sort();
+                    removeTyping();
+                    addMessage(response, "bot");
+                }, 1000);
 
-                let entityInfo = "";
+                return;
+            }
 
-                if (people.length > 0) {
-                    entityInfo += `<br><b>People:</b> ${[...new Set(people)].join(', ')}`;
-                }
-                if (places.length > 0) {
-                    entityInfo += `<br><b>Places:</b> ${[...new Set(places)].join(', ')}`;
-                }
-                if (dates.length > 0) {
-                    entityInfo += `<br><b>Dates/Years:</b> ${dates.join(', ')}`;
-                }
+            // Check for Places/Locations Extraction Command
+            const placesPattern = /^(list|extract).*(places|locations).*in this text:$/i;
+            if (lines.length > 1 && placesPattern.test(firstLine)) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+                showTyping();
+                setTimeout(() => {
+                    if (checkStopResponse()) {
+                        removeTyping();
+                        return;
+                    }
 
-                removeTyping();
-                addMessage(`<b>Summary:</b><br><br>${summary}<br><br><b>Entities Found:</b>${entityInfo}`, "bot");
-            }, 1000);
+                    const doc = nlp(contentToAnalyze);
+                    const places = doc.places().out('array');
+                    const uniquePlaces = [...new Set(places)];
 
-            return;
+                    let response = "<b>Places/Locations mentioned:</b><br><br>";
+                    if (uniquePlaces.length > 0) {
+                        response += uniquePlaces.join(', ');
+                    } else {
+                        response += "No places or locations found in the text.";
+                    }
+
+                    removeTyping();
+                    addMessage(response, "bot");
+                }, 1000);
+
+                return;
+            }
         }
     }
 
