@@ -3082,16 +3082,6 @@ async function restartConversation() {
         // Clear conversation history
         conversationHistory = [];
 
-        // Reset the WebLLM engine's chat state if in GPU mode
-        if (currentMode === 'gpu' && engine && typeof engine.resetChat === 'function') {
-            try {
-                await engine.resetChat();
-                console.log('WebLLM chat state reset');
-            } catch (error) {
-                console.warn('Failed to reset WebLLM chat state:', error);
-            }
-        }
-
         // Clear the chat UI (keep welcome message)
         chatContainer.innerHTML = '<div class="welcome-message">Let\'s chat about computing history...</div>';
 
@@ -3101,7 +3091,49 @@ async function restartConversation() {
         // Reset voice input flag
         isVoiceInput = false;
 
-        console.log('Conversation restarted');
+        // For GPU mode, fully reload the engine to clear all internal state
+        if (currentMode === 'gpu' && engine) {
+            // Disable all inputs during reload
+            sendBtn.disabled = true;
+            textInput.disabled = true;
+            micBtn.disabled = true;
+            uploadBtn.disabled = true;
+            if (modeSelect) modeSelect.disabled = true;
+
+            const loadingMsg = addMessage('Reloading AI model...', 'bot');
+            const loadingBubble = loadingMsg.bubble;
+
+            try {
+                // Dispose the old engine
+                if (typeof engine.unload === 'function') {
+                    await engine.unload();
+                }
+                engine = null;
+
+                // Reinitialize WebLLM
+                await initializeWebLLM();
+
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'AI model reloaded. Ready to chat!');
+                }
+
+                console.log('Conversation restarted with fresh GPU engine');
+            } catch (error) {
+                console.error('Failed to reload GPU model:', error);
+                if (loadingBubble) {
+                    setBubbleContent(loadingBubble, 'Failed to reload model. Please refresh the page.');
+                }
+            } finally {
+                // Re-enable inputs
+                sendBtn.disabled = false;
+                textInput.disabled = false;
+                micBtn.disabled = false;
+                uploadBtn.disabled = false;
+                if (modeSelect) modeSelect.disabled = false;
+            }
+        } else {
+            console.log('Conversation restarted');
+        }
     }
 }
 
