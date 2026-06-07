@@ -33,6 +33,10 @@ const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\n
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
+// Shared prompt constants for both WebLLM and Wllama
+const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
+const USER_PROMPT_SUFFIX = '\nProvide a concise and factually accurate response.';
+
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
 let voskRecognizer = null;
@@ -2117,7 +2121,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         const messages = [
             {
                 role: "system",
-                content: 'You are a knowledgeable assistant about computing history. You follow the rules at all times.\n\nRules:\n- You may discuss computing and technology topics only\n- Respond with one or two clear sentences, using simple language. \n- Focus on key facts and historical context\n- You must not provide assistance with activities that are illegal or may cause harm'
+                content: SYSTEM_PROMPT
             }
         ];
 
@@ -2132,7 +2136,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Add current query
         messages.push({
             role: "user",
-            content: query + "\nProvide a concise and factually accurate response."
+            content: query + USER_PROMPT_SUFFIX
         });
 
         console.log('Generating info with WebLLM for:', query);
@@ -2232,8 +2236,7 @@ async function generateWithWllama(query) {
 
         // Build ChatML formatted prompt
         let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += 'You are a knowledgeable assistant about computing history facts.\n';
-        chatMLPrompt += 'Discuss computing and technology topics only.\n';
+        chatMLPrompt += SYSTEM_PROMPT + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
 
         // Include conversation history for context (last 2 exchanges)
@@ -2250,7 +2253,7 @@ async function generateWithWllama(query) {
 
         // Add current user query
         chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + '\n(Respond concisely)\n';
+        chatMLPrompt += query + USER_PROMPT_SUFFIX + '\n';
         chatMLPrompt += '<|im_end|>\n\n';
         chatMLPrompt += '<|im_start|>assistant\n';
 
