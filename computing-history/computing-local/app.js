@@ -2283,7 +2283,6 @@ async function generateWithWllama(query) {
             top_p: 0.9,
             frequency_penalty: 1.1,
             stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:'],
-            signal: controller.signal,
             stream: true
         });
 
