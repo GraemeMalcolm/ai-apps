@@ -2150,6 +2150,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         try {
             if (engine && typeof engine.resetChat === 'function') {
                 await engine.resetChat();
+                console.log('WebLLM chat state reset before generation');
             }
         } catch (resetErr) {
             console.warn('engine.resetChat before generation failed (continuing):', resetErr);
@@ -2212,7 +2213,42 @@ async function generateWithWebLLM(query, onChunk = null) {
 
         if (!responseText || responseText.length < 5) {
             console.warn('WebLLM response too short or empty after cleanup:', responseText);
-            return null;
+
+            // If we get an empty response, it might be due to stale engine state
+            // (e.g., after an interrupt). Try resetting and regenerating once.
+            if (!responseText && engine && typeof engine.resetChat === 'function') {
+                console.log('Attempting recovery: resetting chat state and retrying generation...');
+                try {
+                    await engine.resetChat();
+                    // Small delay to let the engine settle
+                    await new Promise(resolve => setTimeout(resolve, 100));
+
+                    // Retry the generation
+                    const retryCompletion = await engine.chat.completions.create({
+                        messages,
+                        temperature: 0.3,
+                        top_p: 0.9,
+                        max_tokens: 150,
+                        stream: false
+                    });
+
+                    const retryResponse = retryCompletion.choices[0]?.message?.content || '';
+                    console.log('WebLLM retry response:', retryResponse);
+
+                    if (retryResponse && retryResponse.trim().length >= 5) {
+                        responseText = retryResponse.trim();
+                        console.log('Recovery successful, using retry response');
+                    } else {
+                        console.warn('Retry also returned empty response');
+                        return null;
+                    }
+                } catch (retryErr) {
+                    console.error('Retry generation failed:', retryErr);
+                    return null;
+                }
+            } else {
+                return null;
+            }
         }
 
         console.log('WebLLM final response:', responseText);
@@ -3038,13 +3074,23 @@ async function handleStopResponse() {
 /**
  * Restarts the conversation by clearing chat history and state
  */
-function restartConversation() {
+async function restartConversation() {
     if (confirm('Are you sure you want to clear the conversation history?')) {
         // Stop any ongoing response
-        handleStopResponse();
+        await handleStopResponse();
 
         // Clear conversation history
         conversationHistory = [];
+
+        // Reset the WebLLM engine's chat state if in GPU mode
+        if (currentMode === 'gpu' && engine && typeof engine.resetChat === 'function') {
+            try {
+                await engine.resetChat();
+                console.log('WebLLM chat state reset');
+            } catch (error) {
+                console.warn('Failed to reset WebLLM chat state:', error);
+            }
+        }
 
         // Clear the chat UI (keep welcome message)
         chatContainer.innerHTML = '<div class="welcome-message">Let\'s chat about computing history...</div>';
