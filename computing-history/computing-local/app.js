@@ -407,17 +407,31 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
 
     try {
         const writer = useTypingIndicator ? null : createBatchedStreamWriter(bubble, prefixHtml);
-        const summary = await generateComputingInfo(query, writer);
+
+        // For CPU mode with typing indicator, pass the bubble to generateComputingInfo
+        let cpuBubble = null;
+        if (currentMode === 'cpu' && useTypingIndicator) {
+            removeTyping();
+            cpuBubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
+        }
+
+        const summary = await generateComputingInfo(
+            query,
+            writer,
+            cpuBubble,
+            prefixHtml
+        );
         writer?.cancel();
 
-        if (useTypingIndicator) {
+        if (useTypingIndicator && !cpuBubble) {
             removeTyping();
         }
         if (checkStopResponse()) return;
 
         if (summary) {
             if (useTypingIndicator) {
-                bubble = addMessage(prefixHtml + escapeHtml(summary), 'bot').bubble;
+                // Use existing CPU bubble if available, otherwise create new one
+                bubble = cpuBubble || addMessage(prefixHtml + escapeHtml(summary), 'bot').bubble;
             } else {
                 setBubbleContent(bubble, prefixHtml + escapeHtml(summary));
             }
@@ -1487,14 +1501,52 @@ async function handleSend() {
         showTyping();
 
         try {
-            const summary = await generateComputingInfo(text);
-            removeTyping();
+            let bubble = null;
 
-            if (checkStopResponse()) return;
+            // For CPU mode, create the bubble before calling generateComputingInfo
+            // so it can update it with the waiting message if needed
+            if (currentMode === 'cpu') {
+                removeTyping();
+                const msgResult = addMessage('', "bot", null, { deferCompletion: true });
+                bubble = msgResult.bubble;
+                startResponse();
 
-            if (summary) {
-                if (currentMode === 'basic' || currentMode === 'cpu') {
-                    const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                // Show initial message with typing indicator and CPU patience note
+                let initialMessage = '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>' +
+                    '<p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+                setBubbleContent(bubble, initialMessage);
+                scrollToBottom();
+
+                const summary = await generateComputingInfo(text, null, bubble, '');
+
+                if (checkStopResponse()) return;
+
+                if (summary) {
+                    // Summary already streamed to bubble, just finalize
+                    // Handle voice output if needed
+                    if (isVoiceInput) {
+                        speakText(bubble);
+                        isVoiceInput = false;
+                    }
+
+                    endResponse();
+                } else {
+                    if (lastWllamaCompletionErrored) {
+                        setBubbleContent(bubble, CPU_MODE_FAILURE_MESSAGE);
+                    } else {
+                        setBubbleContent(bubble, `I'm sorry. I don't know about that topic.`);
+                    }
+                    endResponse();
+                }
+            } else {
+                // Basic mode - original behavior
+                const summary = await generateComputingInfo(text);
+                removeTyping();
+
+                if (checkStopResponse()) return;
+
+                if (summary) {
+                    bubble = addMessage('', "bot", null, { deferCompletion: true }).bubble;
                     startResponse();
 
                     // In voice mode, speak immediately while the text animates.
@@ -1509,22 +1561,19 @@ async function handleSend() {
 
                     endResponse();
                 } else {
-                    addMessage(`${summary}`, "bot");
+                    addMessage(`I'm sorry. I don't know about that topic.`, "bot");
                 }
+            }
 
-                // Store in conversation history
+            // Store in conversation history (if we got a summary)
+            if (bubble && bubble.textContent && bubble.textContent.trim().length > 0) {
+                const summary = bubble.textContent.trim();
                 conversationHistory.push({
                     user: truncateToFirstSentence(text),
                     assistant: truncateToFirstSentence(summary)
                 });
                 if (conversationHistory.length > 2) {
                     conversationHistory.shift();
-                }
-            } else {
-                if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
-                    addMessage(CPU_MODE_FAILURE_MESSAGE, "bot");
-                } else {
-                    addMessage(`I'm sorry. I don't know about that topic.`, "bot");
                 }
             }
         } catch (e) {
@@ -2005,17 +2054,26 @@ async function performClassification(imgEl, userText = "") {
                         console.log('[Image Classification] Sending query to model:', modelQuery);
 
                         // Step 3: Generate the response
-                        const summary = await generateComputingInfo(modelQuery);
+                        // For CPU mode, pass bubble and prefix so waiting message can be shown
+                        const summary = await generateComputingInfo(
+                            modelQuery,
+                            null,
+                            currentMode === 'cpu' ? bubble : null,
+                            currentMode === 'cpu' ? reply + '<br><br>' : ''
+                        );
 
                         if (checkStopResponse()) {
                             return;
                         }
 
                         if (summary) {
-                            // Step 4: Replace researching message with the actual response
-                            const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
-                            setBubbleContent(bubble, finalMessage);
-                            scrollToBottom();
+                            // For Basic mode, update bubble with final result
+                            // For CPU mode, already streamed to bubble
+                            if (currentMode === 'basic') {
+                                const finalMessage = reply + `<br><br>${escapeHtml(summary)}`;
+                                setBubbleContent(bubble, finalMessage);
+                                scrollToBottom();
+                            }
 
                             conversationHistory.push({
                                 user: historyUserPrompt,
@@ -2079,16 +2137,18 @@ function clampQueryLength(query) {
  * Generates computing-related information using AI (WebLLM or Wllama)
  * @param {string} query - The query to generate information about
  * @param {Function} onChunk - Optional callback for streaming chunks (deprecated, no longer used)
+ * @param {HTMLElement} bubbleElement - Optional bubble element for CPU mode waiting message
+ * @param {string} bubblePrefix - Optional HTML prefix for bubble (e.g., classification result)
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
-async function generateComputingInfo(query, onChunk = null) {
+async function generateComputingInfo(query, onChunk = null, bubbleElement = null, bubblePrefix = '') {
     const safeQuery = clampQueryLength(query);
 
     // Use WebLLM if available and enabled, otherwise use wllama
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
         return await generateWithWebLLM(safeQuery, onChunk);
     } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-        return await generateWithWllama(safeQuery);
+        return await generateWithWllama(safeQuery, bubbleElement, bubblePrefix);
     } else if (currentMode === 'basic') {
         return await generateWithWikipedia(safeQuery);
     } else {
@@ -2229,8 +2289,11 @@ async function generateWithWebLLM(query, onChunk = null) {
 
 /**
  * Generates text using Wllama (CPU mode)
+ * @param {string} query - The query to generate information about
+ * @param {HTMLElement} bubbleElement - Optional bubble element to update with waiting message
+ * @param {string} bubblePrefix - Optional HTML prefix to preserve in bubble (e.g., classification result)
  */
-async function generateWithWllama(query) {
+async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
     try {
         lastWllamaCompletionErrored = false;
 
@@ -2273,6 +2336,21 @@ async function generateWithWllama(query) {
         // Create AbortController for cancellation
         currentAbortController = new AbortController();
 
+        // Track if first chunk has been received
+        let firstChunkReceived = false;
+        let waitingMessageShown = false;
+
+        // Set up 20-second timeout for slow responses
+        const slowResponseTimeout = setTimeout(() => {
+            if (!firstChunkReceived && !shouldStopResponse && bubbleElement) {
+                waitingMessageShown = true;
+                const waitingHtml = bubblePrefix + '<span class="typing-indicator">●●●</span><br>I\'m working on a response...<br>';
+                setBubbleContent(bubbleElement, waitingHtml);
+                scrollToBottom();
+                console.log('Wllama slow response: showing waiting message after 20 seconds');
+            }
+        }, 20000);
+
         // Generate response
         let responseText = '';
         const completion = await wllama.createCompletion({
@@ -2289,14 +2367,33 @@ async function generateWithWllama(query) {
         for await (const chunk of completion) {
             if (shouldStopResponse) {
                 currentAbortController = null;
+                clearTimeout(slowResponseTimeout);
                 return null;
             }
             if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                // Clear timeout on first chunk
+                if (!firstChunkReceived) {
+                    clearTimeout(slowResponseTimeout);
+                    firstChunkReceived = true;
+                    // If we showed the waiting message, clear it before showing the real response
+                    if (waitingMessageShown && bubbleElement) {
+                        setBubbleContent(bubbleElement, bubblePrefix);
+                    }
+                }
                 responseText += chunk.choices[0].text;
+
+                // Stream to bubble if provided
+                if (bubbleElement) {
+                    setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+                    scrollToBottom();
+                }
             }
         }
 
         currentAbortController = null;
+
+        // Clear timeout if still pending
+        clearTimeout(slowResponseTimeout);
 
         // Clean up the response
         responseText = responseText.trim();
