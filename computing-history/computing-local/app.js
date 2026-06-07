@@ -1506,14 +1506,16 @@ async function handleSend() {
                 }
             } else {
                 removeTyping();
-                addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
+                // If summary is null, it could be an error or just an empty response
+                // Check console logs to determine if GPU is actually failing
+                console.warn('GPU mode returned null/empty summary for query:', text);
+                addMessage("I'm sorry, I couldn't generate a response. Please try again.", "bot");
                 endResponse();
-                const newMode = await recoverGpuModeOrFallback();
-                if (newMode) await retryQueryAfterRecovery(text);
             }
         } catch (e) {
             removeTyping();
             if (checkStopResponse()) return;
+            console.error('GPU mode error:', e);
             addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
             endResponse();
             const newMode = await recoverGpuModeOrFallback();
@@ -1991,9 +1993,8 @@ async function performClassification(imgEl, userText = "") {
                                 conversationHistory.shift();
                             }
                         } else {
-                            setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
-                            const newMode = await recoverGpuModeOrFallback();
-                            if (newMode) await retryQueryAfterRecovery(modelQuery, { replyPrefix: reply, historyUserPrompt });
+                            console.warn('GPU mode returned null/empty summary for image classification');
+                            setBubbleContent(bubble, reply + `<br><br>I'm sorry, I couldn't generate additional details.`);
                         }
 
                         // Handle voice output if needed
@@ -2004,7 +2005,7 @@ async function performClassification(imgEl, userText = "") {
                             endResponse();
                         }
                     } catch (e) {
-                        console.warn("Info generation failed", e);
+                        console.error("GPU mode error during image classification:", e);
                         setBubbleContent(bubble, reply + `<br><br>${GPU_MODE_FAILURE_MESSAGE}`);
                         endResponse();
                         const newMode = await recoverGpuModeOrFallback();
@@ -2193,21 +2194,28 @@ async function generateWithWebLLM(query, onChunk = null) {
 
         let responseText = completion.choices[0]?.message?.content || '';
 
+        console.log('WebLLM raw response:', responseText);
+
         // Clean up the response
         responseText = responseText.trim();
 
-        // Remove incomplete last sentence
-        if (responseText && !responseText.match(/[.!?]$/)) {
+        // Remove incomplete last sentence only if response is reasonably long
+        // (for short responses, keep them even if they don't end with punctuation)
+        if (responseText && responseText.length > 20 && !responseText.match(/[.!?]$/)) {
             const lastCompleteMatch = responseText.match(/(.*[.!?])/);
             if (lastCompleteMatch) {
+                const originalLength = responseText.length;
                 responseText = lastCompleteMatch[1].trim();
+                console.log(`Trimmed incomplete sentence: ${originalLength} -> ${responseText.length} chars`);
             }
         }
 
-        if (!responseText || responseText.length < 10) {
+        if (!responseText || responseText.length < 5) {
+            console.warn('WebLLM response too short or empty after cleanup:', responseText);
             return null;
         }
 
+        console.log('WebLLM final response:', responseText);
         return responseText;
 
     } catch (error) {
