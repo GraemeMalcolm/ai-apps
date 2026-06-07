@@ -2451,6 +2451,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             return null;
         }
 
+        console.log('Wllama final response:', responseText);
         return responseText;
 
     } catch (error) {
