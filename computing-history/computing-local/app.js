@@ -354,7 +354,7 @@ async function recoverGpuModeOrFallback() {
             }
             currentMode = 'cpu';
             if (loadingBubble) {
-                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 2).');
+                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 3.1).');
             }
         } catch (cpuErr) {
             console.error('CPU fallback also failed:', cpuErr);
@@ -683,7 +683,7 @@ async function initWllama(progressCallback = null, options = {}) {
 
         if (!isLazyLoad) {
             console.log("Initializing wllama...");
-            updateModelName('Phi-2 (CPU)');
+            updateModelName('Phi-3.1 (CPU)');
             updateLoadingStatus('smollm', 'loading', '10%');
         }
 
@@ -720,11 +720,11 @@ async function initWllama(progressCallback = null, options = {}) {
 
                 await wllama.loadModelFromHF(
                     {
-                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                        repo: 'ngxson/wllama-split-models',
+                        file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
                     },
                     {
-                        n_ctx: 384,
+                        n_ctx: 512,
                         n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
                         offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
                         n_threads: preferredThreads,
@@ -742,11 +742,11 @@ async function initWllama(progressCallback = null, options = {}) {
                     wllama = new Wllama(CONFIG_PATHS);
                     await wllama.loadModelFromHF(
                         {
-                            repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                            file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                            repo: 'ngxson/wllama-split-models',
+                            file: 'Phi-3.1-mini-128k-instruct-Q3_K_M-00001-of-00008.gguf'
                         },
                         {
-                            n_ctx: 384,
+                            n_ctx: 512,
                             n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
                             offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
                             n_threads: 1,
@@ -2505,7 +2505,7 @@ function selectMode() {
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 2)');
+                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -2555,7 +2555,7 @@ function selectMode() {
                     clearInterval(checkReady);
                     currentMode = 'cpu';
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 2)');
+                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1)');
                     }
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
@@ -2587,7 +2587,7 @@ function selectMode() {
         }
 
         currentMode = 'cpu';
-        addMessage('Switched to CPU mode (Phi 2)', 'bot');
+        addMessage('Switched to CPU mode (Phi 3.1)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -2618,7 +2618,7 @@ function updateModeSelect() {
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 2)' : '⚫ CPU (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 3.1)' : '⚫ CPU (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
@@ -2626,7 +2626,7 @@ function updateModeSelect() {
 
     // Update tooltip to reflect current mode
     const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
-        : currentMode === 'cpu' ? 'CPU (Phi 2)'
+        : currentMode === 'cpu' ? 'CPU (Phi 3.1)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
@@ -3134,7 +3134,7 @@ function showAppDetails() {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
             modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 2 (CPU - running locally)';
+            modelNameElement.textContent = 'Phi 3.1 (CPU - running locally)';
         } else if (currentMode === 'basic') {
             modelNameElement.textContent = 'Wikipedia API (Basic mode - online lookup)';
         } else {
