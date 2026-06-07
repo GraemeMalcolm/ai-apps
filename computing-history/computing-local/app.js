@@ -1,4 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm";
 import { Wllama } from '@wllama/wllama';
 
 const chatContainer = document.getElementById('chat-messages');
@@ -256,7 +256,7 @@ async function initializeWebLLM() {
                 {
                     model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
                     model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
                     vram_required_MB: 2520.07,
                     low_resource_required: true,
                     overrides: {
