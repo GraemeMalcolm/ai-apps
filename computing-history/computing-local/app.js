@@ -431,8 +431,18 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
 
         if (summary) {
             if (useTypingIndicator) {
-                // Use existing CPU bubble if available, otherwise create new one
-                bubble = cpuBubble || addMessage(prefixHtml + escapeHtml(summary), 'bot').bubble;
+                // Use existing CPU bubble if available, otherwise create new one for GPU/CPU mode
+                if (cpuBubble) {
+                    bubble = cpuBubble;
+                } else {
+                    bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
+                    // Animate the text being typed
+                    if (prefixHtml) {
+                        setBubbleContent(bubble, prefixHtml);
+                    }
+                    await typeTextInBubble(bubble, summary, 20, prefixHtml);
+                    if (checkStopResponse()) return;
+                }
             } else {
                 setBubbleContent(bubble, prefixHtml + escapeHtml(summary));
             }
@@ -1462,7 +1472,21 @@ async function handleSend() {
             if (checkStopResponse()) return;
 
             if (summary) {
-                const { bubble } = addMessage(escapeHtml(summary), "bot", null, { deferCompletion: true });
+                const { bubble } = addMessage('', "bot", null, { deferCompletion: true });
+                startResponse();
+
+                // In voice mode, speak immediately while the text animates.
+                if (isVoiceInput) {
+                    speakTextContent(summary);
+                    isVoiceInput = false;
+                }
+
+                // Animate the response text
+                await typeTextInBubble(bubble, summary, 20);
+
+                if (checkStopResponse()) return;
+
+                endResponse();
 
                 // Store in conversation history
                 conversationHistory.push({
@@ -1471,14 +1495,6 @@ async function handleSend() {
                 });
                 if (conversationHistory.length > 2) {
                     conversationHistory.shift();
-                }
-
-                // Handle voice output if needed
-                if (isVoiceInput) {
-                    speakText(bubble);
-                    isVoiceInput = false;
-                } else {
-                    endResponse();
                 }
             } else {
                 removeTyping();
@@ -1993,8 +2009,14 @@ async function performClassification(imgEl, userText = "") {
                         }
 
                         if (summary) {
-                            // Update bubble with cleaned summary (removes incomplete sentences)
-                            setBubbleContent(bubble, reply + `<br><br>` + escapeHtml(summary));
+                            // Animate typing the summary after the classification
+                            const finalPrefix = reply + `<br><br>`;
+                            setBubbleContent(bubble, finalPrefix);
+                            await typeTextInBubble(bubble, summary, 20, finalPrefix);
+
+                            if (checkStopResponse()) {
+                                return;
+                            }
 
                             conversationHistory.push({
                                 user: historyUserPrompt,
