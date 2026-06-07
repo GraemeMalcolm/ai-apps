@@ -1215,9 +1215,12 @@ function showTyping() {
     div.id = 'typing-indicator';
     div.className = 'message bot';
 
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
     // Add CPU mode patience message if in CPU mode
     if (currentMode === 'cpu') {
-        div.innerHTML = `
+        bubble.innerHTML = `
             <div class="typing">
                 <div class="dot"></div>
                 <div class="dot"></div>
@@ -1226,7 +1229,7 @@ function showTyping() {
             <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>
         `;
     } else {
-        div.innerHTML = `
+        bubble.innerHTML = `
             <div class="typing">
                 <div class="dot"></div>
                 <div class="dot"></div>
@@ -1235,6 +1238,7 @@ function showTyping() {
         `;
     }
 
+    div.appendChild(bubble);
     chatContainer.appendChild(div);
     scrollToBottom();
 
@@ -1474,7 +1478,6 @@ async function handleSend() {
     // For GPU mode, use typing indicator (non-streaming)
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
         showTyping();
-        startResponse();
 
         try {
             const summary = await generateComputingInfo(text);
