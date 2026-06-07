@@ -2230,7 +2230,7 @@ async function generateWithWebLLM(query, onChunk = null) {
             messages,
             temperature: 0.3,
             top_p: 0.9,
-            max_tokens: 150,
+            max_tokens: 250,
             stream: false
         });
 
@@ -2279,7 +2279,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                         messages,
                         temperature: 0.3,
                         top_p: 0.9,
-                        max_tokens: 150,
+                        max_tokens: 250,
                         stream: false
                     });
 
@@ -2380,7 +2380,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         let responseText = '';
         const completion = await wllama.createCompletion({
             prompt: prompt,
-            max_tokens: 200,
+            max_tokens: 250,
             temperature: 0.1,
             top_k: 40,
             top_p: 0.9,
