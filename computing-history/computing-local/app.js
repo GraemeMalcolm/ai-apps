@@ -245,21 +245,21 @@ async function init() {
  */
 async function initializeWebLLM() {
     try {
-        updateModelName('Phi-3-mini (WebGPU)');
+        updateModelName('Phi-3.5-mini (WebGPU)');
         updateLoadingStatus('smollm', 'loading', 'Loading AI model (WebGPU)...');
 
-        const targetModelId = 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k';
+        const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 
         const appConfig = {
             model_list: [
                 {
-                    model: 'https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC',
-                    model_id: 'Phi-3-mini-4k-instruct-q4f16_1-MLC-1k',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3-mini-4k-instruct-q4f16_1_cs1k-webgpu.wasm',
-                    vram_required_MB: 2520.07,
-                    low_resource_required: true,
+                    model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    vram_required_MB: 3672.07,
+                    low_resource_required: false,
                     overrides: {
-                        context_window_size: 1024
+                        context_window_size: 2048
                     }
                 }
             ]
@@ -2479,7 +2479,7 @@ function selectMode() {
             return;
         }
         currentMode = 'gpu';
-        addMessage('Switched to GPU mode (Phi-3-mini)', 'bot');
+        addMessage('Switched to GPU mode (Phi-3.5-mini)', 'bot');
         updateModeSelect();
     } else if (selected === 'cpu') {
         if (!availableModes.cpu) {
@@ -2613,7 +2613,7 @@ function updateModeSelect() {
     if (gpuOption) {
         const gpuReady = availableModes.gpu && webGPUAvailable && engine;
         gpuOption.disabled = !gpuReady;
-        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3-mini)' : '⚫ GPU (unavailable)';
+        gpuOption.textContent = gpuReady ? '🟢 GPU (Phi-3.5-mini)' : '⚫ GPU (unavailable)';
     }
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
@@ -2625,7 +2625,7 @@ function updateModeSelect() {
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3-mini)'
+    const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
         : currentMode === 'cpu' ? 'CPU (Phi 2)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
@@ -3132,7 +3132,7 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
-            modelNameElement.textContent = 'Phi 3 mini (WebGPU - running locally)';
+            modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
             modelNameElement.textContent = 'Phi 2 (CPU - running locally)';
         } else if (currentMode === 'basic') {
