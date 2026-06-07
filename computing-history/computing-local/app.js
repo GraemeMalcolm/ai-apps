@@ -167,7 +167,7 @@ function checkWebGPUSupport() {
  */
 async function init() {
     // Show loading overlay
-    updateLoadingStatus('mobilenet', 'ready', 'On demand');
+    updateLoadingStatus('mobilenet', 'loading', 'Loading...');
     updateLoadingStatus('smollm', 'loading', 'Loading...');
 
     // Pin TFJS to the CPU backend before any tf.* calls so it never grabs a
@@ -183,10 +183,16 @@ async function init() {
         console.warn('Failed to pin TFJS to CPU backend:', backendErr);
     }
 
-    // MobileNet load is deferred until the first image upload (see
-    // ensureImageModelLoaded). Only moderation data is needed up front.
     try {
         await loadInappropriateWords();
+
+        // Pre-load MobileNet + classifier up front so the first image upload
+        // doesn't have to wait for it (and so any load failure surfaces here
+        // rather than partway through a classification flow). Failure is
+        // non-fatal: ensureImageModelLoaded will retry on demand.
+        ensureImageModelLoaded().catch(err => {
+            console.warn('Image model preload failed (will retry on demand):', err);
+        });
 
         // Check for WebGPU support
         const hasWebGPU = checkWebGPUSupport();
