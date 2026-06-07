@@ -2144,7 +2144,7 @@ async function performClassification(imgEl, userText = "") {
 // generation), which on tight-VRAM systems is a common trigger for WebGPU
 // device-lost / driver TDR. Cap incoming queries at a safe length and cut at
 // a word boundary when possible so we don't slice mid-word.
-const MAX_QUERY_CHARS = 900;
+const MAX_QUERY_CHARS = 1000;
 
 function clampQueryLength(query) {
     if (typeof query !== 'string' || query.length <= MAX_QUERY_CHARS) {
