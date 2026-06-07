@@ -358,7 +358,7 @@ async function recoverGpuModeOrFallback() {
             }
             currentMode = 'cpu';
             if (loadingBubble) {
-                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 3.1).');
+                setBubbleContent(loadingBubble, 'GPU mode unavailable. Switched to CPU mode (Phi 3.1-mini).');
             }
         } catch (cpuErr) {
             console.error('CPU fallback also failed:', cpuErr);
@@ -687,7 +687,7 @@ async function initWllama(progressCallback = null, options = {}) {
 
         if (!isLazyLoad) {
             console.log("Initializing wllama...");
-            updateModelName('Phi-3.1 (CPU)');
+            updateModelName('Phi 3.1-mini (CPU)');
             updateLoadingStatus('smollm', 'loading', '10%');
         }
 
@@ -2508,7 +2508,7 @@ function selectMode() {
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1)');
+                    setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1-mini)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -2558,7 +2558,7 @@ function selectMode() {
                     clearInterval(checkReady);
                     currentMode = 'cpu';
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1)');
+                        setBubbleContent(loadingBubble, 'Switched to CPU mode (Phi 3.1-mini)');
                     }
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
@@ -2590,7 +2590,7 @@ function selectMode() {
         }
 
         currentMode = 'cpu';
-        addMessage('Switched to CPU mode (Phi 3.1)', 'bot');
+        addMessage('Switched to CPU mode (Phi 3.1-mini)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -2621,7 +2621,7 @@ function updateModeSelect() {
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 3.1)' : '⚫ CPU (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟠 CPU (Phi 3.1-mini)' : '⚫ CPU (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
@@ -2629,7 +2629,7 @@ function updateModeSelect() {
 
     // Update tooltip to reflect current mode
     const modeLabel = currentMode === 'gpu' ? 'GPU (Phi-3.5-mini)'
-        : currentMode === 'cpu' ? 'CPU (Phi 3.1)'
+        : currentMode === 'cpu' ? 'CPU (Phi 3.1-mini)'
             : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
@@ -3137,7 +3137,7 @@ function showAppDetails() {
         if (currentMode === 'gpu' && webGPUAvailable && engine) {
             modelNameElement.textContent = 'Phi 3.5 mini (WebGPU - running locally)';
         } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 3.1 (CPU - running locally)';
+            modelNameElement.textContent = 'Phi 3.1-mini (CPU - running locally)';
         } else if (currentMode === 'basic') {
             modelNameElement.textContent = 'Wikipedia API (Basic mode - online lookup)';
         } else {
