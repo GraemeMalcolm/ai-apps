@@ -52,8 +52,8 @@ let silenceTimer = null;
 let noSpeechTimer = null;
 let lastSpeechTime = null;
 let hasSpeech = false;
-const silenceTimeout = 2500; // Auto-stop after 2.5 seconds of silence
-const noSpeechTimeout = 10000; // Cancel after 10 seconds of no speech
+const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
+const noSpeechTimeout = 7000; // Cancel after 7 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 let voskLoadingMessage = null; // Track the loading message for Vosk
 
