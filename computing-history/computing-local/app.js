@@ -28,6 +28,7 @@ let webGPUAvailable = false; // Track if WebGPU is available
 let currentMode = 'basic'; // Track which engine is active: 'gpu', 'cpu', or 'basic'
 const availableModes = { gpu: false, cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
+let currentStream = null; // Track active stream for proper cleanup
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\nI'll try to restart it.\nIf this keeps happening, please try switching to CPU mode or Basic mode.";
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
@@ -2366,11 +2367,13 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             stream: true
         });
 
+        // Store stream reference for cleanup
+        currentStream = completion;
+
         for await (const chunk of completion) {
             if (shouldStopResponse) {
-                currentAbortController = null;
-                clearTimeout(slowResponseTimeout);
-                return null;
+                console.log('Wllama generation stopped by user');
+                break;
             }
             if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
                 // Clear timeout on first chunk
@@ -2393,9 +2396,15 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         }
 
         currentAbortController = null;
+        currentStream = null;
 
         // Clear timeout if still pending
         clearTimeout(slowResponseTimeout);
+
+        // If stopped by user, return null
+        if (shouldStopResponse) {
+            return null;
+        }
 
         // Clean up the response
         responseText = responseText.trim();
@@ -2432,6 +2441,42 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         currentAbortController = null;
         lastWllamaCompletionErrored = true;
         return null;
+    }
+}
+
+/**
+ * Safely stop and drain a wllama stream to leave WASM state clean
+ * @param {AsyncIterator} stream - The wllama completion stream to stop
+ */
+async function safeStopWllamaStream(stream) {
+    if (!stream) {
+        return;
+    }
+
+    // Try to drain a couple pending chunks
+    for (let i = 0; i < 2; i++) {
+        try {
+            const nextPromise = stream.next?.();
+            if (!nextPromise || typeof nextPromise.then !== 'function') {
+                break;
+            }
+
+            await Promise.race([
+                nextPromise,
+                new Promise((resolve) => setTimeout(resolve, 120))
+            ]);
+        } catch (error) {
+            break;
+        }
+    }
+
+    // Call return() to properly close the iterator
+    try {
+        if (typeof stream.return === 'function') {
+            await stream.return();
+        }
+    } catch (error) {
+        console.warn('Stream return() failed:', error);
     }
 }
 
@@ -3136,6 +3181,15 @@ async function handleStopResponse() {
     if (currentAbortController) {
         currentAbortController.abort();
         currentAbortController = null;
+    }
+
+    // Drain wllama stream to clean up WASM state
+    if (currentStream && currentMode === 'cpu') {
+        safeStopWllamaStream(currentStream).catch(err => {
+            console.warn('Wllama stream cleanup failed:', err);
+        }).finally(() => {
+            currentStream = null;
+        });
     }
 
     // Stop speech if playing
