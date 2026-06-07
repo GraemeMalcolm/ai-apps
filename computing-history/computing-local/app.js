@@ -52,8 +52,8 @@ let silenceTimer = null;
 let noSpeechTimer = null;
 let lastSpeechTime = null;
 let hasSpeech = false;
-const silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
-const noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
+const silenceTimeout = 2500; // Auto-stop after 2.5 seconds of silence
+const noSpeechTimeout = 10000; // Cancel after 10 seconds of no speech
 let usingWebSpeech = true; // Try Web Speech API first
 let voskLoadingMessage = null; // Track the loading message for Vosk
 
@@ -2887,7 +2887,7 @@ async function tryWebSpeech() {
 
             // Start no-speech timeout
             noSpeechTimer = setTimeout(() => {
-                console.log('No speech detected in 5 seconds, cancelling...');
+                console.log('No speech detected, cancelling...');
                 recognition.stop();
                 // Don't resolve here - let the error handler or onend handle it
             }, noSpeechTimeout);
