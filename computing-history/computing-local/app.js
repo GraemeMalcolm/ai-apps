@@ -2122,6 +2122,23 @@ async function performClassification(imgEl, userText = "") {
     }
 }
 
+// Long user prompts inflate the prefill pass (the largest single GPU job in a
+// generation), which on tight-VRAM systems is a common trigger for WebGPU
+// device-lost / driver TDR. Cap incoming queries at a safe length and cut at
+// a word boundary when possible so we don't slice mid-word.
+const MAX_QUERY_CHARS = 900;
+
+function clampQueryLength(query) {
+    if (typeof query !== 'string' || query.length <= MAX_QUERY_CHARS) {
+        return query;
+    }
+    const slice = query.slice(0, MAX_QUERY_CHARS);
+    const lastSpace = slice.lastIndexOf(' ');
+    const cut = lastSpace > MAX_QUERY_CHARS - 100 ? slice.slice(0, lastSpace) : slice;
+    console.log(`Truncated query from ${query.length} to ${cut.length} chars`);
+    return cut.trim();
+}
+
 /**
  * Generates computing-related information using AI (WebLLM or Wllama)
  * @param {string} query - The query to generate information about
@@ -2129,13 +2146,15 @@ async function performClassification(imgEl, userText = "") {
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
 async function generateComputingInfo(query, onChunk = null) {
+    const safeQuery = clampQueryLength(query);
+
     // Use WebLLM if available and enabled, otherwise use wllama
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
-        return await generateWithWebLLM(query, onChunk);
+        return await generateWithWebLLM(safeQuery, onChunk);
     } else if (currentMode === 'cpu' && wllamaReady && wllama) {
-        return await generateWithWllama(query);
+        return await generateWithWllama(safeQuery);
     } else if (currentMode === 'basic') {
-        return await generateWithWikipedia(query);
+        return await generateWithWikipedia(safeQuery);
     } else {
         console.warn("No AI engine ready, skipping generation");
         return null;
