@@ -1356,7 +1356,7 @@ async function handleSend() {
 
     // 1. Text Processing
     if (text) {
-        addMessage(text, "user");
+        addMessage(escapeHtml(text), "user");
 
         // Check for inappropriate content
         const lowerText = text.toLowerCase();
