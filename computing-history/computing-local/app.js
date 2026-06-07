@@ -348,11 +348,7 @@ async function recoverGpuModeOrFallback() {
                 await initWllama((progress) => {
                     if (loadingBubble) {
                         const percentage = Math.round(progress * 100);
-                        if (percentage >= 99) {
-                            setBubbleContent(loadingBubble, 'GPU mode unavailable. Optimizing CPU model...');
-                        } else {
-                            setBubbleContent(loadingBubble, `GPU mode unavailable. Loading CPU model... ${percentage}%`);
-                        }
+                        setBubbleContent(loadingBubble, `GPU mode unavailable. Loading CPU model... ${percentage}%`);
                     }
                 });
             }
@@ -736,11 +732,6 @@ async function initWllama(progressCallback = null, options = {}) {
                     }
                 );
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-
-                // Warm the cache with system instruction (only on initial load, not on restart)
-                if (!forceReload) {
-                    await warmWllamaCache(isLazyLoad, progressCallback);
-                }
             } catch (multiErr) {
                 if (preferredThreads > 1) {
                     console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
@@ -763,11 +754,6 @@ async function initWllama(progressCallback = null, options = {}) {
                         }
                     );
                     console.log("Wllama initialized successfully with 1 thread (fallback)");
-
-                    // Warm the cache with system instruction (only on initial load, not on restart)
-                    if (!forceReload) {
-                        await warmWllamaCache(isLazyLoad, progressCallback);
-                    }
                 } else {
                     throw multiErr;
                 }
@@ -871,61 +857,6 @@ async function withWebGpuDisabledForWorkers(task) {
         if (workerPatched) {
             window.Worker = NativeWorker;
             console.log('Restored Worker after wllama initialization');
-        }
-    }
-}
-
-/**
- * Warms the wllama cache with system instruction to improve first response time
- * @param {boolean} isLazyLoad - Whether this is a lazy load
- * @param {Function} progressCallback - Optional callback for progress updates
- */
-async function warmWllamaCache(isLazyLoad = true, progressCallback = null) {
-    if (!wllama) return;
-
-    try {
-        const systemInstruction = '<|im_start|>system\n' +
-            'You are a knowledgeable assistant about computing history. You provide concise answers.\n' +
-            '<|im_end|>';
-
-        console.log('Warming cache with system instruction...');
-
-        // Update progress message
-        if (!isLazyLoad) {
-            updateLoadingStatus('smollm', 'loading', '99%');
-            const statusTextElement = document.getElementById('smollmStatusText');
-            if (statusTextElement) {
-                statusTextElement.textContent = 'Optimizing model...';
-            }
-        } else if (progressCallback) {
-            // For lazy loading, pass progress as 0.99
-            progressCallback(0.99);
-        }
-
-        await wllama.createCompletion({
-            prompt: systemInstruction,
-            max_tokens: 1,
-            temperature: 0.0,
-            stream: false
-        });
-        console.log('Cache warmed successfully');
-
-        // Restore model name after optimization
-        if (!isLazyLoad) {
-            const statusTextElement = document.getElementById('smollmStatusText');
-            if (statusTextElement) {
-                statusTextElement.textContent = 'Phi-2 (CPU)';
-            }
-        }
-    } catch (error) {
-        console.log('Cache warming failed (non-critical):', error.message);
-
-        // Restore model name even if cache warming failed
-        if (!isLazyLoad) {
-            const statusTextElement = document.getElementById('smollmStatusText');
-            if (statusTextElement) {
-                statusTextElement.textContent = 'Phi-2 (CPU)';
-            }
         }
     }
 }
@@ -2201,14 +2132,20 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Clean up the response
         responseText = responseText.trim();
 
-        // Remove incomplete last sentence only if response is reasonably long
-        // (for short responses, keep them even if they don't end with punctuation)
-        if (responseText && responseText.length > 20 && !responseText.match(/[.!?]$/)) {
-            const lastCompleteMatch = responseText.match(/(.*[.!?])/);
-            if (lastCompleteMatch) {
-                const originalLength = responseText.length;
-                responseText = lastCompleteMatch[1].trim();
-                console.log(`Trimmed incomplete sentence: ${originalLength} -> ${responseText.length} chars`);
+        // Only trim incomplete sentences if the response looks genuinely cut off
+        // (ends with comma, dash, "and", etc.) - don't trim lists or responses
+        // that end with proper names or numbers
+        if (responseText && responseText.length > 20) {
+            const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(responseText);
+
+            if (endsWithIncompleteMarker) {
+                // Find the last complete sentence
+                const lastCompleteMatch = responseText.match(/(.*[.!?])\s+[^.!?]*$/);
+                if (lastCompleteMatch) {
+                    const originalLength = responseText.length;
+                    responseText = lastCompleteMatch[1].trim();
+                    console.log(`Trimmed incomplete sentence: ${originalLength} -> ${responseText.length} chars`);
+                }
             }
         }
 
@@ -2325,11 +2262,18 @@ async function generateWithWllama(query) {
         // Clean up the response
         responseText = responseText.trim();
 
-        // Remove incomplete last sentence
-        if (responseText && !responseText.match(/[.!?]$/)) {
-            const lastCompleteMatch = responseText.match(/(.*[.!?])/);
-            if (lastCompleteMatch) {
-                responseText = lastCompleteMatch[1].trim();
+        // Only trim incomplete sentences if the response looks genuinely cut off
+        // (ends with comma, dash, "and", etc.) - don't trim lists or responses
+        // that end with proper names or numbers
+        if (responseText && responseText.length > 20) {
+            const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(responseText);
+
+            if (endsWithIncompleteMarker) {
+                // Find the last complete sentence
+                const lastCompleteMatch = responseText.match(/(.*[.!?])\s+[^.!?]*$/);
+                if (lastCompleteMatch) {
+                    responseText = lastCompleteMatch[1].trim();
+                }
             }
         }
 
@@ -2531,11 +2475,7 @@ function selectMode() {
             initWllama((progress) => {
                 if (loadingBubble) {
                     const percentage = Math.round(progress * 100);
-                    if (percentage >= 99) {
-                        setBubbleContent(loadingBubble, 'Switching to CPU mode - optimizing model...');
-                    } else {
-                        setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
-                    }
+                    setBubbleContent(loadingBubble, `Switching to CPU mode - loading model... ${percentage}%`);
                 }
             }).then(() => {
                 currentMode = 'cpu';
