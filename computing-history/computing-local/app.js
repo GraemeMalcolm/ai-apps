@@ -2234,28 +2234,39 @@ async function generateWithWllama(query) {
     try {
         lastWllamaCompletionErrored = false;
 
-        // Build ChatML formatted prompt
-        let chatMLPrompt = '<|im_start|>system\n';
-        chatMLPrompt += SYSTEM_PROMPT + '\n';
-        chatMLPrompt += '<|im_end|>\n\n';
+        // Build messages array (same structure as WebLLM)
+        const messages = [
+            {
+                role: "system",
+                content: SYSTEM_PROMPT
+            }
+        ];
 
         // Include conversation history for context (last 2 exchanges)
         if (conversationHistory.length > 0) {
             conversationHistory.forEach(exchange => {
-                chatMLPrompt += '<|im_start|>user\n';
-                chatMLPrompt += exchange.user + '\n';
-                chatMLPrompt += '<|im_end|>\n\n';
-                chatMLPrompt += '<|im_start|>assistant\n';
-                chatMLPrompt += exchange.assistant + '\n';
-                chatMLPrompt += '<|im_end|>\n\n';
+                messages.push({ role: "user", content: exchange.user });
+                messages.push({ role: "assistant", content: exchange.assistant });
             });
         }
 
-        // Add current user query
-        chatMLPrompt += '<|im_start|>user\n';
-        chatMLPrompt += query + USER_PROMPT_SUFFIX + '\n';
-        chatMLPrompt += '<|im_end|>\n\n';
-        chatMLPrompt += '<|im_start|>assistant\n';
+        // Add current query
+        messages.push({
+            role: "user",
+            content: query + USER_PROMPT_SUFFIX
+        });
+
+        // Convert messages array to simple prompt format (same logical structure as WebLLM)
+        let prompt = messages[0].content + '\n\n'; // System message
+
+        // Add conversation history
+        for (let i = 1; i < messages.length; i++) {
+            const msg = messages[i];
+            const role = msg.role === 'user' ? 'User' : 'Assistant';
+            prompt += `${role}: ${msg.content}\n\n`;
+        }
+
+        prompt += 'Assistant:';
 
         console.log('Generating info with Wllama for:', query);
 
@@ -2265,13 +2276,14 @@ async function generateWithWllama(query) {
         // Generate response
         let responseText = '';
         const completion = await wllama.createCompletion({
-            prompt: chatMLPrompt,
+            prompt: prompt,
             max_tokens: 200,
             temperature: 0.1,
-            top_k: 20,
-            top_p: 0.85,
+            top_k: 40,
+            top_p: 0.9,
             frequency_penalty: 1.1,
-            stop: ['<|im_end|>', '<|im_start|>'],
+            stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:'],
+            signal: controller.signal,
             stream: true
         });
 
