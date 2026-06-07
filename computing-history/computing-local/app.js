@@ -392,12 +392,10 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
     startResponse();
     const prefixHtml = replyPrefix ? replyPrefix + '<br><br>' : '';
 
-    // CPU mode generation doesn't stream, and can be slow, so use the typing
-    // indicator (which includes the CPU patience message) instead of writing
-    // into a bubble incrementally. Voice input also skips streaming so that
-    // per-token DOM updates don't contend with the GPU. Other modes stream
-    // into a bubble.
-    const useTypingIndicator = currentMode === 'cpu' || isVoiceInput;
+    // CPU and GPU modes use the typing indicator instead of streaming into a
+    // bubble incrementally. Voice input also skips streaming so that per-token
+    // DOM updates don't contend with the GPU. Basic mode streams into a bubble.
+    const useTypingIndicator = currentMode === 'cpu' || currentMode === 'gpu' || isVoiceInput;
     let bubble = null;
     if (!useTypingIndicator) {
         bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
@@ -2210,51 +2208,20 @@ async function generateWithWebLLM(query, onChunk = null) {
 
         console.log('Generating info with WebLLM for:', query);
 
-        // Generate with streaming
-        let responseText = '';
+        // Generate without streaming (complete response at once)
         const completion = await engine.chat.completions.create({
             messages,
             temperature: 0.3,
             top_p: 0.9,
             max_tokens: 150,
-            stream: true
+            stream: false
         });
-
-        currentStream = completion;
-
-        try {
-            for await (const chunk of completion) {
-                if (shouldStopResponse) {
-                    break;
-                }
-
-                const delta = chunk.choices[0]?.delta?.content || '';
-                responseText += delta;
-
-                // Call the streaming callback if provided
-                if (onChunk && delta) {
-                    onChunk(delta);
-                }
-            }
-        } catch (error) {
-            const isInterrupted = shouldStopResponse ||
-                error?.name === 'AbortError' ||
-                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
-
-            if (!isInterrupted) {
-                throw error;
-            }
-
-            console.log('WebLLM generation interrupted');
-        } finally {
-            if (currentStream === completion) {
-                currentStream = null;
-            }
-        }
 
         if (shouldStopResponse) {
             return null;
         }
+
+        let responseText = completion.choices[0]?.message?.content || '';
 
         // Clean up the response
         responseText = responseText.trim();
@@ -2275,7 +2242,6 @@ async function generateWithWebLLM(query, onChunk = null) {
 
     } catch (error) {
         console.error('Error generating info with WebLLM:', error);
-        currentStream = null;
         return null;
     }
 }
