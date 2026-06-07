@@ -573,7 +573,8 @@ function escapeRegex(text) {
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    // Replace newlines with <br> tags for proper display in HTML
+    return div.innerHTML.replace(/\n/g, '<br>');
 }
 
 async function loadInappropriateWords() {
