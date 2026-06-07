@@ -2362,6 +2362,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             top_p: 0.9,
             frequency_penalty: 1.1,
             stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:'],
+            signal: currentAbortController.signal,
             stream: true
         });
 
@@ -2421,6 +2422,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         return responseText;
 
     } catch (error) {
+        clearTimeout(slowResponseTimeout);
         if (error.name === 'AbortError') {
             console.log('Generation aborted by user');
             lastWllamaCompletionErrored = false;
