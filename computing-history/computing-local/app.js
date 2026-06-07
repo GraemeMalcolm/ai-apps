@@ -28,7 +28,6 @@ let webGPUAvailable = false; // Track if WebGPU is available
 let currentMode = 'basic'; // Track which engine is active: 'gpu', 'cpu', or 'basic'
 const availableModes = { gpu: false, cpu: true, basic: true }; // Track which modes can be used
 let currentAbortController = null; // Track abort controller for wllama
-let currentStream = null; // Track current streaming completion
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 const GPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in GPU mode.\nI'll try to restart it.\nIf this keeps happening, please try switching to CPU mode or Basic mode.";
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\nIf this keeps happening, please try switching to Basic mode.";
@@ -407,9 +406,9 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
     }
 
     try {
-        const writer = createBatchedStreamWriter(bubble, prefixHtml);
+        const writer = useTypingIndicator ? null : createBatchedStreamWriter(bubble, prefixHtml);
         const summary = await generateComputingInfo(query, writer);
-        writer.cancel();
+        writer?.cancel();
 
         if (useTypingIndicator) {
             removeTyping();
@@ -1472,37 +1471,19 @@ async function handleSend() {
         return;
     }
 
-    // For GPU mode with streaming, create message first
+    // For GPU mode, use typing indicator (non-streaming)
     if (currentMode === 'gpu' && webGPUAvailable && engine) {
-        // For voice input, skip streaming entirely: per-token DOM updates
-        // share the GPU with WebLLM and on tight-VRAM systems can trigger a
-        // device-lost. The user only hears the final answer anyway.
-        const voiceInputForThisQuery = isVoiceInput;
-        let bubble = null;
-        if (voiceInputForThisQuery) {
-            showTyping();
-        } else {
-            bubble = addMessage('', "bot", null, { deferCompletion: true }).bubble;
-        }
+        showTyping();
         startResponse();
 
-        const writer = voiceInputForThisQuery ? null : createBatchedStreamWriter(bubble);
         try {
-            const summary = await generateComputingInfo(text, writer);
-            writer?.cancel();
+            const summary = await generateComputingInfo(text);
+            removeTyping();
 
-            if (checkStopResponse()) {
-                removeTyping();
-                return;
-            }
+            if (checkStopResponse()) return;
 
             if (summary) {
-                if (voiceInputForThisQuery) {
-                    removeTyping();
-                    bubble = addMessage(escapeHtml(summary), "bot", null, { deferCompletion: true }).bubble;
-                } else {
-                    setBubbleContent(bubble, escapeHtml(summary));
-                }
+                const { bubble } = addMessage(escapeHtml(summary), "bot", null, { deferCompletion: true });
 
                 // Store in conversation history
                 conversationHistory.push({
@@ -1521,24 +1502,16 @@ async function handleSend() {
                     endResponse();
                 }
             } else {
-                if (voiceInputForThisQuery) {
-                    removeTyping();
-                    bubble = addMessage(GPU_MODE_FAILURE_MESSAGE, "bot", null, { deferCompletion: true }).bubble;
-                } else {
-                    setBubbleContent(bubble, GPU_MODE_FAILURE_MESSAGE);
-                }
+                removeTyping();
+                addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
                 endResponse();
                 const newMode = await recoverGpuModeOrFallback();
                 if (newMode) await retryQueryAfterRecovery(text);
             }
         } catch (e) {
+            removeTyping();
             if (checkStopResponse()) return;
-            if (voiceInputForThisQuery) {
-                removeTyping();
-                addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
-            } else {
-                setBubbleContent(bubble, GPU_MODE_FAILURE_MESSAGE);
-            }
+            addMessage(GPU_MODE_FAILURE_MESSAGE, "bot");
             endResponse();
             const newMode = await recoverGpuModeOrFallback();
             if (newMode) await retryQueryAfterRecovery(text);
@@ -1996,14 +1969,8 @@ async function performClassification(imgEl, userText = "") {
                         const modelQuery = infoPrompt || topMatch.className;
                         console.log('[Image Classification] Sending query to model:', modelQuery);
 
-                        // Step 3: Generate the response. For voice input, skip
-                        // streaming entirely (per-token DOM updates contend
-                        // with WebLLM for the GPU and the user only hears the
-                        // final answer); keep the researching dots until done.
-                        const voiceInputForThisQuery = isVoiceInput;
-                        const writer = voiceInputForThisQuery ? null : createBatchedStreamWriter(bubble, reply + `<br><br>`);
-                        const summary = await generateComputingInfo(modelQuery, writer);
-                        writer?.cancel();
+                        // Step 3: Generate the response without streaming (complete response at once)
+                        const summary = await generateComputingInfo(modelQuery);
 
                         if (checkStopResponse()) {
                             return;
@@ -2146,7 +2113,7 @@ function clampQueryLength(query) {
 /**
  * Generates computing-related information using AI (WebLLM or Wllama)
  * @param {string} query - The query to generate information about
- * @param {Function} onChunk - Optional callback for streaming chunks (GPU mode only)
+ * @param {Function} onChunk - Optional callback for streaming chunks (deprecated, no longer used)
  * @returns {Promise<string|null>} Generated text or null if unavailable
  */
 async function generateComputingInfo(query, onChunk = null) {
@@ -2166,9 +2133,9 @@ async function generateComputingInfo(query, onChunk = null) {
 }
 
 /**
- * Generates text using WebLLM (GPU mode) with streaming support
+ * Generates text using WebLLM (GPU mode) without streaming
  * @param {string} query - The query to generate information about
- * @param {Function} onChunk - Optional callback for streaming chunks
+ * @param {Function} onChunk - Deprecated parameter, no longer used
  */
 async function generateWithWebLLM(query, onChunk = null) {
     try {
@@ -3027,15 +2994,15 @@ async function handleStopResponse() {
     shouldStopResponse = true;
     isStoppingResponse = true;
 
-    // Abort WebLLM streaming if active
-    const activeStream = currentStream;
-
-    if (activeStream && currentMode === 'gpu' && engine) {
-        await safeStopWebLLMStream(activeStream);
-    }
-
-    if (currentStream === activeStream) {
-        currentStream = null;
+    // Interrupt WebLLM generation if active (works for both streaming and non-streaming)
+    if (currentMode === 'gpu' && engine) {
+        try {
+            if (typeof engine.interruptGenerate === 'function') {
+                await engine.interruptGenerate();
+            }
+        } catch (error) {
+            console.warn('engine.interruptGenerate failed:', error);
+        }
     }
 
     // Abort Wllama generation if active
@@ -3055,78 +3022,6 @@ async function handleStopResponse() {
     // Reset button state
     isStoppingResponse = false;
     endResponse();
-}
-
-async function safeStopWebLLMStream(stream) {
-    if (!engine || !stream) {
-        return;
-    }
-
-    try {
-        if (typeof engine.interruptGenerate === 'function') {
-            await engine.interruptGenerate();
-        }
-    } catch (error) {
-        console.warn('engine.interruptGenerate failed:', error);
-    }
-
-    // Workaround: drain the iterator a few steps so WebLLM can release locks.
-    for (let i = 0; i < 3; i++) {
-        try {
-            const nextPromise = stream.next?.();
-            if (!nextPromise || typeof nextPromise.then !== 'function') {
-                break;
-            }
-
-            await Promise.race([
-                nextPromise,
-                new Promise((resolve) => setTimeout(resolve, 150))
-            ]);
-        } catch (error) {
-            break;
-        }
-    }
-
-    try {
-        if (typeof stream.return === 'function') {
-            await stream.return();
-        }
-    } catch (error) {
-        console.warn('Stream return failed during stop cleanup:', error);
-    }
-
-    await resetWebLLMInterruptState();
-}
-
-async function resetWebLLMInterruptState() {
-    if (!engine) {
-        return;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(engine, 'interruptSignal')) {
-        engine.interruptSignal = false;
-    }
-
-    const lockMap = engine.loadedModelIdToLock;
-    if (lockMap && typeof lockMap.values === 'function') {
-        for (const lock of lockMap.values()) {
-            if (lock && lock.acquired && typeof lock.release === 'function') {
-                try {
-                    await lock.release();
-                } catch (error) {
-                    console.warn('Failed to release WebLLM lock:', error);
-                }
-            }
-        }
-    }
-
-    if (typeof engine.resetChat === 'function') {
-        try {
-            await engine.resetChat();
-        } catch (error) {
-            console.warn('engine.resetChat failed after interruption:', error);
-        }
-    }
 }
 
 /**
