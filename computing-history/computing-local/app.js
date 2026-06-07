@@ -436,11 +436,11 @@ async function retryQueryAfterRecovery(query, { replyPrefix = '', historyUserPro
                     bubble = cpuBubble;
                 } else {
                     bubble = addMessage('', 'bot', null, { deferCompletion: true }).bubble;
-                    // Animate the text being typed
+                    // Animate the text being typed (escape HTML and convert newlines to <br>)
                     if (prefixHtml) {
                         setBubbleContent(bubble, prefixHtml);
                     }
-                    await typeTextInBubble(bubble, summary, 20, prefixHtml);
+                    await typeTextInBubble(bubble, escapeHtml(summary), 20, prefixHtml);
                     if (checkStopResponse()) return;
                 }
             } else {
@@ -1481,8 +1481,8 @@ async function handleSend() {
                     isVoiceInput = false;
                 }
 
-                // Animate the response text
-                await typeTextInBubble(bubble, summary, 20);
+                // Animate the response text (escape HTML and convert newlines to <br>)
+                await typeTextInBubble(bubble, escapeHtml(summary), 20);
 
                 if (checkStopResponse()) return;
 
@@ -1572,7 +1572,8 @@ async function handleSend() {
                         isVoiceInput = false;
                     }
 
-                    await typeTextInBubble(bubble, `${summary}`, 20);
+                    // Animate the response text (escape HTML and convert newlines to <br>)
+                    await typeTextInBubble(bubble, escapeHtml(summary), 20);
 
                     if (checkStopResponse()) return;
 
@@ -2012,7 +2013,7 @@ async function performClassification(imgEl, userText = "") {
                             // Animate typing the summary after the classification
                             const finalPrefix = reply + `<br><br>`;
                             setBubbleContent(bubble, finalPrefix);
-                            await typeTextInBubble(bubble, summary, 20, finalPrefix);
+                            await typeTextInBubble(bubble, escapeHtml(summary), 20, finalPrefix);
 
                             if (checkStopResponse()) {
                                 return;
