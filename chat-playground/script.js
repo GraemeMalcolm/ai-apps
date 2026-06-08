@@ -41,9 +41,9 @@ class ChatPlayground {
         // Configuration objects
         this.config = {
             modelParameters: {
-                temperature: 0.7,
+                temperature: 0.5,
                 top_p: 0.9,
-                max_tokens: 1000,
+                max_tokens: 800,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -272,15 +272,15 @@ class ChatPlayground {
             return {
                 temperature: 0.1,
                 top_p: 0.85,
-                max_tokens: 1000,
+                max_tokens: 800,
                 repetition_penalty: 1.1
             };
         } else {
             // Phi-3.5 (GPU mode) - Standard defaults
             return {
-                temperature: 0.7,
+                temperature: 0.5,
                 top_p: 0.9,
-                max_tokens: 1000,
+                max_tokens: 800,
                 repetition_penalty: 1.1
             };
         }
@@ -1294,7 +1294,7 @@ class ChatPlayground {
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
-                        context_window_size: 4096
+                        context_window_size: 1024
                     }
                 }
             ]
@@ -1784,27 +1784,31 @@ class ChatPlayground {
         return text.replace(/[^a-z0-9\s]/g, ' ');
     }
 
-    // Extract relevant lines from file content based on keywords
-    extractRelevantLines(fileContent, keywords) {
+    // Extract relevant lines from file content based on keywords.
+    // Returns matching lines joined by newlines, ordered by descending match count
+    // (lines matching more keywords come first); ties preserve original order.
+    extractRelevantLines(fileContent, keywords, maxLines = 5) {
         if (!fileContent || !keywords || keywords.length === 0) {
             return '';
         }
 
         const lines = fileContent.split('\n');
-        let bestLine = '';
-        let bestCount = 0;
+        const matches = [];
 
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             // Strip punctuation and lowercase for comparison
             const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
             const count = keywords.filter(keyword => lineWords.includes(keyword)).length;
-            if (count > bestCount) {
-                bestCount = count;
-                bestLine = line.trim();
+            if (count > 0) {
+                matches.push({ line: line.trim(), count, index: i });
             }
         }
 
-        return bestLine;
+        // Sort by match count descending; preserve original order for ties.
+        matches.sort((a, b) => b.count - a.count || a.index - b.index);
+
+        return matches.slice(0, maxLines).map(m => m.line).join('\n');
     }
 
     async handleSendMessage() {
@@ -1910,7 +1914,7 @@ class ChatPlayground {
             // Add user message with image analysis and file context if available
             let finalUserMessage = userMessage;
             if (imageAnalysis) {
-                finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
+                finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']\nRespond concisely to the user\'s question based on the image.';
             }
 
             // If file is uploaded, extract the most relevant line and append to user message
@@ -1984,48 +1988,24 @@ class ChatPlayground {
     }
 
     async handleStreamingMode(messages, thinkingIndicator, userMessage) {
-        // Streaming Mode: Type as soon as we have content
+        // Non-streaming GPU mode: wait for the full response, then animate it
+        // like it's being typed (same pattern as Wikipedia / computing-local).
         let fullResponse = '';
-        let hasStartedOutput = false;
-        const bufferSize = 30; // Start typing after 30 characters
-        let assistantMessageEl = null;
-        let contentEl = null;
 
-        const completion = await this.engine.chat.completions.create({
-            messages: messages,
-            temperature: this.config.modelParameters.temperature,
-            max_tokens: this.config.modelParameters.max_tokens,
-            stream: true
-        });
-
-        this.currentStream = completion;
+        // Sentinel so stopGeneration() routes to safeStopWebLLMStream ->
+        // engine.interruptGenerate() while we're awaiting the completion.
+        const completionToken = {};
+        this.currentStream = completionToken;
 
         try {
-            for await (const chunk of completion) {
-                if (!this.isGenerating) break;
+            const completion = await this.engine.chat.completions.create({
+                messages: messages,
+                temperature: this.config.modelParameters.temperature,
+                max_tokens: this.config.modelParameters.max_tokens,
+                stream: false
+            });
 
-                const content = chunk.choices[0]?.delta?.content || '';
-                if (content) {
-                    fullResponse += content;
-
-                    // Start output once we have enough content buffered
-                    if (!hasStartedOutput && fullResponse.length >= bufferSize) {
-                        // Remove thinking indicator
-                        thinkingIndicator.remove();
-
-                        // Create message container
-                        assistantMessageEl = this.addMessage('assistant', '');
-                        contentEl = assistantMessageEl.querySelector('.message-content');
-
-                        // Start typing animation
-                        this.startTypingAnimation(contentEl, fullResponse);
-                        hasStartedOutput = true;
-                    } else if (hasStartedOutput && contentEl) {
-                        // Update the content for ongoing typing animation
-                        this.updateTypingContent(fullResponse);
-                    }
-                }
-            }
+            fullResponse = completion?.choices?.[0]?.message?.content || '';
         } catch (error) {
             const isInterrupted = this.stopRequested ||
                 error?.name === 'AbortError' ||
@@ -2035,46 +2015,38 @@ class ChatPlayground {
                 throw error;
             }
 
-            console.log('WebLLM streaming interrupted');
+            console.log('WebLLM generation interrupted');
         } finally {
-            if (this.currentStream === completion) {
+            if (this.currentStream === completionToken) {
                 this.currentStream = null;
             }
         }
 
-        // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
-        let displayResponse = fullResponse;
-        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
-            const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
-            displayResponse = fullResponse + attribution;
-            // Update the typing content to include attribution
-            this.updateTypingContent(displayResponse);
+        // Remove thinking indicator now that we have (or aborted) the response
+        if (thinkingIndicator?.parentNode) {
+            thinkingIndicator.remove();
         }
 
-        // Handle case where response is shorter than buffer size
-        if (!hasStartedOutput) {
-            // Remove thinking indicator
-            thinkingIndicator.remove();
+        // Build display string with optional file attribution
+        let displayResponse = fullResponse;
+        if (fullResponse.trim() && this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
+            displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
+        }
 
-            if (fullResponse.trim()) {
-                // Append file attribution if a file is uploaded and relevant content was used (for display only)
-                displayResponse = fullResponse;
-                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
-                    displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
-                }
+        // If user stopped before any content arrived, don't add an empty bubble
+        if (!fullResponse.trim() && this.stopRequested) {
+            this.conversationHistory.push({ role: "user", content: userMessage });
+            return;
+        }
 
-                // Create message container
-                assistantMessageEl = this.addMessage('assistant', '');
-                contentEl = assistantMessageEl.querySelector('.message-content');
+        const assistantMessageEl = this.addMessage('assistant', '');
+        const contentEl = assistantMessageEl.querySelector('.message-content');
 
-                // Type out the short response
-                await this.typeResponse(contentEl, displayResponse);
-            } else {
-                const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
-                assistantMessageEl = this.addMessage('assistant', '');
-                contentEl = assistantMessageEl.querySelector('.message-content');
-                await this.typeResponse(contentEl, fallbackMessage);
-            }
+        if (fullResponse.trim()) {
+            await this.typeResponse(contentEl, displayResponse);
+        } else {
+            const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
+            await this.typeResponse(contentEl, fallbackMessage);
         }
 
         // Add to conversation history (without file attribution, to prevent cumulative citations)
@@ -2412,7 +2384,7 @@ class ChatPlayground {
             }
 
             // Add current user message
-            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
+            prompt += 'igraph\n' + userMessage + '\nGive a concise answer to the user\'s question based on the image they uploaded.\n\n';
             prompt += '<|im_start|>assistant\n';
 
         } else if (fileContent) {
@@ -4780,7 +4752,7 @@ window.resetParametersFromModal = function () {
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
         temperature: 0.7,
         top_p: 0.9,
-        max_tokens: 1000,
+        max_tokens: 800,
         repetition_penalty: 1.1
     };
 
