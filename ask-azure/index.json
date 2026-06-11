@@ -537,7 +537,7 @@
                     "foundry",
                     "azure"
                 ],
-                "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions. I can't provide you with detailed steps about how to use Microsoft Foundry - you should refer to official Microsoft training and documentation."
+                "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions."
             },
             {
                 "id": 34,
@@ -632,15 +632,15 @@
                 ],
                 "content": "Microsoft Foundry Models include the latest models from OpenAI; including multiple generations of GPT models, which can be used for a wide range of natural language processing tasks such as text generation, summarization, translation, and more."
             },
-                {
-                    "id": 41,
-                    "title": "Anthropic models in Foundry",
-                    "keywords": [
-                        "anthropic",
-                        "claude"
-                    ],
-                    "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
-                }
+            {
+                "id": 41,
+                "title": "Anthropic models in Foundry",
+                "keywords": [
+                    "anthropic",
+                    "claude"
+                ],
+                "content": "Microsoft Foundry Models include models from Anthropic, which provides access to powerful language models like Claude that can be used for various applications such as content generation, code generation, and conversational agents."
+            }
         ]
     },
     {
