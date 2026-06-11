@@ -324,12 +324,34 @@ header h1 {
     margin-bottom: 0;
 }
 
-.message-text strong {
+.message-text strong,
+.message-text b {
     font-weight: 600;
 }
 
-.message-text em {
+.message-text em,
+.message-text i {
     font-style: italic;
+}
+
+.message-text code {
+    background: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.9em;
+    color: #d63384;
+}
+
+.message-text ul,
+.message-text ol {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.message-text li {
+    margin: 5px 0;
+    line-height: 1.5;
 }
 
 .message-text a {

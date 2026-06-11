@@ -1624,6 +1624,8 @@ IMPORTANT: Follow these guidelines when responding:
 
     formatAssistantResponse(text) {
         const escapedText = this.escapeHtml(text);
+
+        // Handle markdown links first
         const markdownLinks = [];
         const withMarkdownPlaceholders = escapedText.replace(
             /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
@@ -1636,7 +1638,22 @@ IMPORTANT: Follow these guidelines when responding:
             }
         );
 
-        const withAutoLinkedUrls = withMarkdownPlaceholders.replace(
+        // Apply basic markdown formatting
+        let formatted = withMarkdownPlaceholders;
+
+        // Bold: **text** or __text__
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+        formatted = formatted.replace(/__(.+?)__/g, '<b>$1</b>');
+
+        // Italic: *text* or _text_ (but not in middle of words)
+        formatted = formatted.replace(/(?:^|[\s])\*([^\*\n]+?)\*(?=[\s]|$)/g, ' <i>$1</i>');
+        formatted = formatted.replace(/(?:^|[\s])_([^_\n]+?)_(?=[\s]|$)/g, ' <i>$1</i>');
+
+        // Inline code: `code`
+        formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Auto-link URLs
+        const withAutoLinkedUrls = formatted.replace(
             /(^|[\s(>])((?:https?:\/\/)[^\s<)]+)/g,
             (_, prefix, url) => {
                 const trailingPunctuationMatch = url.match(/[.,!?;:]+$/);
@@ -1647,12 +1664,71 @@ IMPORTANT: Follow these guidelines when responding:
             }
         );
 
+        // Restore markdown link placeholders
         const withLinks = withAutoLinkedUrls.replace(
             /__MARKDOWN_LINK_(\d+)__/g,
             (_, index) => markdownLinks[Number(index)]
         );
 
-        return `<p>${withLinks.replace(/\n/g, '<br>')}</p>`;
+        // Process lists (split by lines first)
+        const lines = withLinks.split('\n');
+        let inUnorderedList = false;
+        let inOrderedList = false;
+        let result = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trimStart();
+
+            // Unordered list items: - or * followed by space
+            if (/^[-*]\s+/.test(trimmedLine)) {
+                const content = trimmedLine.replace(/^[-*]\s+/, '');
+                if (!inUnorderedList) {
+                    result.push('<ul>');
+                    inUnorderedList = true;
+                }
+                result.push(`<li>${content}</li>`);
+            }
+            // Ordered list items: number. followed by space
+            else if (/^\d+\.\s+/.test(trimmedLine)) {
+                const content = trimmedLine.replace(/^\d+\.\s+/, '');
+                if (!inOrderedList) {
+                    result.push('<ol>');
+                    inOrderedList = true;
+                }
+                result.push(`<li>${content}</li>`);
+            }
+            // Regular line
+            else {
+                // Close any open lists
+                if (inUnorderedList) {
+                    result.push('</ul>');
+                    inUnorderedList = false;
+                }
+                if (inOrderedList) {
+                    result.push('</ol>');
+                    inOrderedList = false;
+                }
+
+                // Add line with <br> if not empty
+                if (line.trim()) {
+                    result.push(line + '<br>');
+                } else if (result.length > 0 && !result[result.length - 1].endsWith('<br>')) {
+                    result.push('<br>');
+                }
+            }
+        }
+
+        // Close any remaining open lists
+        if (inUnorderedList) {
+            result.push('</ul>');
+        }
+        if (inOrderedList) {
+            result.push('</ol>');
+        }
+
+        // Join and wrap in paragraph
+        return `<p>${result.join('')}</p>`;
     }
 
     async animateTyping(element, htmlContent, speed = 10) {
