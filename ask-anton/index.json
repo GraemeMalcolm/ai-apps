@@ -655,6 +655,7 @@
                     "azure active directory",
                     "aad",
                     "api_key",
+                    "apikey",
                     "security",
                     "secure",
                     "authenticate",
