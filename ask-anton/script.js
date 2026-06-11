@@ -2056,9 +2056,28 @@ class AskAnton {
         this.scrollToBottom();
     }
 
-    /** @returns {boolean} true if at least one user turn exists in history. */
+    /** @returns {boolean} true if at least one user turn exists in history AND the previous response wasn't a "no results" message. */
     hasPreviousUserPrompt() {
-        return this.elements.chatMessages.querySelectorAll('.user-message').length > 1;
+        const userMessages = this.elements.chatMessages.querySelectorAll('.user-message');
+        if (userMessages.length <= 1) {
+            return false;
+        }
+
+        // Check if the last assistant message was the standard "no results" message
+        const assistantMessages = this.elements.chatMessages.querySelectorAll('.assistant-message');
+        if (assistantMessages.length > 0) {
+            const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+            const messageText = lastAssistantMessage.querySelector('.message-text');
+            if (messageText) {
+                const text = messageText.textContent || messageText.innerText || '';
+                // Check for the standard "no results" message text
+                if (text.includes("I don't have any information about that specific topic")) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     // === Microsoft Learn MCP server integration ============================
