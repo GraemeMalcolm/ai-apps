@@ -341,6 +341,7 @@ header h1 {
     font-family: 'Courier New', Consolas, monospace;
     font-size: 0.9em;
     color: #d63384;
+    white-space: pre-wrap;
 }
 
 .message-text ul,
