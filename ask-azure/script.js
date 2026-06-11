@@ -1768,488 +1768,486 @@ IMPORTANT: Follow these guidelines when responding:
         // Wrap in paragraph
         return `<p>${finalText}</p>`;
     }
-        return `<p>${result.join('')}</p>`;
-    }
 
     async animateTyping(element, htmlContent, speed = 10) {
-    // Start with empty content
-    element.innerHTML = '';
+        // Start with empty content
+        element.innerHTML = '';
 
-    // Split content into characters for typing effect
-    const chars = htmlContent.split('');
-    let currentHtml = '';
+        // Split content into characters for typing effect
+        const chars = htmlContent.split('');
+        let currentHtml = '';
 
-    for (let i = 0; i < chars.length; i++) {
-        // Check if we should stop
-        if (this.shouldStop) {
-            // Display remaining content immediately
-            element.innerHTML = htmlContent;
+        for (let i = 0; i < chars.length; i++) {
+            // Check if we should stop
+            if (this.shouldStop) {
+                // Display remaining content immediately
+                element.innerHTML = htmlContent;
+                this.scrollToBottom();
+                return false; // Return false to indicate interrupted
+            }
+
+            currentHtml += chars[i];
+
+            // Update the element with current content
+            // Use a temporary div to parse HTML and get valid structure
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = currentHtml;
+            element.innerHTML = tempDiv.innerHTML;
+
             this.scrollToBottom();
-            return false; // Return false to indicate interrupted
+
+            // Small delay for typing effect (speed in milliseconds)
+            await new Promise(resolve => setTimeout(resolve, speed));
         }
 
-        currentHtml += chars[i];
-
-        // Update the element with current content
-        // Use a temporary div to parse HTML and get valid structure
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = currentHtml;
-        element.innerHTML = tempDiv.innerHTML;
-
+        // Ensure final content is complete and properly formatted
+        element.innerHTML = htmlContent;
         this.scrollToBottom();
-
-        // Small delay for typing effect (speed in milliseconds)
-        await new Promise(resolve => setTimeout(resolve, speed));
+        return true; // Return true to indicate completed normally
     }
 
-    // Ensure final content is complete and properly formatted
-    element.innerHTML = htmlContent;
-    this.scrollToBottom();
-    return true; // Return true to indicate completed normally
-}
+    scrollToBottom() {
+        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+    }
 
-scrollToBottom() {
-    this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
-}
+    playRandomResponseAudio() {
+        // Randomly select one of the 7 audio files
+        const audioNumber = Math.floor(Math.random() * 7) + 1;
+        const audioPath = `audio/response_${audioNumber}.wav`;
 
-playRandomResponseAudio() {
-    // Randomly select one of the 7 audio files
-    const audioNumber = Math.floor(Math.random() * 7) + 1;
-    const audioPath = `audio/response_${audioNumber}.wav`;
-
-    const audio = new Audio(audioPath);
-    audio.play().catch(error => {
-        console.error('Error playing audio:', error);
-    });
-}
+        const audio = new Audio(audioPath);
+        audio.play().catch(error => {
+            console.error('Error playing audio:', error);
+        });
+    }
 
     async synthesizeSpeech(text) {
-    if (this.shouldStop) {
-        return;
-    }
-
-    this.isSpeaking = true;
-
-    try {
-        // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, 'text/html');
-        let plainText = doc.body.textContent || '';
-
-        if (!plainText.trim()) {
-            this.isSpeaking = false;
+        if (this.shouldStop) {
             return;
         }
 
-        // Replace URLs with speakable format
-        // First, handle markdown-style URLs [text](url) - remove the duplicates
-        plainText = plainText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+        this.isSpeaking = true;
 
-        // Then replace all URLs with speakable format
-        plainText = plainText.replace(/https?:\/\/(?:www\.)?[^\s]+/gi, function (url) {
-            // Remove protocol
-            let cleaned = url.replace(/^https?:\/\//i, '');
-            // Remove www. if present
-            cleaned = cleaned.replace(/^www\./i, '');
-            // Remove trailing period (if URL ends a sentence)
-            cleaned = cleaned.replace(/\.$/, '');
-            // Replace dots with " dot "
-            cleaned = cleaned.replace(/\./g, ' dot ');
-            // Replace slashes with " slash "
-            cleaned = cleaned.replace(/\//g, ' slash ');
-            // Replace hyphens with spaces
-            cleaned = cleaned.replace(/-/g, ' ');
-            return cleaned;
-        });
-        plainText = plainText.replace(/www\.[^\s]+/gi, function (url) {
-            // Remove www. if present
-            let cleaned = url.replace(/^www\./i, '');
-            // Remove trailing period (if URL ends a sentence)
-            cleaned = cleaned.replace(/\.$/, '');
-            // Replace dots with " dot "
-            cleaned = cleaned.replace(/\./g, ' dot ');
-            // Replace slashes with " slash "
-            cleaned = cleaned.replace(/\//g, ' slash ');
-            // Replace hyphens with spaces
-            cleaned = cleaned.replace(/-/g, ' ');
-            return cleaned;
-        });
+        try {
+            // Strip HTML tags and convert to plain text using DOMParser (safer than innerHTML)
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            let plainText = doc.body.textContent || '';
 
-        const speechEndpoint = this.getSpeechEndpointBase();
-        const url = `${speechEndpoint}/tts/cognitiveservices/v1`;
+            if (!plainText.trim()) {
+                this.isSpeaking = false;
+                return;
+            }
 
-        // Build SSML with Christopher Multilingual voice
-        const ssml = `<speak version="1.0" xml:lang="en-US">
+            // Replace URLs with speakable format
+            // First, handle markdown-style URLs [text](url) - remove the duplicates
+            plainText = plainText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+
+            // Then replace all URLs with speakable format
+            plainText = plainText.replace(/https?:\/\/(?:www\.)?[^\s]+/gi, function (url) {
+                // Remove protocol
+                let cleaned = url.replace(/^https?:\/\//i, '');
+                // Remove www. if present
+                cleaned = cleaned.replace(/^www\./i, '');
+                // Remove trailing period (if URL ends a sentence)
+                cleaned = cleaned.replace(/\.$/, '');
+                // Replace dots with " dot "
+                cleaned = cleaned.replace(/\./g, ' dot ');
+                // Replace slashes with " slash "
+                cleaned = cleaned.replace(/\//g, ' slash ');
+                // Replace hyphens with spaces
+                cleaned = cleaned.replace(/-/g, ' ');
+                return cleaned;
+            });
+            plainText = plainText.replace(/www\.[^\s]+/gi, function (url) {
+                // Remove www. if present
+                let cleaned = url.replace(/^www\./i, '');
+                // Remove trailing period (if URL ends a sentence)
+                cleaned = cleaned.replace(/\.$/, '');
+                // Replace dots with " dot "
+                cleaned = cleaned.replace(/\./g, ' dot ');
+                // Replace slashes with " slash "
+                cleaned = cleaned.replace(/\//g, ' slash ');
+                // Replace hyphens with spaces
+                cleaned = cleaned.replace(/-/g, ' ');
+                return cleaned;
+            });
+
+            const speechEndpoint = this.getSpeechEndpointBase();
+            const url = `${speechEndpoint}/tts/cognitiveservices/v1`;
+
+            // Build SSML with Christopher Multilingual voice
+            const ssml = `<speak version="1.0" xml:lang="en-US">
                 <voice xml:lang="en-US" xml:gender="Male" name="en-US-ChristopherMultilingualNeural">
                     ${this.escapeXml(plainText)}
                 </voice>
                 </speak>`;
 
-        // Build headers based on authentication mode
-        const headers = {
-            'Content-Type': 'application/ssml+xml',
-            'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
-        };
+            // Build headers based on authentication mode
+            const headers = {
+                'Content-Type': 'application/ssml+xml',
+                'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3'
+            };
 
-        if (this.config.authMode === 'entra') {
-            const accessToken = await this.getAccessToken();
-            headers['Authorization'] = `Bearer ${accessToken}`;
-        } else {
-            headers['Ocp-Apim-Subscription-Key'] = this.config.apiKey;
-        }
+            if (this.config.authMode === 'entra') {
+                const accessToken = await this.getAccessToken();
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            } else {
+                headers['Ocp-Apim-Subscription-Key'] = this.config.apiKey;
+            }
 
-        let response;
-        try {
-            response = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-                body: ssml
-            });
-        } catch (fetchError) {
-            throw new Error(`TTS request failed: ${fetchError.message}`);
-        }
-
-        if (!response.ok) {
-            let errorText = '';
+            let response;
             try {
-                errorText = await response.text();
-            } catch (e) {
-                errorText = '(could not read error response)';
+                response = await fetch(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: ssml
+                });
+            } catch (fetchError) {
+                throw new Error(`TTS request failed: ${fetchError.message}`);
             }
 
-            console.error('TTS request failed');
-            console.error('  URL:', url);
-            console.error('  Status:', response.status);
-            console.error('  Status Text:', response.statusText);
-            console.error('  Error:', errorText || '(empty error response)');
-            console.error('  Response Headers:');
-            for (const [key, value] of response.headers.entries()) {
-                console.error(`    ${key}: ${value}`);
+            if (!response.ok) {
+                let errorText = '';
+                try {
+                    errorText = await response.text();
+                } catch (e) {
+                    errorText = '(could not read error response)';
+                }
+
+                console.error('TTS request failed');
+                console.error('  URL:', url);
+                console.error('  Status:', response.status);
+                console.error('  Status Text:', response.statusText);
+                console.error('  Error:', errorText || '(empty error response)');
+                console.error('  Response Headers:');
+                for (const [key, value] of response.headers.entries()) {
+                    console.error(`    ${key}: ${value}`);
+                }
+                throw new Error(`TTS failed: ${response.status} - ${errorText || 'Unknown error'}`);
             }
-            throw new Error(`TTS failed: ${response.status} - ${errorText || 'Unknown error'}`);
-        }
 
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
 
-        // Store reference to current audio
-        this.currentAudio = audio;
+            // Store reference to current audio
+            this.currentAudio = audio;
 
-        // Check again if we should stop before playing
-        if (this.shouldStop) {
-            URL.revokeObjectURL(audioUrl);
+            // Check again if we should stop before playing
+            if (this.shouldStop) {
+                URL.revokeObjectURL(audioUrl);
+                this.currentAudio = null;
+                this.isSpeaking = false;
+                this.setSendButtonState();
+                return;
+            }
+
+            // Play the audio and wait for it to finish
+            await new Promise((resolve, reject) => {
+                audio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    this.currentAudio = null;
+                    this.isSpeaking = false;
+                    this.setSendButtonState();
+                    resolve();
+                };
+
+                audio.onerror = (error) => {
+                    URL.revokeObjectURL(audioUrl);
+                    this.currentAudio = null;
+                    this.isSpeaking = false;
+                    this.setSendButtonState();
+                    reject(error);
+                };
+
+                audio.play().catch(error => {
+                    console.error('Error playing synthesized speech:', error);
+                    URL.revokeObjectURL(audioUrl);
+                    this.currentAudio = null;
+                    this.isSpeaking = false;
+                    this.setSendButtonState();
+                    reject(error);
+                });
+            });
+
+        } catch (error) {
+            console.error('Error synthesizing speech:', error);
             this.currentAudio = null;
             this.isSpeaking = false;
             this.setSendButtonState();
-            return;
         }
+    }
 
-        // Play the audio and wait for it to finish
-        await new Promise((resolve, reject) => {
-            audio.onended = () => {
-                URL.revokeObjectURL(audioUrl);
-                this.currentAudio = null;
-                this.isSpeaking = false;
-                this.setSendButtonState();
-                resolve();
-            };
-
-            audio.onerror = (error) => {
-                URL.revokeObjectURL(audioUrl);
-                this.currentAudio = null;
-                this.isSpeaking = false;
-                this.setSendButtonState();
-                reject(error);
-            };
-
-            audio.play().catch(error => {
-                console.error('Error playing synthesized speech:', error);
-                URL.revokeObjectURL(audioUrl);
-                this.currentAudio = null;
-                this.isSpeaking = false;
-                this.setSendButtonState();
-                reject(error);
-            });
+    escapeXml(text) {
+        return text.replace(/[<>&'"]/g, (char) => {
+            switch (char) {
+                case '<': return '&lt;';
+                case '>': return '&gt;';
+                case '&': return '&amp;';
+                case "'": return '&apos;';
+                case '"': return '&quot;';
+                default: return char;
+            }
         });
-
-    } catch (error) {
-        console.error('Error synthesizing speech:', error);
-        this.currentAudio = null;
-        this.isSpeaking = false;
-        this.setSendButtonState();
     }
-}
 
-escapeXml(text) {
-    return text.replace(/[<>&'"]/g, (char) => {
-        switch (char) {
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '&': return '&amp;';
-            case "'": return '&apos;';
-            case '"': return '&quot;';
-            default: return char;
+    restartConversation() {
+        if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
+            // Clear conversation history
+            this.conversationHistory = [];
+            this.previousResponseId = null;
+
+            // Clear chat messages (keep welcome message)
+            const messages = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message)');
+            messages.forEach(msg => msg.remove());
+
+            // Clear search status
+            this.elements.searchStatus.textContent = '';
+
+            console.log('Conversation restarted');
         }
-    });
-}
-
-restartConversation() {
-    if (confirm('Are you sure you want to start a new conversation? This will clear the chat history.')) {
-        // Clear conversation history
-        this.conversationHistory = [];
-        this.previousResponseId = null;
-
-        // Clear chat messages (keep welcome message)
-        const messages = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message)');
-        messages.forEach(msg => msg.remove());
-
-        // Clear search status
-        this.elements.searchStatus.textContent = '';
-
-        console.log('Conversation restarted');
-    }
-}
-
-checkConfigChanges() {
-    if (!this.initialConfigState) {
-        return; // Modal not open or initial state not captured
     }
 
-    const currentState = {
-        endpoint: this.elements.foundryEndpoint.value.trim(),
-        deployment: this.elements.foundryDeployment.value.trim(),
-        authMode: this.elements.authModeToggle.checked ? 'entra' : 'key',
-        apiKey: this.elements.foundryKey.value.trim(),
-        clientId: this.elements.entraClientId.value.trim(),
-        tenantId: this.elements.entraTenantId.value.trim()
-    };
-
-    // Check if anything has changed
-    const hasChanges =
-        currentState.endpoint !== this.initialConfigState.endpoint ||
-        currentState.deployment !== this.initialConfigState.deployment ||
-        currentState.authMode !== this.initialConfigState.authMode ||
-        currentState.apiKey !== this.initialConfigState.apiKey ||
-        currentState.clientId !== this.initialConfigState.clientId ||
-        currentState.tenantId !== this.initialConfigState.tenantId;
-
-    this.elements.configSave.disabled = !hasChanges;
-}
-
-showConfigModal() {
-    this.elements.configModal.style.display = 'flex';
-    this.currentModal = this.elements.configModal;
-    this.elements.configModal.setAttribute('aria-hidden', 'false');
-    // Clear any previous status
-    this.elements.configStatus.textContent = '';
-    this.elements.configStatus.className = 'config-status';
-
-    // Capture initial state for change detection
-    this.initialConfigState = {
-        endpoint: this.elements.foundryEndpoint.value.trim(),
-        deployment: this.elements.foundryDeployment.value.trim(),
-        authMode: this.elements.authModeToggle.checked ? 'entra' : 'key',
-        apiKey: this.elements.foundryKey.value.trim(),
-        clientId: this.elements.entraClientId.value.trim(),
-        tenantId: this.elements.entraTenantId.value.trim()
-    };
-
-    // Disable Save button initially (no changes yet)
-    this.elements.configSave.disabled = true;
-
-    // Update sign-in button state and help button visibility if in Entra ID mode
-    if (this.elements.authModeToggle.checked) {
-        this.updateSignInButtonState();
-        this.elements.entraHelpBtn.style.display = 'inline-flex';
-    } else {
-        this.elements.entraHelpBtn.style.display = 'none';
-    }
-
-    // Set focus to first input
-    setTimeout(() => {
-        this.elements.foundryEndpoint.focus();
-        this.setupModalFocusTrap(this.elements.configModal);
-    }, 100);
-}
-
-hideConfigModal() {
-    this.elements.configModal.style.display = 'none';
-    this.elements.configModal.setAttribute('aria-hidden', 'true');
-    this.removeModalFocusTrap();
-    this.currentModal = null;
-
-    // Clear initial config state
-    this.initialConfigState = null;
-
-    // Restore focus
-    if (this.lastFocusedElement) {
-        this.lastFocusedElement.focus();
-    } else {
-        this.elements.userInput.focus();
-    }
-}
-
-showAboutModal() {
-    this.elements.aboutModal.style.display = 'flex';
-    this.currentModal = this.elements.aboutModal;
-    // Store the previously focused element
-    this.lastFocusedElement = document.activeElement;
-    // Announce modal to screen readers
-    this.elements.aboutModal.setAttribute('aria-hidden', 'false');
-    // Set focus to close button
-    setTimeout(() => {
-        this.elements.aboutModalClose.focus();
-        this.setupModalFocusTrap(this.elements.aboutModal);
-    }, 100);
-}
-
-hideAboutModal() {
-    this.elements.aboutModal.style.display = 'none';
-    this.elements.aboutModal.setAttribute('aria-hidden', 'true');
-    this.removeModalFocusTrap();
-    this.currentModal = null;
-    // Restore focus to the element that opened the modal
-    if (this.lastFocusedElement) {
-        this.lastFocusedElement.focus();
-    } else {
-        this.elements.userInput.focus();
-    }
-}
-
-showEntraHelpModal() {
-    this.elements.entraHelpModal.style.display = 'flex';
-    this.currentModal = this.elements.entraHelpModal;
-    // Store the previously focused element
-    this.lastFocusedElement = document.activeElement;
-    // Announce modal to screen readers
-    this.elements.entraHelpModal.setAttribute('aria-hidden', 'false');
-    // Set focus to close button
-    setTimeout(() => {
-        this.elements.entraHelpModalClose.focus();
-        this.setupModalFocusTrap(this.elements.entraHelpModal);
-    }, 100);
-}
-
-hideEntraHelpModal() {
-    this.elements.entraHelpModal.style.display = 'none';
-    this.elements.entraHelpModal.setAttribute('aria-hidden', 'true');
-    this.removeModalFocusTrap();
-    this.currentModal = null;
-    // Restore focus to the element that opened the modal
-    if (this.lastFocusedElement) {
-        this.lastFocusedElement.focus();
-    } else {
-        this.elements.userInput.focus();
-    }
-}
-
-showVideoModal(videoId, videoTitle) {
-    console.log('showVideoModal called with:', { videoId, videoTitle });
-
-    // Handle cases where videoId might be a full URL
-    let actualVideoId = videoId;
-    try {
-        const parsedUrl = new URL(videoId);
-        const host = parsedUrl.hostname.toLowerCase();
-        const isTrustedSynthesiaHost = host === 'synthesia.io' || host.endsWith('.synthesia.io');
-
-        if (isTrustedSynthesiaHost) {
-            // Extract just the ID from the URL path
-            const match = parsedUrl.pathname.match(/([0-9a-f-]{36})$/i);
-            if (match) {
-                actualVideoId = match[1];
-            }
+    checkConfigChanges() {
+        if (!this.initialConfigState) {
+            return; // Modal not open or initial state not captured
         }
-    } catch (e) {
-        // Not a URL; assume videoId is already a raw ID
+
+        const currentState = {
+            endpoint: this.elements.foundryEndpoint.value.trim(),
+            deployment: this.elements.foundryDeployment.value.trim(),
+            authMode: this.elements.authModeToggle.checked ? 'entra' : 'key',
+            apiKey: this.elements.foundryKey.value.trim(),
+            clientId: this.elements.entraClientId.value.trim(),
+            tenantId: this.elements.entraTenantId.value.trim()
+        };
+
+        // Check if anything has changed
+        const hasChanges =
+            currentState.endpoint !== this.initialConfigState.endpoint ||
+            currentState.deployment !== this.initialConfigState.deployment ||
+            currentState.authMode !== this.initialConfigState.authMode ||
+            currentState.apiKey !== this.initialConfigState.apiKey ||
+            currentState.clientId !== this.initialConfigState.clientId ||
+            currentState.tenantId !== this.initialConfigState.tenantId;
+
+        this.elements.configSave.disabled = !hasChanges;
     }
 
-    const videoUrl = `https://share.synthesia.io/embeds/videos/${actualVideoId}`;
-    console.log('Video URL:', videoUrl);
+    showConfigModal() {
+        this.elements.configModal.style.display = 'flex';
+        this.currentModal = this.elements.configModal;
+        this.elements.configModal.setAttribute('aria-hidden', 'false');
+        // Clear any previous status
+        this.elements.configStatus.textContent = '';
+        this.elements.configStatus.className = 'config-status';
 
-    // Set the video title
-    this.elements.videoModalTitle.textContent = videoTitle || 'Video';
+        // Capture initial state for change detection
+        this.initialConfigState = {
+            endpoint: this.elements.foundryEndpoint.value.trim(),
+            deployment: this.elements.foundryDeployment.value.trim(),
+            authMode: this.elements.authModeToggle.checked ? 'entra' : 'key',
+            apiKey: this.elements.foundryKey.value.trim(),
+            clientId: this.elements.entraClientId.value.trim(),
+            tenantId: this.elements.entraTenantId.value.trim()
+        };
 
-    // Set the iframe source
-    this.elements.videoIframe.src = videoUrl;
-    this.elements.videoIframe.title = videoTitle || 'Video';
+        // Disable Save button initially (no changes yet)
+        this.elements.configSave.disabled = true;
 
-    // Show the modal
-    this.elements.videoModal.style.display = 'flex';
-    this.currentModal = this.elements.videoModal;
-
-    // Store the previously focused element
-    this.lastFocusedElement = document.activeElement;
-
-    // Announce modal to screen readers
-    this.elements.videoModal.setAttribute('aria-hidden', 'false');
-
-    // Set focus to close button
-    setTimeout(() => {
-        this.elements.videoModalClose.focus();
-        this.setupModalFocusTrap(this.elements.videoModal);
-    }, 100);
-
-    console.log('Video modal displayed');
-}
-
-hideVideoModal() {
-    // Clear the iframe source to stop video playback
-    this.elements.videoIframe.src = '';
-
-    this.elements.videoModal.style.display = 'none';
-    this.elements.videoModal.setAttribute('aria-hidden', 'true');
-    this.removeModalFocusTrap();
-    this.currentModal = null;
-
-    // Restore focus to the element that opened the modal
-    if (this.lastFocusedElement) {
-        this.lastFocusedElement.focus();
-    } else {
-        this.elements.userInput.focus();
-    }
-}
-
-setupModalFocusTrap(modalElement) {
-    // Get all focusable elements within the modal
-    const focusableElements = modalElement.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-
-    if (focusableElements.length === 0) return;
-
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-
-    // Store the trap handler for cleanup
-    this.modalFocusTrapHandler = (e) => {
-        if (e.key !== 'Tab') return;
-
-        if (e.shiftKey) {
-            // Shift+Tab - going backwards
-            if (document.activeElement === firstElement) {
-                e.preventDefault();
-                lastElement.focus();
-            }
+        // Update sign-in button state and help button visibility if in Entra ID mode
+        if (this.elements.authModeToggle.checked) {
+            this.updateSignInButtonState();
+            this.elements.entraHelpBtn.style.display = 'inline-flex';
         } else {
-            // Tab - going forwards
-            if (document.activeElement === lastElement) {
-                e.preventDefault();
-                firstElement.focus();
-            }
+            this.elements.entraHelpBtn.style.display = 'none';
         }
-    };
 
-    modalElement.addEventListener('keydown', this.modalFocusTrapHandler);
-}
-
-removeModalFocusTrap() {
-    if (this.currentModal && this.modalFocusTrapHandler) {
-        this.currentModal.removeEventListener('keydown', this.modalFocusTrapHandler);
-        this.modalFocusTrapHandler = null;
+        // Set focus to first input
+        setTimeout(() => {
+            this.elements.foundryEndpoint.focus();
+            this.setupModalFocusTrap(this.elements.configModal);
+        }, 100);
     }
-}
+
+    hideConfigModal() {
+        this.elements.configModal.style.display = 'none';
+        this.elements.configModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+
+        // Clear initial config state
+        this.initialConfigState = null;
+
+        // Restore focus
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showAboutModal() {
+        this.elements.aboutModal.style.display = 'flex';
+        this.currentModal = this.elements.aboutModal;
+        // Store the previously focused element
+        this.lastFocusedElement = document.activeElement;
+        // Announce modal to screen readers
+        this.elements.aboutModal.setAttribute('aria-hidden', 'false');
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.aboutModalClose.focus();
+            this.setupModalFocusTrap(this.elements.aboutModal);
+        }, 100);
+    }
+
+    hideAboutModal() {
+        this.elements.aboutModal.style.display = 'none';
+        this.elements.aboutModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+        // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showEntraHelpModal() {
+        this.elements.entraHelpModal.style.display = 'flex';
+        this.currentModal = this.elements.entraHelpModal;
+        // Store the previously focused element
+        this.lastFocusedElement = document.activeElement;
+        // Announce modal to screen readers
+        this.elements.entraHelpModal.setAttribute('aria-hidden', 'false');
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.entraHelpModalClose.focus();
+            this.setupModalFocusTrap(this.elements.entraHelpModal);
+        }, 100);
+    }
+
+    hideEntraHelpModal() {
+        this.elements.entraHelpModal.style.display = 'none';
+        this.elements.entraHelpModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+        // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    showVideoModal(videoId, videoTitle) {
+        console.log('showVideoModal called with:', { videoId, videoTitle });
+
+        // Handle cases where videoId might be a full URL
+        let actualVideoId = videoId;
+        try {
+            const parsedUrl = new URL(videoId);
+            const host = parsedUrl.hostname.toLowerCase();
+            const isTrustedSynthesiaHost = host === 'synthesia.io' || host.endsWith('.synthesia.io');
+
+            if (isTrustedSynthesiaHost) {
+                // Extract just the ID from the URL path
+                const match = parsedUrl.pathname.match(/([0-9a-f-]{36})$/i);
+                if (match) {
+                    actualVideoId = match[1];
+                }
+            }
+        } catch (e) {
+            // Not a URL; assume videoId is already a raw ID
+        }
+
+        const videoUrl = `https://share.synthesia.io/embeds/videos/${actualVideoId}`;
+        console.log('Video URL:', videoUrl);
+
+        // Set the video title
+        this.elements.videoModalTitle.textContent = videoTitle || 'Video';
+
+        // Set the iframe source
+        this.elements.videoIframe.src = videoUrl;
+        this.elements.videoIframe.title = videoTitle || 'Video';
+
+        // Show the modal
+        this.elements.videoModal.style.display = 'flex';
+        this.currentModal = this.elements.videoModal;
+
+        // Store the previously focused element
+        this.lastFocusedElement = document.activeElement;
+
+        // Announce modal to screen readers
+        this.elements.videoModal.setAttribute('aria-hidden', 'false');
+
+        // Set focus to close button
+        setTimeout(() => {
+            this.elements.videoModalClose.focus();
+            this.setupModalFocusTrap(this.elements.videoModal);
+        }, 100);
+
+        console.log('Video modal displayed');
+    }
+
+    hideVideoModal() {
+        // Clear the iframe source to stop video playback
+        this.elements.videoIframe.src = '';
+
+        this.elements.videoModal.style.display = 'none';
+        this.elements.videoModal.setAttribute('aria-hidden', 'true');
+        this.removeModalFocusTrap();
+        this.currentModal = null;
+
+        // Restore focus to the element that opened the modal
+        if (this.lastFocusedElement) {
+            this.lastFocusedElement.focus();
+        } else {
+            this.elements.userInput.focus();
+        }
+    }
+
+    setupModalFocusTrap(modalElement) {
+        // Get all focusable elements within the modal
+        const focusableElements = modalElement.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        // Store the trap handler for cleanup
+        this.modalFocusTrapHandler = (e) => {
+            if (e.key !== 'Tab') return;
+
+            if (e.shiftKey) {
+                // Shift+Tab - going backwards
+                if (document.activeElement === firstElement) {
+                    e.preventDefault();
+                    lastElement.focus();
+                }
+            } else {
+                // Tab - going forwards
+                if (document.activeElement === lastElement) {
+                    e.preventDefault();
+                    firstElement.focus();
+                }
+            }
+        };
+
+        modalElement.addEventListener('keydown', this.modalFocusTrapHandler);
+    }
+
+    removeModalFocusTrap() {
+        if (this.currentModal && this.modalFocusTrapHandler) {
+            this.currentModal.removeEventListener('keydown', this.modalFocusTrapHandler);
+            this.modalFocusTrapHandler = null;
+        }
+    }
 }
 
 // Make instance globally accessible for onclick handler
