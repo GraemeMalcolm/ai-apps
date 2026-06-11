@@ -656,7 +656,11 @@
                     "aad",
                     "api_key",
                     "security",
-                    "identity"
+                    "secure",
+                    "authenticate",
+                    "identity",
+                    "access control",
+                    "control access"
                 ],
                 "content": "Microsoft Foundry secures access to its resources through robust authentication mechanisms, including key-based authentication and integration with Microsoft Entra ID. Client applications must authenticate using API keys or managed identity credentials to access models and agents."
             }
