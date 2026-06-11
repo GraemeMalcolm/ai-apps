@@ -1628,7 +1628,7 @@ IMPORTANT: Follow these guidelines when responding:
         const withCodeBlockPlaceholders = text.replace(
             /```(\w+)?\n([\s\S]*?)```/g,
             (match, language, code) => {
-                const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+                const placeholder = `§§CODE_BLOCK_${codeBlocks.length}§§`;
                 const escapedCode = this.escapeHtml(code);
                 const langClass = language ? ` class="language-${language}"` : '';
                 codeBlocks.push(`<pre${langClass}><code>${escapedCode}</code></pre>`);
@@ -1643,7 +1643,7 @@ IMPORTANT: Follow these guidelines when responding:
         const withMarkdownPlaceholders = escapedText.replace(
             /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
             (_, label, url) => {
-                const placeholder = `__MARKDOWN_LINK_${markdownLinks.length}__`;
+                const placeholder = `§§MARKDOWN_LINK_${markdownLinks.length}§§`;
                 markdownLinks.push(
                     `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
                 );
@@ -1679,7 +1679,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Restore markdown link placeholders
         const withLinks = withAutoLinkedUrls.replace(
-            /__MARKDOWN_LINK_(\d+)__/g,
+            /§§MARKDOWN_LINK_(\d+)§§/g,
             (_, index) => markdownLinks[Number(index)]
         );
 
@@ -1695,7 +1695,7 @@ IMPORTANT: Follow these guidelines when responding:
             const trimmedLine = line.trimStart();
 
             // Check if this line is a code block placeholder
-            if (/__CODE_BLOCK_\d+__/.test(line)) {
+            if (/§§CODE_BLOCK_\d+§§/.test(line)) {
                 // Close any open lists
                 if (inUnorderedList) {
                     result.push('</ul>');
@@ -1761,7 +1761,7 @@ IMPORTANT: Follow these guidelines when responding:
 
         // Restore code block placeholders
         finalText = finalText.replace(
-            /__CODE_BLOCK_(\d+)__/g,
+            /§§CODE_BLOCK_(\d+)§§/g,
             (_, index) => codeBlocks[Number(index)]
         );
 
