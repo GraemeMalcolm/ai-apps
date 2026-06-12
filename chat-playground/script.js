@@ -37,6 +37,8 @@ class ChatPlayground {
         this.selectedAvatar = null; // Track selected avatar filename
         this.availableAvatars = ['Boris.svg', 'Doris.svg']; // Available avatars
         this.voiceInteractionCancelled = false; // Track if user explicitly cancelled voice interaction
+        this.modelLoadingCancelled = false; // Track if user cancelled initial model loading
+        this.modelLoadingAbortController = null; // Track abort controller for model loading
 
         // Configuration objects
         this.config = {
@@ -535,26 +537,26 @@ class ChatPlayground {
 
     extractWebSearchKeywords(text, extraTerms = null) {
         const stopwords = new Set([
-            'a','an','and','are','as','at','be','by','for','from',
-            'in','is','it','its','of','on','that','the','to','with',
-            'or','but','if','than','then','so','yet',
-            'after','before','between','during','into','through','over',
-            'under','until','up','down','out','off','above','below',
-            'i','you','he','she','we','they','me','him','her',
-            'us','them','my','your','his','our','their',
-            'this','these','those','some','any','all','each','every',
-            'both','few','more','most','such','no','nor','not','only',
-            'own','same','other','another','much','many',
-            'am','was','were','been','being','have','has',
-            'had','do','does','did','can','could','would','should',
-            'may','might','must','shall','will',
-            'get','make','know','see','take','come','go','want',
-            'use','find','need','try','ask','work','help','like',
-            'what','when','where','who','how','why','which',
-            'also','just','now','here','there','very','too',
-            'really','still','always','never','often','sometimes',
-            'search','look','information','info','please','tell',
-            'about','regarding','related','anything'
+            'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+            'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+            'after', 'before', 'between', 'during', 'into', 'through', 'over',
+            'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+            'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
+            'us', 'them', 'my', 'your', 'his', 'our', 'their',
+            'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+            'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+            'own', 'same', 'other', 'another', 'much', 'many',
+            'am', 'was', 'were', 'been', 'being', 'have', 'has',
+            'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+            'may', 'might', 'must', 'shall', 'will',
+            'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+            'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like',
+            'what', 'when', 'where', 'who', 'how', 'why', 'which',
+            'also', 'just', 'now', 'here', 'there', 'very', 'too',
+            'really', 'still', 'always', 'never', 'often', 'sometimes',
+            'search', 'look', 'information', 'info', 'please', 'tell',
+            'about', 'regarding', 'related', 'anything'
         ]);
         const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
         const keywords = words.filter(w => w.length > 0 && !stopwords.has(w)).join(' ');
@@ -1195,11 +1197,75 @@ class ChatPlayground {
     }
 
     async initializeModel() {
+        // Setup cancel link event listener first
+        this.setupCancelLink();
+
         try {
             await this.initializeEngine();
         } catch (error) {
             console.error('Failed to initialize AI engine:', error);
         }
+    }
+
+    setupCancelLink() {
+        const cancelLink = document.getElementById('cancel-model-link');
+        if (cancelLink) {
+            // Click handler
+            cancelLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.cancelModelLoad();
+            });
+
+            // Keyboard handler for accessibility
+            cancelLink.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.cancelModelLoad();
+                }
+            });
+        }
+    }
+
+    cancelModelLoad() {
+        // Set cancellation flag
+        this.modelLoadingCancelled = true;
+
+        // Abort any ongoing loading operations
+        if (this.modelLoadingAbortController) {
+            this.modelLoadingAbortController.abort();
+        }
+
+        // Clean up any partially loaded models
+        if (this.engine) {
+            this.engine = null;
+        }
+        if (this.wllama) {
+            this.wllama = null;
+        }
+
+        // Hide the cancel link
+        const cancelLink = document.getElementById('cancel-model-link');
+        if (cancelLink) {
+            cancelLink.style.display = 'none';
+        }
+
+        // Switch to None mode (don't mark models as unavailable)
+        this.usingWllama = false;
+        this.usingWikipedia = true;
+        this.currentMode = 'none';
+        this.currentModelId = 'None (Wikipedia)';
+        this.config.modelParameters = this.getModelDefaults();
+        this.updateParameterUI();
+        this.populateModelDropdown();
+
+        this.updateProgress(100, 'Model loading cancelled - None (Wikipedia) mode ready');
+
+        setTimeout(() => {
+            this.enableUI();
+            this.progressContainer.style.display = 'none';
+        }, 1500);
     }
 
     checkWebGPUSupport() {
@@ -1212,6 +1278,9 @@ class ChatPlayground {
     }
 
     async initializeEngine() {
+        // Create abort controller for model loading
+        this.modelLoadingAbortController = new AbortController();
+
         // Check for WebGPU support before attempting to load WebLLM
         const hasWebGPU = this.checkWebGPUSupport();
 
@@ -1220,6 +1289,12 @@ class ChatPlayground {
             this.webllmAvailable = false;
             try {
                 await this.initializeWllama();
+
+                // Check if cancelled during initialization
+                if (this.modelLoadingCancelled) {
+                    return;
+                }
+
                 console.log('Wllama initialized successfully');
                 this.usingWllama = true;
                 this.usingWikipedia = false;
@@ -1232,6 +1307,12 @@ class ChatPlayground {
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
             } catch (wllamaError) {
+                // Check if cancelled during initialization
+                if (this.modelLoadingCancelled) {
+                    console.log('Model loading was cancelled by user');
+                    return;
+                }
+
                 console.error('Wllama initialization failed:', wllamaError);
                 this.wllamaLoaded = false;
                 this.wllamaFailed = true;
@@ -1253,6 +1334,12 @@ class ChatPlayground {
         try {
             console.log('Attempting to initialize WebLLM with WebGPU...');
             await this.initializeWebLLM();
+
+            // Check if cancelled during initialization
+            if (this.modelLoadingCancelled) {
+                return;
+            }
+
             console.log('WebLLM initialized successfully');
             this.webllmAvailable = true;
             this.usingWllama = false;
@@ -1264,11 +1351,23 @@ class ChatPlayground {
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
         } catch (error) {
+            // Check if cancelled during initialization
+            if (this.modelLoadingCancelled) {
+                console.log('Model loading was cancelled by user');
+                return;
+            }
+
             console.error('WebLLM initialization failed, loading wllama fallback:', error);
             this.webllmAvailable = false;
 
             try {
                 await this.initializeWllama();
+
+                // Check if cancelled during initialization
+                if (this.modelLoadingCancelled) {
+                    return;
+                }
+
                 console.log('Wllama initialized successfully as fallback');
                 this.usingWllama = true;
                 this.usingWikipedia = false;
@@ -1281,6 +1380,12 @@ class ChatPlayground {
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
             } catch (wllamaError) {
+                // Check if cancelled during initialization
+                if (this.modelLoadingCancelled) {
+                    console.log('Model loading was cancelled by user');
+                    return;
+                }
+
                 console.error('Both WebLLM and wllama initialization failed:', wllamaError);
                 this.wllamaLoaded = false;
                 this.wllamaFailed = true;
@@ -1352,12 +1457,26 @@ class ChatPlayground {
                 {
                     appConfig: appConfig,
                     initProgressCallback: (progress) => {
+                        // Check if user cancelled loading
+                        if (this.modelLoadingCancelled) {
+                            return;
+                        }
+
                         console.log('Progress:', progress);
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
                         this.updateProgress(percentage, `Loading ${targetModelId}: ${Math.round(progress.progress * 100)}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+
+                        // Show cancel link when loading starts
+                        this.showCancelLink();
                     }
                 }
             );
+
+            // Check if cancelled before finalizing
+            if (this.modelLoadingCancelled) {
+                this.engine = null;
+                throw new Error('Model loading cancelled by user');
+            }
 
             console.log(`Successfully loaded model: ${targetModelId}`);
             this.currentModelId = targetModelId;
@@ -1373,6 +1492,13 @@ class ChatPlayground {
         }
 
         console.log('WebLLM engine created successfully');
+
+        // Hide cancel link after successful load
+        const cancelLink = document.getElementById('cancel-model-link');
+        if (cancelLink) {
+            cancelLink.style.display = 'none';
+        }
+
         this.updateProgress(100, 'Model ready! (GPU mode)');
         setTimeout(() => {
             this.progressContainer.style.display = 'none';
@@ -1486,6 +1612,9 @@ class ChatPlayground {
         const updateProgress = progressCallback || ((loaded, total) => {
             const percentage = Math.round((loaded / total) * 100);
             this.updateProgress(percentage, `Loading wllama model (CPU mode): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+
+            // Show cancel link when loading starts
+            this.showCancelLink();
         });
 
         const isLazyLoad = this.webllmAvailable;
@@ -1494,6 +1623,11 @@ class ChatPlayground {
             updateProgress(10, 100);
         } else {
             updateProgress(0, 100);
+        }
+
+        // Check if cancelled before starting
+        if (this.modelLoadingCancelled) {
+            throw new Error('Model loading cancelled by user');
         }
 
         // Configure WASM paths for CDN
@@ -1513,6 +1647,11 @@ class ChatPlayground {
             offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
             n_threads: preferredThreads,
             progressCallback: ({ loaded, total }) => {
+                // Check if user cancelled loading
+                if (this.modelLoadingCancelled) {
+                    return;
+                }
+
                 if (!isLazyLoad) {
                     const progress = loaded / total;
                     const percentage = Math.round(progress * 100);
@@ -1526,6 +1665,11 @@ class ChatPlayground {
 
         await this.withWebGpuDisabledForWorkers(async () => {
             try {
+                // Check if cancelled before creating instance
+                if (this.modelLoadingCancelled) {
+                    throw new Error('Model loading cancelled by user');
+                }
+
                 this.wllama = new Wllama(CONFIG_PATHS);
                 if (!isLazyLoad) {
                     updateProgress(20, 100);
@@ -1541,9 +1685,21 @@ class ChatPlayground {
                         progressCallback: modelConfig.progressCallback
                     }
                 );
+
+                // Check if cancelled after loading
+                if (this.modelLoadingCancelled) {
+                    this.wllama = null;
+                    throw new Error('Model loading cancelled by user');
+                }
+
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
                 await this.warmWllamaCache(isLazyLoad, updateProgress, true);
             } catch (multiErr) {
+                // Check if cancelled
+                if (this.modelLoadingCancelled) {
+                    throw multiErr;
+                }
+
                 console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
                 if (!isLazyLoad) {
                     updateProgress(20, 100);
@@ -1562,6 +1718,13 @@ class ChatPlayground {
                         progressCallback: modelConfig.progressCallback
                     }
                 );
+
+                // Check if cancelled after fallback
+                if (this.modelLoadingCancelled) {
+                    this.wllama = null;
+                    throw new Error('Model loading cancelled by user');
+                }
+
                 console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
                 await this.warmWllamaCache(isLazyLoad, updateProgress, true);
             }
@@ -1569,6 +1732,13 @@ class ChatPlayground {
 
         console.log('Wllama initialized successfully');
         this.wllamaLoaded = true;
+
+        // Hide cancel link after successful load
+        const cancelLink = document.getElementById('cancel-model-link');
+        if (cancelLink) {
+            cancelLink.style.display = 'none';
+        }
+
         this.updateProgress(100, 'CPU model ready!');
         setTimeout(() => {
             this.progressContainer.style.display = 'none';
@@ -1633,6 +1803,13 @@ class ChatPlayground {
         }
     }
 
+    showCancelLink() {
+        const cancelLink = document.getElementById('cancel-model-link');
+        if (cancelLink && !this.modelLoadingCancelled) {
+            cancelLink.style.display = 'inline-block';
+        }
+    }
+
     updateProgress(percentage, text, useHTML = false) {
         this.progressFill.style.width = `${percentage}%`;
         if (useHTML) {
@@ -1688,6 +1865,9 @@ class ChatPlayground {
             this.populateModelDropdown();
             return;
         }
+
+        // Reset cancellation flag when user manually switches models
+        this.modelLoadingCancelled = false;
 
         // Determine if we're actually switching models
         const previousMode = this.currentMode;
