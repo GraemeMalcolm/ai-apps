@@ -1,4 +1,4 @@
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.84/+esm";
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm";
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
 // Utility function to escape HTML and prevent XSS
@@ -41,9 +41,9 @@ class ChatPlayground {
         // Configuration objects
         this.config = {
             modelParameters: {
-                temperature: 0.5,
+                temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 800,
+                max_tokens: 1000,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -272,15 +272,15 @@ class ChatPlayground {
             return {
                 temperature: 0.1,
                 top_p: 0.85,
-                max_tokens: 800,
+                max_tokens: 1000,
                 repetition_penalty: 1.1
             };
         } else {
             // Phi-3.5 (GPU mode) - Standard defaults
             return {
-                temperature: 0.5,
+                temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 800,
+                max_tokens: 1000,
                 repetition_penalty: 1.1
             };
         }
@@ -1290,7 +1290,7 @@ class ChatPlayground {
                 {
                     model: 'https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC',
                     model_id: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_84/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
+                    model_lib: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_83/base/Phi-3.5-mini-instruct-q4f16_1_cs1k-webgpu.wasm',
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
@@ -1342,6 +1342,105 @@ class ChatPlayground {
         }, 1000);
     }
 
+    /**
+     * Run `task` with `navigator.gpu` hidden so any code path inside it
+     * cannot detect or use WebGPU. Restores the original descriptor on
+     * exit even if `task` throws. Used to force the CPU code path in
+     * libraries that auto-detect WebGPU.
+     */
+    async withWebGpuTemporarilyDisabled(task) {
+        const nav = navigator;
+        const hadOwnGpu = Object.prototype.hasOwnProperty.call(nav, 'gpu');
+        const ownGpuDescriptor = hadOwnGpu ? Object.getOwnPropertyDescriptor(nav, 'gpu') : null;
+        let gpuMasked = false;
+
+        const unavailableGpu = {
+            requestAdapter: async () => null
+        };
+
+        try {
+            Object.defineProperty(nav, 'gpu', {
+                configurable: true,
+                enumerable: false,
+                get: () => unavailableGpu
+            });
+            gpuMasked = true;
+            console.log('Temporarily stubbed navigator.gpu as unavailable for wllama initialization');
+        } catch (error) {
+            console.warn('Unable to mask navigator.gpu during wllama initialization:', error);
+        }
+
+        try {
+            return await task();
+        } finally {
+            if (!gpuMasked) {
+                return;
+            }
+
+            try {
+                if (hadOwnGpu && ownGpuDescriptor) {
+                    Object.defineProperty(nav, 'gpu', ownGpuDescriptor);
+                } else {
+                    delete nav.gpu;
+                }
+                console.log('Restored navigator.gpu after wllama initialization');
+            } catch (error) {
+                console.warn('Unable to restore navigator.gpu after wllama initialization:', error);
+            }
+        }
+    }
+
+    /**
+     * Run `task` while transparently rewriting `new Worker(url)` so worker
+     * scripts also see WebGPU as unavailable. Pairs with
+     * {@link withWebGpuTemporarilyDisabled} for libraries (e.g. wllama)
+     * that spawn workers which would otherwise re-enable the GPU backend.
+     */
+    async withWebGpuDisabledForWorkers(task) {
+        const NativeWorker = window.Worker;
+        let workerPatched = false;
+
+        try {
+            if (typeof NativeWorker === 'function') {
+                window.Worker = class WorkerWithoutWebGPU extends NativeWorker {
+                    constructor(scriptURL, options) {
+                        let wrappedURL = scriptURL;
+                        let createdWrappedBlobUrl = false;
+
+                        try {
+                            const workerType = options?.type === 'module' ? 'module' : 'classic';
+                            const source = workerType === 'module'
+                                ? `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimport ${JSON.stringify(String(scriptURL))};`
+                                : `Object.defineProperty(self.navigator, 'gpu', { configurable: true, get: () => ({ requestAdapter: async () => null }) });\nimportScripts(${JSON.stringify(String(scriptURL))});`;
+
+                            wrappedURL = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+                            createdWrappedBlobUrl = true;
+                        } catch (error) {
+                            wrappedURL = scriptURL;
+                            createdWrappedBlobUrl = false;
+                        }
+
+                        super(wrappedURL, options);
+
+                        if (createdWrappedBlobUrl) {
+                            setTimeout(() => URL.revokeObjectURL(wrappedURL), 0);
+                        }
+                    }
+                };
+
+                workerPatched = true;
+                console.log('Temporarily patched Worker to disable WebGPU inside wllama workers');
+            }
+
+            return await this.withWebGpuTemporarilyDisabled(task);
+        } finally {
+            if (workerPatched) {
+                window.Worker = NativeWorker;
+                console.log('Restored Worker after wllama initialization');
+            }
+        }
+    }
+
     async initializeWllama(progressCallback) {
         console.log('Initializing wllama...');
         this.wllamaLoaded = false;
@@ -1372,6 +1471,8 @@ class ChatPlayground {
 
         const modelConfig = {
             n_ctx: 384,      // Smaller context for faster processing
+            n_gpu_layers: 0, // Force CPU-only: never use WebGPU even if available
+            offload_kqv: false, // Keep K/Q/V cache on CPU to avoid WebGPU backend usage
             n_threads: preferredThreads,
             progressCallback: ({ loaded, total }) => {
                 if (!isLazyLoad) {
@@ -1385,46 +1486,48 @@ class ChatPlayground {
             }
         };
 
-        try {
-            this.wllama = new Wllama(CONFIG_PATHS);
-            if (!isLazyLoad) {
-                updateProgress(20, 100);
-            }
-
-            await this.wllama.loadModelFromHF(
-                {
-                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
-                },
-                {
-                    ...modelConfig,
-                    progressCallback: modelConfig.progressCallback
+        await this.withWebGpuDisabledForWorkers(async () => {
+            try {
+                this.wllama = new Wllama(CONFIG_PATHS);
+                if (!isLazyLoad) {
+                    updateProgress(20, 100);
                 }
-            );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
-            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
-        } catch (multiErr) {
-            console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
-            if (!isLazyLoad) {
-                updateProgress(20, 100);
-            }
 
-            // Create fresh instance
-            this.wllama = new Wllama(CONFIG_PATHS);
-            await this.wllama.loadModelFromHF(
-                {
-                    repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
-                    file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
-                },
-                {
-                    ...modelConfig,
-                    n_threads: preferredThreads,
-                    progressCallback: modelConfig.progressCallback
+                await this.wllama.loadModelFromHF(
+                    {
+                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                    },
+                    {
+                        ...modelConfig,
+                        progressCallback: modelConfig.progressCallback
+                    }
+                );
+                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) in pure WASM mode`);
+                await this.warmWllamaCache(isLazyLoad, updateProgress, true);
+            } catch (multiErr) {
+                console.warn(`First init attempt failed (${multiErr.message}), retrying with fresh instance`);
+                if (!isLazyLoad) {
+                    updateProgress(20, 100);
                 }
-            );
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
-            await this.warmWllamaCache(isLazyLoad, updateProgress, true);
-        }
+
+                // Create fresh instance
+                this.wllama = new Wllama(CONFIG_PATHS);
+                await this.wllama.loadModelFromHF(
+                    {
+                        repo: 'Felladrin/gguf-sharded-phi-2-orange-v2',
+                        file: 'phi-2-orange-v2.Q5_K_M.shard-00001-of-00025.gguf'
+                    },
+                    {
+                        ...modelConfig,
+                        n_threads: preferredThreads,
+                        progressCallback: modelConfig.progressCallback
+                    }
+                );
+                console.log(`Wllama initialized successfully with ${preferredThreads} thread(s) (fallback)`);
+                await this.warmWllamaCache(isLazyLoad, updateProgress, true);
+            }
+        });
 
         console.log('Wllama initialized successfully');
         this.wllamaLoaded = true;
@@ -1784,31 +1887,27 @@ class ChatPlayground {
         return text.replace(/[^a-z0-9\s]/g, ' ');
     }
 
-    // Extract relevant lines from file content based on keywords.
-    // Returns matching lines joined by newlines, ordered by descending match count
-    // (lines matching more keywords come first); ties preserve original order.
-    extractRelevantLines(fileContent, keywords, maxLines = 5) {
+    // Extract relevant lines from file content based on keywords
+    extractRelevantLines(fileContent, keywords) {
         if (!fileContent || !keywords || keywords.length === 0) {
             return '';
         }
 
         const lines = fileContent.split('\n');
-        const matches = [];
+        let bestLine = '';
+        let bestCount = 0;
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+        for (const line of lines) {
             // Strip punctuation and lowercase for comparison
             const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
             const count = keywords.filter(keyword => lineWords.includes(keyword)).length;
-            if (count > 0) {
-                matches.push({ line: line.trim(), count, index: i });
+            if (count > bestCount) {
+                bestCount = count;
+                bestLine = line.trim();
             }
         }
 
-        // Sort by match count descending; preserve original order for ties.
-        matches.sort((a, b) => b.count - a.count || a.index - b.index);
-
-        return matches.slice(0, maxLines).map(m => m.line).join('\n');
+        return bestLine;
     }
 
     async handleSendMessage() {
@@ -1829,7 +1928,7 @@ class ChatPlayground {
         if (!userMessage) userMessage = ""; // Allow empty message if there's an image
 
         const currentSystemPrompt = (this.systemMessage?.value ?? this.currentSystemMessage).trim();
-        this.currentSystemMessage = currentSystemPrompt;
+        this.currentSystemMessage = currentSystemPrompt + '\n(Obey these instructions strictly for ALL responses.)';
 
         const hasProhibitedSystemPrompt = currentSystemPrompt && this.containsProhibitedContent(currentSystemPrompt);
         const hasProhibitedUserPrompt = userMessage && this.containsProhibitedContent(userMessage);
@@ -1898,9 +1997,9 @@ class ChatPlayground {
                 { role: "system", content: this.getEffectiveSystemMessage() }
             ];
 
-            // Add last 10 conversation pairs
+            // Add last 2 conversation pairs
             // Remove any previous image classifications from history to avoid confusion
-            const recentHistory = this.conversationHistory.slice(-20).map(msg => {
+            const recentHistory = this.conversationHistory.slice(-4).map(msg => {
                 if (msg.role === 'user') {
                     return {
                         ...msg,
@@ -1914,7 +2013,7 @@ class ChatPlayground {
             // Add user message with image analysis and file context if available
             let finalUserMessage = userMessage;
             if (imageAnalysis) {
-                finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']\nRespond concisely to the user\'s question based on the image.';
+                finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
             }
 
             // If file is uploaded, extract the most relevant line and append to user message
@@ -1988,24 +2087,48 @@ class ChatPlayground {
     }
 
     async handleStreamingMode(messages, thinkingIndicator, userMessage) {
-        // Non-streaming GPU mode: wait for the full response, then animate it
-        // like it's being typed (same pattern as Wikipedia / computing-local).
+        // Streaming Mode: Type as soon as we have content
         let fullResponse = '';
+        let hasStartedOutput = false;
+        const bufferSize = 30; // Start typing after 30 characters
+        let assistantMessageEl = null;
+        let contentEl = null;
 
-        // Sentinel so stopGeneration() routes to safeStopWebLLMStream ->
-        // engine.interruptGenerate() while we're awaiting the completion.
-        const completionToken = {};
-        this.currentStream = completionToken;
+        const completion = await this.engine.chat.completions.create({
+            messages: messages,
+            temperature: this.config.modelParameters.temperature,
+            max_tokens: this.config.modelParameters.max_tokens,
+            stream: true
+        });
+
+        this.currentStream = completion;
 
         try {
-            const completion = await this.engine.chat.completions.create({
-                messages: messages,
-                temperature: this.config.modelParameters.temperature,
-                max_tokens: this.config.modelParameters.max_tokens,
-                stream: false
-            });
+            for await (const chunk of completion) {
+                if (!this.isGenerating) break;
 
-            fullResponse = completion?.choices?.[0]?.message?.content || '';
+                const content = chunk.choices[0]?.delta?.content || '';
+                if (content) {
+                    fullResponse += content;
+
+                    // Start output once we have enough content buffered
+                    if (!hasStartedOutput && fullResponse.length >= bufferSize) {
+                        // Remove thinking indicator
+                        thinkingIndicator.remove();
+
+                        // Create message container
+                        assistantMessageEl = this.addMessage('assistant', '');
+                        contentEl = assistantMessageEl.querySelector('.message-content');
+
+                        // Start typing animation
+                        this.startTypingAnimation(contentEl, fullResponse);
+                        hasStartedOutput = true;
+                    } else if (hasStartedOutput && contentEl) {
+                        // Update the content for ongoing typing animation
+                        this.updateTypingContent(fullResponse);
+                    }
+                }
+            }
         } catch (error) {
             const isInterrupted = this.stopRequested ||
                 error?.name === 'AbortError' ||
@@ -2015,38 +2138,46 @@ class ChatPlayground {
                 throw error;
             }
 
-            console.log('WebLLM generation interrupted');
+            console.log('WebLLM streaming interrupted');
         } finally {
-            if (this.currentStream === completionToken) {
+            if (this.currentStream === completion) {
                 this.currentStream = null;
             }
         }
 
-        // Remove thinking indicator now that we have (or aborted) the response
-        if (thinkingIndicator?.parentNode) {
-            thinkingIndicator.remove();
-        }
-
-        // Build display string with optional file attribution
+        // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
         let displayResponse = fullResponse;
-        if (fullResponse.trim() && this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
-            displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
+        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
+            const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
+            displayResponse = fullResponse + attribution;
+            // Update the typing content to include attribution
+            this.updateTypingContent(displayResponse);
         }
 
-        // If user stopped before any content arrived, don't add an empty bubble
-        if (!fullResponse.trim() && this.stopRequested) {
-            this.conversationHistory.push({ role: "user", content: userMessage });
-            return;
-        }
+        // Handle case where response is shorter than buffer size
+        if (!hasStartedOutput) {
+            // Remove thinking indicator
+            thinkingIndicator.remove();
 
-        const assistantMessageEl = this.addMessage('assistant', '');
-        const contentEl = assistantMessageEl.querySelector('.message-content');
+            if (fullResponse.trim()) {
+                // Append file attribution if a file is uploaded and relevant content was used (for display only)
+                displayResponse = fullResponse;
+                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
+                    displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
+                }
 
-        if (fullResponse.trim()) {
-            await this.typeResponse(contentEl, displayResponse);
-        } else {
-            const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
-            await this.typeResponse(contentEl, fallbackMessage);
+                // Create message container
+                assistantMessageEl = this.addMessage('assistant', '');
+                contentEl = assistantMessageEl.querySelector('.message-content');
+
+                // Type out the short response
+                await this.typeResponse(contentEl, displayResponse);
+            } else {
+                const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
+                assistantMessageEl = this.addMessage('assistant', '');
+                contentEl = assistantMessageEl.querySelector('.message-content');
+                await this.typeResponse(contentEl, fallbackMessage);
+            }
         }
 
         // Add to conversation history (without file attribution, to prevent cumulative citations)
@@ -2384,7 +2515,7 @@ class ChatPlayground {
             }
 
             // Add current user message
-            prompt += 'igraph\n' + userMessage + '\nGive a concise answer to the user\'s question based on the image they uploaded.\n\n';
+            prompt += '<|im_start|>user\n' + userMessage + '\n<|im_end|>\n\n';
             prompt += '<|im_start|>assistant\n';
 
         } else if (fileContent) {
@@ -4752,7 +4883,7 @@ window.resetParametersFromModal = function () {
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
         temperature: 0.7,
         top_p: 0.9,
-        max_tokens: 800,
+        max_tokens: 1000,
         repetition_penalty: 1.1
     };
 
