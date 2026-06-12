@@ -533,7 +533,7 @@ class ChatPlayground {
         return !!(el && el.style.display !== 'none');
     }
 
-    extractWebSearchKeywords(text) {
+    extractWebSearchKeywords(text, extraTerms = null) {
         const stopwords = new Set([
             'a','an','and','are','as','at','be','by','for','from',
             'in','is','it','its','of','on','that','the','to','with',
@@ -558,7 +558,8 @@ class ChatPlayground {
         ]);
         const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
         const keywords = words.filter(w => w.length > 0 && !stopwords.has(w)).join(' ');
-        return keywords || null;
+        const combined = [keywords, extraTerms].filter(Boolean).join(' ').trim();
+        return combined || null;
     }
 
     removeFile() {
@@ -2013,7 +2014,7 @@ class ChatPlayground {
             this.userInput.value = '';
             this.userInput.style.height = 'auto';
             if (this.pendingImage) this.removePendingImage();
-            const keywords = this.extractWebSearchKeywords(userMessage);
+            const keywords = this.extractWebSearchKeywords(userMessage, imageAnalysis || null);
             this.isGenerating = true;
             this.updateUIForGeneration(true);
             const typingIndicator = this.addTypingIndicator();
