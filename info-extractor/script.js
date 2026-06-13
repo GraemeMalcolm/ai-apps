@@ -447,6 +447,13 @@ class InfoExtractorApp {
 
     async loadDefaultReceipt() {
         try {
+            // Check if default receipt is already loaded
+            const hasDefaultReceipt = this.uploadedImages.some(img => img.isSample);
+            if (hasDefaultReceipt) {
+                console.log('Default receipt already loaded, skipping...');
+                return;
+            }
+
             console.log('Attempting to load default receipt image...');
             // Load the default receipt.png file
             const response = await fetch('./receipt.png');
