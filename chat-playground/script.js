@@ -3834,9 +3834,25 @@ class ChatPlayground {
             // Always clear the starting flag on any error
             this.isStartingRecognition = false;
 
-            // Ignore other 'aborted' errors - these are expected when stopping recognition
+            // Ignore 'aborted' errors - these are expected when stopping recognition
             if (event.error === 'aborted') {
                 this.resetVoiceUI();
+                return;
+            }
+
+            // Ignore 'no-speech' errors - these are normal when user doesn't speak
+            if (event.error === 'no-speech') {
+                console.log('No speech detected, continuing in voice mode');
+                // In voice mode, automatically restart listening after no-speech
+                if (this.voiceMode) {
+                    setTimeout(() => {
+                        if (this.voiceMode && !this.isListening && !this.isGenerating && !this.isSpeaking) {
+                            this.startSpeechRecognition();
+                        }
+                    }, 500);
+                } else {
+                    this.resetVoiceUI();
+                }
                 return;
             }
 
@@ -3846,14 +3862,21 @@ class ChatPlayground {
                 return;
             }
 
-            // In voice mode, try Vosk failover for network errors or other failures
-            if (this.voiceMode && event.error !== 'not-allowed') {
+            // In voice mode, try Vosk failover only for network/service errors
+            // Don't failover for audio-capture, language-not-supported, or other benign errors
+            if (this.voiceMode && (event.error === 'network' || event.error === 'service-not-allowed')) {
                 this.handleSpeechRecognitionFailure(event.error);
                 return;
             }
 
             this.resetVoiceUI();
-            this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+
+            // Show appropriate error message
+            if (this.voiceMode && event.error !== 'not-allowed') {
+                this.openVoiceInputErrorModal(event.error);
+            } else if (event.error !== 'not-allowed') {
+                this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
+            }
         };
     }
 
