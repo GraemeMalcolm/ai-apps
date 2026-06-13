@@ -259,6 +259,8 @@ class ModelCoderLLM {
         this.activeRunId = 0;
         this.moderationTerms = null;
         this.moderationLoadPromise = null;
+        this.modelLoadingCancelled = false;
+        this.modelLoadingAbortController = null;
     }
 
     async _ensureModerationTerms() {
@@ -468,6 +470,24 @@ class ModelCoderLLM {
         this.statusCallback = callback;
     }
 
+    cancelModelLoading() {
+        console.log('User requested to cancel model loading');
+        this.modelLoadingCancelled = true;
+
+        if (this.modelLoadingAbortController) {
+            this.modelLoadingAbortController.abort();
+        }
+
+        // Clean up any loading state
+        this.isLoading = false;
+
+        // Switch to basic mode without marking other modes unavailable
+        this._activateBasicMode('user cancelled loading');
+        this.isReady = true;
+
+        console.log('Switched to Basic mode after cancellation');
+    }
+
     async resetSession() {
         console.log('[Model Reset] Soft reset - clearing conversation history only');
         this.sessionVersion += 1;
@@ -577,6 +597,9 @@ class ModelCoderLLM {
             return;
         }
 
+        // Reset cancellation flag for new initialization
+        this.modelLoadingCancelled = false;
+        this.modelLoadingAbortController = new AbortController();
         this.isLoading = true;
 
         this.availableModes = {
@@ -642,9 +665,18 @@ class ModelCoderLLM {
         }
 
         // Try WebLLM first (faster with GPU) unless forcing CPU
+        // Set GPU as available before attempting to load
+        this.availableModes.gpu = true;
         try {
             console.log('Attempting to initialize WebLLM with WebGPU...');
             await this._loadWebLLM();
+
+            // Check if cancelled during loading
+            if (this.modelLoadingCancelled) {
+                console.log('WebLLM loading was cancelled by user - GPU stays available');
+                return;
+            }
+
             console.log('WebLLM initialized successfully');
             this.webllmAvailable = true;
             this.usingWllama = false;
@@ -654,6 +686,12 @@ class ModelCoderLLM {
             this.isLoading = false;
             return;
         } catch (error) {
+            // Only mark unavailable if there was a genuine error (not cancellation)
+            if (this.modelLoadingCancelled) {
+                console.log('WebLLM loading was cancelled by user - GPU stays available');
+                return;
+            }
+
             console.error('WebLLM initialization failed, loading wllama fallback:', error);
             this.webllmAvailable = false;
             this.availableModes.gpu = false;
@@ -665,6 +703,13 @@ class ModelCoderLLM {
 
             try {
                 await this._loadWllama(maxRetries);
+
+                // Check if cancelled during loading
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.log('Wllama initialized successfully as fallback');
                 this.usingWllama = true;
                 this.usingBasic = false;
@@ -673,6 +718,12 @@ class ModelCoderLLM {
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
+                // Only mark unavailable if there was a genuine error (not cancellation)
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.error('Both WebLLM and wllama initialization failed:', wllamaError);
                 this.availableModes.cpu = false;
                 this._activateBasicMode("GPU and CPU init failed");
@@ -717,6 +768,11 @@ class ModelCoderLLM {
                 PHI3_MODEL_ID,
                 {
                     initProgressCallback: (progress) => {
+                        // Check for cancellation during progress updates
+                        if (this.modelLoadingCancelled) {
+                            return;
+                        }
+
                         console.log('Progress:', progress);
                         const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
                         const progressText = `Loading ${PHI3_MODEL_ID}: ${Math.round(progress.progress * 100)}%`;
@@ -724,6 +780,11 @@ class ModelCoderLLM {
                     }
                 }
             );
+
+            // Check if cancelled after loading
+            if (this.modelLoadingCancelled) {
+                throw new Error('Loading cancelled by user');
+            }
 
             console.log(`Successfully loaded model: ${PHI3_MODEL_ID}`);
             this._status("ready", "Model ready: Phi-3 (GPU mode)");
@@ -737,12 +798,28 @@ class ModelCoderLLM {
         let lastError = null;
 
         for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+            // Check for cancellation before each attempt
+            if (this.modelLoadingCancelled) {
+                throw new Error('Loading cancelled by user');
+            }
+
             try {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
                 await this._loadWllamaModel();
+
+                // Check if cancelled after loading
+                if (this.modelLoadingCancelled) {
+                    throw new Error('Loading cancelled by user');
+                }
+
                 this._status("ready", "Model ready: Phi-2 (CPU mode)");
                 return;
             } catch (error) {
+                // If cancelled, rethrow immediately
+                if (this.modelLoadingCancelled) {
+                    throw error;
+                }
+
                 lastError = error;
                 this._status("error", `Model load failed on attempt ${attempt}: ${error.message}`);
                 if (attempt < maxRetries) {
@@ -1581,6 +1658,10 @@ const modelCoderGetAvailableModes = () => {
     return llmRuntime.getAvailableModes();
 };
 
+const modelCoderCancelLoading = () => {
+    llmRuntime.cancelModelLoading();
+};
+
 const modelCoderBridge = {
     modelCoderSetStatusListener,
     modelCoderInit,
@@ -1593,6 +1674,7 @@ const modelCoderBridge = {
     modelCoderIsUsingCPUMode,
     modelCoderGetCurrentMode,
     modelCoderGetAvailableModes,
+    modelCoderCancelLoading,
 };
 
 function attachBridge(target) {
@@ -1610,6 +1692,7 @@ function attachBridge(target) {
     target.modelCoderIsUsingCPUMode = modelCoderIsUsingCPUMode;
     target.modelCoderGetCurrentMode = modelCoderGetCurrentMode;
     target.modelCoderGetAvailableModes = modelCoderGetAvailableModes;
+    target.modelCoderCancelLoading = modelCoderCancelLoading;
     target.modelCoderBridge = modelCoderBridge;
 }
 
