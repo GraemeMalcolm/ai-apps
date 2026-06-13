@@ -386,7 +386,7 @@ async function initializeWebLLM() {
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
-                        context_window_size: 2048
+                        context_window_size: 1024
                     }
                 }
             ]
@@ -2485,7 +2485,7 @@ async function generateWithWebLLM(query, onChunk = null) {
             messages,
             temperature: 0.1,
             top_p: 0.9,
-            max_tokens: 280,
+            max_tokens: 250,
             stream: false
         });
 
@@ -2517,7 +2517,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                         messages,
                         temperature: 0.1,
                         top_p: 0.9,
-                        max_tokens: 280,
+                        max_tokens: 250,
                         stream: false
                     });
 
