@@ -2481,7 +2481,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Generate without streaming (complete response at once)
         const completion = await engine.chat.completions.create({
             messages,
-            temperature: 0.2,
+            temperature: 0.1,
             top_p: 0.9,
             max_tokens: 280,
             stream: false
@@ -2513,7 +2513,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                     // Retry the generation
                     const retryCompletion = await engine.chat.completions.create({
                         messages,
-                        temperature: 0.2,
+                        temperature: 0.1,
                         top_p: 0.9,
                         max_tokens: 280,
                         stream: false
