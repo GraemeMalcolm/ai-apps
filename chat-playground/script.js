@@ -4512,8 +4512,9 @@ class ChatPlayground {
             return;
         }
 
-        // Vocalize acknowledgment while processing model response
-        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window) {
+        // Vocalize acknowledgment while processing model response (skip for Wikipedia mode - too fast)
+        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window &&
+            !this.usingWikipedia && this.currentMode !== 'none') {
             const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
 
             // Use the selected voice if available
