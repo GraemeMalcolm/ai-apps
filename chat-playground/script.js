@@ -37,6 +37,7 @@ class ChatPlayground {
         this.selectedAvatar = null; // Track selected avatar filename
         this.availableAvatars = ['Boris.svg', 'Doris.svg']; // Available avatars
         this.voiceInteractionCancelled = false; // Track if user explicitly cancelled voice interaction
+        this.isStartingRecognition = false; // Track if we're intentionally starting recognition
         this.modelLoadingCancelled = false; // Track if user cancelled initial model loading
         this.modelLoadingAbortController = null; // Track abort controller for model loading
 
@@ -3797,7 +3798,10 @@ class ChatPlayground {
         this.recognition.maxAlternatives = 1;
 
         this.recognition.onstart = () => {
+            console.log('Web Speech Recognition started');
             this.isListening = true;
+            // Clear the starting flag once we've successfully started
+            this.isStartingRecognition = false;
         };
 
         this.recognition.onresult = (event) => {
@@ -3811,12 +3815,30 @@ class ChatPlayground {
         };
 
         this.recognition.onend = () => {
+            console.log('Web Speech Recognition ended');
             this.isListening = false;
+            // Ensure starting flag is cleared
+            this.isStartingRecognition = false;
         };
 
         this.recognition.onerror = (event) => {
-            this.isListening = false;
             console.error('Speech recognition error:', event.error);
+            this.isListening = false;
+
+            // Ignore 'aborted' errors when we're starting recognition - cleanup abort is expected
+            if (event.error === 'aborted' && this.isStartingRecognition) {
+                console.log('Ignoring abort error during startup cleanup');
+                return;
+            }
+
+            // Always clear the starting flag on any error
+            this.isStartingRecognition = false;
+
+            // Ignore other 'aborted' errors - these are expected when stopping recognition
+            if (event.error === 'aborted') {
+                this.resetVoiceUI();
+                return;
+            }
 
             // If user explicitly cancelled voice interaction, don't attempt failover
             if (this.voiceInteractionCancelled) {
@@ -3825,18 +3847,12 @@ class ChatPlayground {
             }
 
             // In voice mode, try Vosk failover for network errors or other failures
-            if (this.voiceMode && event.error !== 'aborted' && event.error !== 'not-allowed') {
+            if (this.voiceMode && event.error !== 'not-allowed') {
                 this.handleSpeechRecognitionFailure(event.error);
                 return;
             }
 
             this.resetVoiceUI();
-
-            if (this.voiceMode && event.error !== 'aborted') {
-                this.openVoiceInputErrorModal(event.error);
-                return;
-            }
-
             this.showToast(ChatPlayground.MESSAGES.ERRORS.SPEECH_ERROR);
         };
     }
@@ -4120,16 +4136,43 @@ class ChatPlayground {
         }
 
         try {
+            // Set flag to ignore abort errors during startup
+            this.isStartingRecognition = true;
+            console.log('Starting Web Speech Recognition...');
+
             try {
                 this.recognition.abort();
             } catch (e) {
-                // Ignore
+                console.warn('Error calling recognition.abort():', e);
             }
 
             setTimeout(() => {
-                this.recognition.start();
+                try {
+                    console.log('Calling recognition.start()');
+                    this.recognition.start();
+                    // Set a timeout to clear the flag if onstart doesn't fire
+                    setTimeout(() => {
+                        if (this.isStartingRecognition) {
+                            console.warn('Recognition start timeout - clearing flag');
+                            this.isStartingRecognition = false;
+                            // If we're still not listening after timeout, something went wrong
+                            if (!this.isListening) {
+                                console.error('Recognition failed to start');
+                                this.resetVoiceUI();
+                                this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                            }
+                        }
+                    }, 2000);
+                } catch (error) {
+                    this.isStartingRecognition = false;
+                    console.error('Error calling recognition.start():', error);
+                    this.isListening = false;
+                    this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
+                    this.resetVoiceUI();
+                }
             }, 100);
         } catch (error) {
+            this.isStartingRecognition = false;
             console.error('Error starting speech recognition:', error);
             this.isListening = false;
             this.showToast(ChatPlayground.MESSAGES.ERRORS.VOICE_INPUT_FAILED);
