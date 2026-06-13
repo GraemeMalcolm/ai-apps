@@ -1309,7 +1309,7 @@ class ChatPlayground {
                 this.updateParameterUI();
             } catch (wllamaError) {
                 // Check if cancelled during initialization
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || wllamaError.message.includes('cancelled by user')) {
                     console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
@@ -1387,7 +1387,7 @@ class ChatPlayground {
                 this.updateParameterUI();
             } catch (wllamaError) {
                 // Check if cancelled during initialization
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || wllamaError.message.includes('cancelled by user')) {
                     console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
@@ -1994,7 +1994,7 @@ class ChatPlayground {
                     console.error('Failed to load wllama:', error);
 
                     // If loading was cancelled by user, don't mark as failed
-                    if (this.modelLoadingCancelled) {
+                    if (this.modelLoadingCancelled || error.message.includes('cancelled by user')) {
                         console.log('Model loading was cancelled by user - Wllama stays available');
                         return;
                     }
