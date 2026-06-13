@@ -634,230 +634,269 @@ class ModelCoderLLM {
         this.modelLoadingAbortController = new AbortController();
         this.isLoading = true;
         this.initSessionId++;  // Increment to invalidate any previous load callbacks
-
-        // Preserve previously discovered mode availability when reinitializing
-        const previousGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
-
-        this.availableModes = {
-            gpu: previousGpuAvailable,  // Preserve if previously available or if WebGPU supported
+        console.log(`[Initialize] Session ID incremented to ${this.initSessionId}, forceCPU=${forceCPU}, forceGPU=${forceGPU}`);
+        gpu: previousGpuAvailable,  // Preserve if previously available or if WebGPU supported
             cpu: true,
-            basic: true
-        };
+                basic: true
+    };
 
-        if (forceBasic) {
-            this._activateBasicMode("forced fallback mode");
+    if(forceBasic) {
+        this._activateBasicMode("forced fallback mode");
+        this.isReady = true;
+        this.isLoading = false;
+        return;
+    }
+
+    // If forcing CPU mode, skip GPU check and go straight to wllama
+    if(forceCPU) {
+        console.log('Forcing CPU mode (wllama)');
+        this._status("loading", "Initializing CPU mode (Phi-2)...");
+        this.webllmAvailable = false;
+        this.usingBasic = false;
+        try {
+            await this._loadWllama(maxRetries);
+
+            // Check if cancelled during loading
+            if (this.modelLoadingCancelled) {
+                console.log('Wllama loading was cancelled by user - CPU stays available');
+                return;
+            }
+
+            this.usingWllama = true;
+            this.availableModes.cpu = true;
+            this.isReady = true;
+            this.isLoading = false;
+            return;
+        } catch (wllamaError) {
+            // Only mark unavailable if there was a genuine error (not cancellation)
+            if (this.modelLoadingCancelled) {
+                console.log('Wllama loading was cancelled by user - CPU stays available');
+                return;
+            }
+
+            console.error('Wllama initialization failed:', wllamaError);
+            this.availableModes.cpu = false;
+            this.isLoading = false;
+            throw wllamaError;
+        }
+    }
+
+    // Check for WebGPU support before attempting to load WebLLM
+    const hasWebGPU = this.checkWebGPUSupport();
+
+    if(!hasWebGPU) {
+        if (forceGPU) {
+            this.isLoading = false;
+            throw new Error('GPU mode requested but WebGPU is not available');
+        }
+        console.log('WebGPU not available, using wllama (CPU mode)');
+        this._status("loading", "WebGPU not available - using CPU mode...");
+        this.webllmAvailable = false;
+        this.availableModes.gpu = false;
+        this.usingBasic = false;
+        try {
+            await this._loadWllama(maxRetries);
+
+            // Check if cancelled during loading
+            if (this.modelLoadingCancelled) {
+                console.log('Wllama loading was cancelled by user - CPU stays available');
+                return;
+            }
+
+            this.usingWllama = true;
+            this.availableModes.cpu = true;
+            this.isReady = true;
+            this.isLoading = false;
+            return;
+        } catch (wllamaError) {
+            // Only mark unavailable if there was a genuine error (not cancellation)
+            if (this.modelLoadingCancelled) {
+                console.log('Wllama loading was cancelled by user - CPU stays available');
+                return;
+            }
+
+            console.error('Wllama initialization failed:', wllamaError);
+            this.availableModes.cpu = false;
+            this._activateBasicMode("GPU unavailable and CPU init failed");
             this.isReady = true;
             this.isLoading = false;
             return;
         }
-
-        // If forcing CPU mode, skip GPU check and go straight to wllama
-        if (forceCPU) {
-            console.log('Forcing CPU mode (wllama)');
-            this._status("loading", "Initializing CPU mode (Phi-2)...");
-            this.webllmAvailable = false;
-            this.usingBasic = false;
-            try {
-                await this._loadWllama(maxRetries);
-
-                // Check if cancelled during loading
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                this.usingWllama = true;
-                this.availableModes.cpu = true;
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            } catch (wllamaError) {
-                // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.error('Wllama initialization failed:', wllamaError);
-                this.availableModes.cpu = false;
-                this.isLoading = false;
-                throw wllamaError;
-            }
-        }
-
-        // Check for WebGPU support before attempting to load WebLLM
-        const hasWebGPU = this.checkWebGPUSupport();
-
-        if (!hasWebGPU) {
-            if (forceGPU) {
-                this.isLoading = false;
-                throw new Error('GPU mode requested but WebGPU is not available');
-            }
-            console.log('WebGPU not available, using wllama (CPU mode)');
-            this._status("loading", "WebGPU not available - using CPU mode...");
-            this.webllmAvailable = false;
-            this.availableModes.gpu = false;
-            this.usingBasic = false;
-            try {
-                await this._loadWllama(maxRetries);
-
-                // Check if cancelled during loading
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                this.usingWllama = true;
-                this.availableModes.cpu = true;
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            } catch (wllamaError) {
-                // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.error('Wllama initialization failed:', wllamaError);
-                this.availableModes.cpu = false;
-                this._activateBasicMode("GPU unavailable and CPU init failed");
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            }
-        }
+    }
 
         // Try WebLLM first (faster with GPU) unless forcing CPU
         // Set GPU as available before attempting to load
         this.availableModes.gpu = true;
-        this._status("loading", "Initializing GPU mode (Phi-3)...");
-        try {
-            console.log('Attempting to initialize WebLLM with WebGPU...');
-            await this._loadWebLLM();
+this._status("loading", "Initializing GPU mode (Phi-3)...");
+try {
+    console.log('Attempting to initialize WebLLM with WebGPU...');
+    await this._loadWebLLM();
 
-            // Check if cancelled during loading
-            if (this.modelLoadingCancelled) {
-                console.log('WebLLM loading was cancelled by user - GPU stays available');
-                return;
-            }
+    // Check if cancelled during loading
+    if (this.modelLoadingCancelled) {
+        console.log('WebLLM loading was cancelled by user - GPU stays available');
+        return;
+    }
 
-            console.log('WebLLM initialized successfully');
-            this.webllmAvailable = true;
-            this.usingWllama = false;
-            this.usingBasic = false;
-            this.availableModes.gpu = true;
-            this.isReady = true;
-            this.isLoading = false;
+    console.log('WebLLM initialized successfully');
+    this.webllmAvailable = true;
+    this.usingWllama = false;
+    this.usingBasic = false;
+    this.availableModes.gpu = true;
+    this.isReady = true;
+    this.isLoading = false;
+    return;
+} catch (error) {
+    // Only mark unavailable if there was a genuine error (not cancellation)
+    if (this.modelLoadingCancelled) {
+        console.log('WebLLM loading was cancelled by user - GPU stays available');
+        return;
+    }
+
+    console.error('WebLLM initialization failed, loading wllama fallback:', error);
+    this.webllmAvailable = false;
+    this.availableModes.gpu = false;
+
+    if (forceGPU) {
+        this.isLoading = false;
+        throw new Error('GPU mode requested but WebLLM failed to initialize: ' + error.message);
+    }
+
+    try {
+        await this._loadWllama(maxRetries);
+
+        // Check if cancelled during loading
+        if (this.modelLoadingCancelled) {
+            console.log('Wllama loading was cancelled by user - CPU stays available');
             return;
-        } catch (error) {
-            // Only mark unavailable if there was a genuine error (not cancellation)
-            if (this.modelLoadingCancelled) {
-                console.log('WebLLM loading was cancelled by user - GPU stays available');
-                return;
-            }
-
-            console.error('WebLLM initialization failed, loading wllama fallback:', error);
-            this.webllmAvailable = false;
-            this.availableModes.gpu = false;
-
-            if (forceGPU) {
-                this.isLoading = false;
-                throw new Error('GPU mode requested but WebLLM failed to initialize: ' + error.message);
-            }
-
-            try {
-                await this._loadWllama(maxRetries);
-
-                // Check if cancelled during loading
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.log('Wllama initialized successfully as fallback');
-                this.usingWllama = true;
-                this.usingBasic = false;
-                this.availableModes.cpu = true;
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            } catch (wllamaError) {
-                // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled) {
-                    console.log('Wllama loading was cancelled by user - CPU stays available');
-                    return;
-                }
-
-                console.error('Both WebLLM and wllama initialization failed:', wllamaError);
-                this.availableModes.cpu = false;
-                this._activateBasicMode("GPU and CPU init failed");
-                this.isReady = true;
-                this.isLoading = false;
-                return;
-            }
         }
+
+        console.log('Wllama initialized successfully as fallback');
+        this.usingWllama = true;
+        this.usingBasic = false;
+        this.availableModes.cpu = true;
+        this.isReady = true;
+        this.isLoading = false;
+        return;
+    } catch (wllamaError) {
+        // Only mark unavailable if there was a genuine error (not cancellation)
+        if (this.modelLoadingCancelled) {
+            console.log('Wllama loading was cancelled by user - CPU stays available');
+            return;
+        }
+
+        console.error('Both WebLLM and wllama initialization failed:', wllamaError);
+        this.availableModes.cpu = false;
+        this._activateBasicMode("GPU and CPU init failed");
+        this.isReady = true;
+        this.isLoading = false;
+        return;
+    }
+}
     }
 
     async _loadWebLLM() {
-        console.log('_loadWebLLM called - starting model initialization');
-        this._status("loading", "Discovering available models...");
+    console.log('_loadWebLLM called - starting model initialization');
+    this._status("loading", "Discovering available models...");
 
-        // Check if WebLLM is available
-        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
-            console.error('WebLLM check failed');
-            throw new Error('WebLLM not properly loaded');
-        }
+    // Check if WebLLM is available
+    if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
+        console.error('WebLLM check failed');
+        throw new Error('WebLLM not properly loaded');
+    }
 
-        // Get available models from WebLLM
-        const models = webllm.prebuiltAppConfig.model_list;
-        console.log('All available models:', models.map(m => m.model_id));
+    // Get available models from WebLLM
+    const models = webllm.prebuiltAppConfig.model_list;
+    console.log('All available models:', models.map(m => m.model_id));
 
-        // Filter for the specific Phi-3 model only
-        let availableModels = models.filter(model =>
-            model.model_id === PHI3_MODEL_ID
+    // Filter for the specific Phi-3 model only
+    let availableModels = models.filter(model =>
+        model.model_id === PHI3_MODEL_ID
+    );
+
+    if (availableModels.length === 0) {
+        throw new Error('Phi-3-mini-4k-instruct model not found');
+    }
+
+    console.log('Available models for loading:', availableModels.map(m => m.model_id));
+    this._status("loading", "Loading WebLLM model (GPU mode)...");
+
+    // Try to load the model
+    try {
+        console.log(`Trying to load model: ${PHI3_MODEL_ID}`);
+
+        // Capture current session ID to detect stale callbacks
+        const currentSessionId = this.initSessionId;
+        console.log(`[GPU Load] Starting with session ID ${currentSessionId}`);
+
+        this.engine = await webllm.CreateMLCEngine(
+            PHI3_MODEL_ID,
+            {
+                initProgressCallback: (progress) => {
+                    // Ignore callbacks from old initialization sessions
+                    if (this.initSessionId !== currentSessionId) {
+                        console.log(`[GPU Progress] Ignoring stale callback - current:${this.initSessionId}, expected:${currentSessionId}`);
+                        return;
+                    }
+
+                    // Check for cancellation during progress updates
+                    if (this.modelLoadingCancelled) {
+                        console.log('[GPU Progress] Cancelled - ignoring');
+                        return;
+                    }
+
+                    console.log('Progress:', progress);
+                    const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
+                    const progressText = `Loading ${PHI3_MODEL_ID}: ${Math.round(progress.progress * 100)}%`;
+                    this._status("loading", progressText);
+                }
+            }
         );
 
-        if (availableModels.length === 0) {
-            throw new Error('Phi-3-mini-4k-instruct model not found');
+        // Check if this load is from a stale session
+        if (this.initSessionId !== currentSessionId) {
+            console.log('GPU load completed but session has changed - discarding result');
+            throw new Error('Session changed during loading');
         }
 
-        console.log('Available models for loading:', availableModels.map(m => m.model_id));
-        this._status("loading", "Loading WebLLM model (GPU mode)...");
+        // Check if cancelled after loading
+        if (this.modelLoadingCancelled) {
+            throw new Error('Loading cancelled by user');
+        }
 
-        // Try to load the model
+        console.log(`Successfully loaded model: ${PHI3_MODEL_ID}`);
+        this._status("ready", "Model ready: Phi-3 (GPU mode)");
+    } catch (modelError) {
+        console.error(`Failed to load ${PHI3_MODEL_ID}:`, modelError);
+        throw modelError;
+    }
+}
+
+    async _loadWllama(maxRetries = 3) {
+    let lastError = null;
+
+    // Capture current session ID to detect stale loads
+    const currentSessionId = this.initSessionId;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+        // Check if session changed
+        if (this.initSessionId !== currentSessionId) {
+            console.log('Wllama load aborted - session changed');
+            throw new Error('Session changed during loading');
+        }
+
+        // Check for cancellation before each attempt
+        if (this.modelLoadingCancelled) {
+            throw new Error('Loading cancelled by user');
+        }
+
         try {
-            console.log(`Trying to load model: ${PHI3_MODEL_ID}`);
+            this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
+            await this._loadWllamaModel();
 
-            // Capture current session ID to detect stale callbacks
-            const currentSessionId = this.initSessionId;
-
-            this.engine = await webllm.CreateMLCEngine(
-                PHI3_MODEL_ID,
-                {
-                    initProgressCallback: (progress) => {
-                        // Ignore callbacks from old initialization sessions
-                        if (this.initSessionId !== currentSessionId) {
-                            console.log('Ignoring progress from stale GPU load session');
-                            return;
-                        }
-
-                        // Check for cancellation during progress updates
-                        if (this.modelLoadingCancelled) {
-                            return;
-                        }
-
-                        console.log('Progress:', progress);
-                        const percentage = Math.max(15, Math.round(progress.progress * 85) + 15);
-                        const progressText = `Loading ${PHI3_MODEL_ID}: ${Math.round(progress.progress * 100)}%`;
-                        this._status("loading", progressText);
-                    }
-                }
-            );
-
-            // Check if this load is from a stale session
+            // Check if session changed after loading
             if (this.initSessionId !== currentSessionId) {
-                console.log('GPU load completed but session has changed - discarding result');
+                console.log('Wllama load completed but session has changed - discarding result');
                 throw new Error('Session changed during loading');
             }
 
@@ -866,471 +905,369 @@ class ModelCoderLLM {
                 throw new Error('Loading cancelled by user');
             }
 
-            console.log(`Successfully loaded model: ${PHI3_MODEL_ID}`);
-            this._status("ready", "Model ready: Phi-3 (GPU mode)");
-        } catch (modelError) {
-            console.error(`Failed to load ${PHI3_MODEL_ID}:`, modelError);
-            throw modelError;
-        }
-    }
-
-    async _loadWllama(maxRetries = 3) {
-        let lastError = null;
-
-        // Capture current session ID to detect stale loads
-        const currentSessionId = this.initSessionId;
-
-        for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
-            // Check if session changed
-            if (this.initSessionId !== currentSessionId) {
-                console.log('Wllama load aborted - session changed');
-                throw new Error('Session changed during loading');
-            }
-
-            // Check for cancellation before each attempt
+            this._status("ready", "Model ready: Phi-2 (CPU mode)");
+            return;
+        } catch (error) {
+            // If cancelled, rethrow immediately
             if (this.modelLoadingCancelled) {
-                throw new Error('Loading cancelled by user');
+                throw error;
             }
 
-            try {
-                this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
-                await this._loadWllamaModel();
-
-                // Check if session changed after loading
-                if (this.initSessionId !== currentSessionId) {
-                    console.log('Wllama load completed but session has changed - discarding result');
-                    throw new Error('Session changed during loading');
-                }
-
-                // Check if cancelled after loading
-                if (this.modelLoadingCancelled) {
-                    throw new Error('Loading cancelled by user');
-                }
-
-                this._status("ready", "Model ready: Phi-2 (CPU mode)");
-                return;
-            } catch (error) {
-                // If cancelled, rethrow immediately
-                if (this.modelLoadingCancelled) {
-                    throw error;
-                }
-
-                lastError = error;
-                this._status("error", `Model load failed on attempt ${attempt}: ${error.message}`);
-                if (attempt < maxRetries) {
-                    await sleep(1200 * attempt);
-                }
+            lastError = error;
+            this._status("error", `Model load failed on attempt ${attempt}: ${error.message}`);
+            if (attempt < maxRetries) {
+                await sleep(1200 * attempt);
             }
         }
-
-        throw lastError || new Error("Model initialization failed");
     }
+
+    throw lastError || new Error("Model initialization failed");
+}
 
     async _loadWllamaModel() {
-        this.wllama = new Wllama(WASM_PATHS);
+    this.wllama = new Wllama(WASM_PATHS);
 
-        const useMultiThread = window.crossOriginIsolated === true;
-        const availableThreads = navigator.hardwareConcurrency || 4;
-        const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
+    const useMultiThread = window.crossOriginIsolated === true;
+    const availableThreads = navigator.hardwareConcurrency || 4;
+    const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
 
-        const baseConfig = {
-            n_ctx: 384,
-            n_threads: preferredThreads,
-            progressCallback: ({ loaded, total }) => {
-                if (!total) {
-                    this._status("loading", "Loading local model...");
-                    return;
-                }
-                const pct = Math.round((loaded / total) * 100);
-                this._status("loading", `Downloading model: ${pct}%`);
+    const baseConfig = {
+        n_ctx: 384,
+        n_threads: preferredThreads,
+        progressCallback: ({ loaded, total }) => {
+            if (!total) {
+                this._status("loading", "Loading local model...");
+                return;
             }
-        };
-
-        try {
-            await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, baseConfig);
-        } catch (multiErr) {
-            if (preferredThreads > 1) {
-                await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, {
-                    ...baseConfig,
-                    n_threads: 1
-                });
-            } else {
-                throw multiErr;
-            }
+            const pct = Math.round((loaded / total) * 100);
+            this._status("loading", `Downloading model: ${pct}%`);
         }
+    };
 
-        await this._warmWllamaCache();
+    try {
+        await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, baseConfig);
+    } catch (multiErr) {
+        if (preferredThreads > 1) {
+            await this.wllama.loadModelFromHF(PHI2_REPO, PHI2_FILE, {
+                ...baseConfig,
+                n_threads: 1
+            });
+        } else {
+            throw multiErr;
+        }
     }
+
+    await this._warmWllamaCache();
+}
 
     async _warmWllamaCache() {
-        if (!this.wllama) {
-            return;
-        }
-
-        const systemInstruction = '<|im_start|>system\nYou are a helpful coding assistant.\n<|im_end|>';
-        try {
-            await this.wllama.createCompletion(systemInstruction, {
-                nPredict: 1,
-                sampling: {
-                    temp: 0.0
-                }
-            });
-        } catch (error) {
-            console.log('[wllama] Cache warmup failed (non-critical):', error?.message || error);
-        }
+    if (!this.wllama) {
+        return;
     }
 
-    _ensureClient(model) {
-        if (!this.isReady || (!this.usingBasic && !this.wllama && !this.engine)) {
-            throw new Error("Model is not ready yet.");
-        }
-        if (model !== "local-llm") {
-            throw new Error("The model parameter must be 'local-llm'.");
-        }
-    }
-
-    _toChatML(messages) {
-        let prompt = "";
-        for (const message of messages) {
-            const role = roleToChatML(message.role);
-            const content = contentToText(message.content);
-            prompt += `<|im_start|>${role}\n${content}\n<|im_end|>\n\n`;
-        }
-        prompt += "<|im_start|>assistant\n";
-        return prompt;
-    }
-
-    _translateToPhi3Prompt(messages) {
-        // For Phi-3, we just pass messages through without aggressive translation
-        // Phi-3 is capable enough to handle the requests as-is
-        // We only need to ensure consistent role mapping
-        console.log('[Phi-3] Original messages:', messages);
-
-        const translatedMessages = [];
-
-        for (const message of messages) {
-            const role = message.role;
-            const content = contentToText(message.content);
-
-            // Map developer/system to system, keep everything else as-is
-            if (role === "developer") {
-                translatedMessages.push({ role: "system", content });
-            } else {
-                translatedMessages.push({ role, content });
+    const systemInstruction = '<|im_start|>system\nYou are a helpful coding assistant.\n<|im_end|>';
+    try {
+        await this.wllama.createCompletion(systemInstruction, {
+            nPredict: 1,
+            sampling: {
+                temp: 0.0
             }
-        }
-
-        console.log('[Phi-3] Translated messages:', translatedMessages);
-        return translatedMessages;
+        });
+    } catch (error) {
+        console.log('[wllama] Cache warmup failed (non-critical):', error?.message || error);
     }
+}
 
-    _buildResponsesMessages(input, instructions, previousResponseId) {
-        const messages = [];
-        if (instructions) {
-            messages.push({ role: "developer", content: String(instructions) });
-        }
+_ensureClient(model) {
+    if (!this.isReady || (!this.usingBasic && !this.wllama && !this.engine)) {
+        throw new Error("Model is not ready yet.");
+    }
+    if (model !== "local-llm") {
+        throw new Error("The model parameter must be 'local-llm'.");
+    }
+}
 
-        if (previousResponseId && this.responsesById.has(previousResponseId)) {
-            messages.push({ role: "assistant", content: this.responsesById.get(previousResponseId) });
-        }
+_toChatML(messages) {
+    let prompt = "";
+    for (const message of messages) {
+        const role = roleToChatML(message.role);
+        const content = contentToText(message.content);
+        prompt += `<|im_start|>${role}\n${content}\n<|im_end|>\n\n`;
+    }
+    prompt += "<|im_start|>assistant\n";
+    return prompt;
+}
 
-        if (Array.isArray(input)) {
-            for (const message of input) {
-                messages.push({
-                    role: String(message.role || "user"),
-                    content: contentToText(message.content)
-                });
-            }
+_translateToPhi3Prompt(messages) {
+    // For Phi-3, we just pass messages through without aggressive translation
+    // Phi-3 is capable enough to handle the requests as-is
+    // We only need to ensure consistent role mapping
+    console.log('[Phi-3] Original messages:', messages);
+
+    const translatedMessages = [];
+
+    for (const message of messages) {
+        const role = message.role;
+        const content = contentToText(message.content);
+
+        // Map developer/system to system, keep everything else as-is
+        if (role === "developer") {
+            translatedMessages.push({ role: "system", content });
         } else {
-            messages.push({ role: "user", content: contentToText(input) });
+            translatedMessages.push({ role, content });
         }
-
-        return messages;
     }
+
+    console.log('[Phi-3] Translated messages:', translatedMessages);
+    return translatedMessages;
+}
+
+_buildResponsesMessages(input, instructions, previousResponseId) {
+    const messages = [];
+    if (instructions) {
+        messages.push({ role: "developer", content: String(instructions) });
+    }
+
+    if (previousResponseId && this.responsesById.has(previousResponseId)) {
+        messages.push({ role: "assistant", content: this.responsesById.get(previousResponseId) });
+    }
+
+    if (Array.isArray(input)) {
+        for (const message of input) {
+            messages.push({
+                role: String(message.role || "user"),
+                content: contentToText(message.content)
+            });
+        }
+    } else {
+        messages.push({ role: "user", content: contentToText(input) });
+    }
+
+    return messages;
+}
 
     async _complete(messagesOrPrompt, onDelta, expectedSessionVersion = this.sessionVersion) {
-        if (this.usingBasic) {
-            const messages = Array.isArray(messagesOrPrompt)
-                ? messagesOrPrompt
-                : this._parseChatMLToMessages(messagesOrPrompt);
+    if (this.usingBasic) {
+        const messages = Array.isArray(messagesOrPrompt)
+            ? messagesOrPrompt
+            : this._parseChatMLToMessages(messagesOrPrompt);
 
-            const userMessages = messages.filter((message) => String(message?.role || "") === "user");
-            const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
-            const summary = await this._generateWithWikipedia(latestUserText);
-            if (summary && typeof onDelta === "function") {
-                onDelta(summary);
-            }
-            return String(summary || "").trim();
+        const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+        const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+        const summary = await this._generateWithWikipedia(latestUserText);
+        if (summary && typeof onDelta === "function") {
+            onDelta(summary);
         }
-
-        // Route to appropriate engine
-        if (this.usingWllama) {
-            // wllama expects ChatML prompt
-            const prompt = typeof messagesOrPrompt === 'string' ? messagesOrPrompt : this._toChatML(messagesOrPrompt);
-            return await this._completeWithWllama(prompt, onDelta, expectedSessionVersion);
-        } else {
-            // WebLLM expects messages array
-            const messages = Array.isArray(messagesOrPrompt) ? messagesOrPrompt : this._parseChatMLToMessages(messagesOrPrompt);
-            return await this._completeWithWebLLM(messages, onDelta, expectedSessionVersion);
-        }
+        return String(summary || "").trim();
     }
+
+    // Route to appropriate engine
+    if (this.usingWllama) {
+        // wllama expects ChatML prompt
+        const prompt = typeof messagesOrPrompt === 'string' ? messagesOrPrompt : this._toChatML(messagesOrPrompt);
+        return await this._completeWithWllama(prompt, onDelta, expectedSessionVersion);
+    } else {
+        // WebLLM expects messages array
+        const messages = Array.isArray(messagesOrPrompt) ? messagesOrPrompt : this._parseChatMLToMessages(messagesOrPrompt);
+        return await this._completeWithWebLLM(messages, onDelta, expectedSessionVersion);
+    }
+}
 
     async _completeWithWllama(prompt, onDelta, expectedSessionVersion = this.sessionVersion) {
-        console.log('[wllama] Sending to Phi-2 (ChatML):', prompt.substring(0, 200) + '...');
+    console.log('[wllama] Sending to Phi-2 (ChatML):', prompt.substring(0, 200) + '...');
 
-        let previousText = "";
-        let fullText = "";
+    let previousText = "";
+    let fullText = "";
 
-        const stream = await this.wllama.createCompletion(prompt, {
-            nPredict: 200,
-            seed: -1,
-            sampling: {
-                temp: 0.1,
-                top_k: 20,
-                top_p: 0.85,
-                penalty_repeat: 1.1,
-                mirostat: 0
-            },
-            stopTokens: ["<|im_end|>", "<|im_start|>"],
-            stream: true
-        });
+    const stream = await this.wllama.createCompletion(prompt, {
+        nPredict: 200,
+        seed: -1,
+        sampling: {
+            temp: 0.1,
+            top_k: 20,
+            top_p: 0.85,
+            penalty_repeat: 1.1,
+            mirostat: 0
+        },
+        stopTokens: ["<|im_end|>", "<|im_start|>"],
+        stream: true
+    });
 
-        for await (const chunk of stream) {
-            if (expectedSessionVersion !== this.sessionVersion) {
-                break;
-            }
-
-            if (!chunk.currentText) {
-                continue;
-            }
-
-            fullText = chunk.currentText;
-            const delta = fullText.slice(previousText.length);
-            if (delta && typeof onDelta === "function") {
-                onDelta(delta);
-            }
-            previousText = fullText;
+    for await (const chunk of stream) {
+        if (expectedSessionVersion !== this.sessionVersion) {
+            break;
         }
 
-        await this.wllama.kvClear().catch(() => { });
-        return fullText.trim();
+        if (!chunk.currentText) {
+            continue;
+        }
+
+        fullText = chunk.currentText;
+        const delta = fullText.slice(previousText.length);
+        if (delta && typeof onDelta === "function") {
+            onDelta(delta);
+        }
+        previousText = fullText;
     }
+
+    await this.wllama.kvClear().catch(() => { });
+    return fullText.trim();
+}
 
     async _completeWithWebLLM(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
-        // WebLLM expects messages array directly (not ChatML)
-        console.log('[WebLLM] Sending to Phi-3-mini:', messages);
-        let fullText = "";
+    // WebLLM expects messages array directly (not ChatML)
+    console.log('[WebLLM] Sending to Phi-3-mini:', messages);
+    let fullText = "";
 
-        const completion = await this.engine.chat.completions.create({
-            messages: messages,
-            temperature: 0.7,
-            max_tokens: 320,
-            stream: true
-        });
+    const completion = await this.engine.chat.completions.create({
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 320,
+        stream: true
+    });
 
-        for await (const chunk of completion) {
-            if (expectedSessionVersion !== this.sessionVersion) {
-                break;
-            }
-
-            const content = chunk.choices[0]?.delta?.content || '';
-            if (content) {
-                fullText += content;
-                if (typeof onDelta === "function") {
-                    onDelta(content);
-                }
-            }
+    for await (const chunk of completion) {
+        if (expectedSessionVersion !== this.sessionVersion) {
+            break;
         }
 
-        return fullText.trim();
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content) {
+            fullText += content;
+            if (typeof onDelta === "function") {
+                onDelta(content);
+            }
+        }
     }
 
-    _parseChatMLToMessages(chatMLPrompt) {
-        // Simple parser to convert ChatML back to messages array
-        const messages = [];
-        const pattern = /<\|im_start\|>(system|user|assistant)\n([\s\S]*?)<\|im_end\|>/g;
-        let match;
+    return fullText.trim();
+}
 
-        while ((match = pattern.exec(chatMLPrompt)) !== null) {
-            const role = match[1];
-            const content = match[2].trim();
-            messages.push({ role, content });
-        }
+_parseChatMLToMessages(chatMLPrompt) {
+    // Simple parser to convert ChatML back to messages array
+    const messages = [];
+    const pattern = /<\|im_start\|>(system|user|assistant)\n([\s\S]*?)<\|im_end\|>/g;
+    let match;
 
-        return messages;
+    while ((match = pattern.exec(chatMLPrompt)) !== null) {
+        const role = match[1];
+        const content = match[2].trim();
+        messages.push({ role, content });
     }
 
-    _extractPreviousAssistantFromMessages(messages) {
-        if (!Array.isArray(messages)) {
-            return "";
-        }
+    return messages;
+}
 
-        for (let i = messages.length - 1; i >= 0; i -= 1) {
-            const message = messages[i];
-            if (!message || String(message.role || "") !== "assistant") {
-                continue;
-            }
-
-            const text = contentToText(message.content).trim();
-            if (text) {
-                return text;
-            }
-        }
-
+_extractPreviousAssistantFromMessages(messages) {
+    if (!Array.isArray(messages)) {
         return "";
     }
 
-    _appendPreviousResponseNote(outputText, previousText) {
-        const current = String(outputText || "").trim();
-        const priorRaw = String(previousText || "").trim();
-        const prior = this._stripPreviousResponseNote(priorRaw);
-        if (!current || !prior) {
-            return current;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message || String(message.role || "") !== "assistant") {
+            continue;
         }
 
-        return `${current}\n\n(Previous response: ${prior})`;
+        const text = contentToText(message.content).trim();
+        if (text) {
+            return text;
+        }
     }
 
-    _stripPreviousResponseNote(text) {
-        const value = String(text || "");
-        if (!value) {
-            return "";
-        }
+    return "";
+}
 
-        const marker = "\n(Previous response:";
-        const markerIndex = value.indexOf(marker);
-        if (markerIndex === -1) {
-            return value.trim();
-        }
-
-        return value.slice(0, markerIndex).trim();
+_appendPreviousResponseNote(outputText, previousText) {
+    const current = String(outputText || "").trim();
+    const priorRaw = String(previousText || "").trim();
+    const prior = this._stripPreviousResponseNote(priorRaw);
+    if (!current || !prior) {
+        return current;
     }
+
+    return `${current}\n\n(Previous response: ${prior})`;
+}
+
+_stripPreviousResponseNote(text) {
+    const value = String(text || "");
+    if (!value) {
+        return "";
+    }
+
+    const marker = "\n(Previous response:";
+    const markerIndex = value.indexOf(marker);
+    if (markerIndex === -1) {
+        return value.trim();
+    }
+
+    return value.slice(0, markerIndex).trim();
+}
 
     async _generateWithWikipedia(query) {
-        try {
-            const firstLine = String(query || "").split("\n")[0];
-            const keywords = extractKeywords(firstLine);
-            if (!keywords) {
-                return "Please enter a more specific query.";
-            }
-
-            const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*&srlimit=1`;
-            const searchResponse = await fetch(searchUrl);
-            if (!searchResponse.ok) {
-                throw new Error("Wikipedia search request failed");
-            }
-
-            const searchData = await searchResponse.json();
-            const results = searchData?.query?.search;
-            if (!Array.isArray(results) || results.length === 0) {
-                return "I'm sorry. I don't know about that topic.";
-            }
-
-            const title = results[0].title;
-            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-            const summaryResponse = await fetch(summaryUrl);
-            if (!summaryResponse.ok) {
-                throw new Error("Wikipedia summary request failed");
-            }
-
-            const summaryData = await summaryResponse.json();
-            const extract = String(summaryData?.extract || "").trim();
-            if (!extract || extract.length < 20) {
-                return "I'm sorry. I don't know about that topic.";
-            }
-
-            const firstParagraph = extract.split("\n").find((paragraph) => paragraph.trim().length > 0) || extract;
-            const concise = extractLeadingSentences(firstParagraph, 2) || firstParagraph.slice(0, 300).trim();
-            return concise.length >= 20 ? concise : "I'm sorry. I don't know about that topic.";
-        } catch (error) {
-            console.error("Wikipedia lookup failed:", error);
-            return "Sorry, I had trouble searching Wikipedia right now.";
+    try {
+        const firstLine = String(query || "").split("\n")[0];
+        const keywords = extractKeywords(firstLine);
+        if (!keywords) {
+            return "Please enter a more specific query.";
         }
+
+        const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(keywords)}&format=json&origin=*&srlimit=1`;
+        const searchResponse = await fetch(searchUrl);
+        if (!searchResponse.ok) {
+            throw new Error("Wikipedia search request failed");
+        }
+
+        const searchData = await searchResponse.json();
+        const results = searchData?.query?.search;
+        if (!Array.isArray(results) || results.length === 0) {
+            return "I'm sorry. I don't know about that topic.";
+        }
+
+        const title = results[0].title;
+        const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+        const summaryResponse = await fetch(summaryUrl);
+        if (!summaryResponse.ok) {
+            throw new Error("Wikipedia summary request failed");
+        }
+
+        const summaryData = await summaryResponse.json();
+        const extract = String(summaryData?.extract || "").trim();
+        if (!extract || extract.length < 20) {
+            return "I'm sorry. I don't know about that topic.";
+        }
+
+        const firstParagraph = extract.split("\n").find((paragraph) => paragraph.trim().length > 0) || extract;
+        const concise = extractLeadingSentences(firstParagraph, 2) || firstParagraph.slice(0, 300).trim();
+        return concise.length >= 20 ? concise : "I'm sorry. I don't know about that topic.";
+    } catch (error) {
+        console.error("Wikipedia lookup failed:", error);
+        return "Sorry, I had trouble searching Wikipedia right now.";
     }
+}
 
     async _createStaticResponseStream(streamType, outputText, requestedRunId = null) {
-        const streamId = makeId("stream");
-        const responseId = makeId("resp");
-        const createdAtVersion = this.sessionVersion;
+    const streamId = makeId("stream");
+    const responseId = makeId("resp");
+    const createdAtVersion = this.sessionVersion;
 
-        const session = {
-            queue: [],
-            done: false,
-            error: null,
-            responseId,
-            createdAtVersion,
-            requestedRunId: Number.isFinite(Number(requestedRunId)) ? Number(requestedRunId) : null,
-        };
+    const session = {
+        queue: [],
+        done: false,
+        error: null,
+        responseId,
+        createdAtVersion,
+        requestedRunId: Number.isFinite(Number(requestedRunId)) ? Number(requestedRunId) : null,
+    };
 
-        const text = String(outputText || "");
-        this.streamSessions.set(streamId, session);
+    const text = String(outputText || "");
+    this.streamSessions.set(streamId, session);
 
-        const chunks = chunkTextForStreaming(text);
-        let streamTask;
-        streamTask = (async () => {
-            try {
-                if (chunks.length === 0) {
-                    if (streamType === "chat") {
-                        session.queue.push({
-                            object: "chat.completion.chunk",
-                            choices: [
-                                {
-                                    index: 0,
-                                    delta: {},
-                                    finish_reason: "stop"
-                                }
-                            ]
-                        });
-                    } else {
-                        session.queue.push({
-                            type: "response.completed",
-                            response: {
-                                id: responseId,
-                                output_text: ""
-                            }
-                        });
-                    }
-                    this.responsesById.set(responseId, "");
-                    session.done = true;
-                    return;
-                }
-
-                for (let i = 0; i < chunks.length; i += 1) {
-                    if (createdAtVersion !== this.sessionVersion) {
-                        session.done = true;
-                        return;
-                    }
-
-                    const delta = chunks[i];
-                    if (streamType === "chat") {
-                        session.queue.push({
-                            object: "chat.completion.chunk",
-                            choices: [
-                                {
-                                    index: 0,
-                                    delta: {
-                                        content: delta
-                                    }
-                                }
-                            ]
-                        });
-                    } else {
-                        session.queue.push({
-                            type: "response.output_text.delta",
-                            delta
-                        });
-                    }
-
-                    // Small jitter to mimic natural token streaming cadence.
-                    const pauseMs = 20 + Math.floor(Math.random() * 50);
-                    await sleep(pauseMs);
-                }
-
-                if (createdAtVersion !== this.sessionVersion) {
-                    session.done = true;
-                    return;
-                }
-
+    const chunks = chunkTextForStreaming(text);
+    let streamTask;
+    streamTask = (async () => {
+        try {
+            if (chunks.length === 0) {
                 if (streamType === "chat") {
                     session.queue.push({
                         object: "chat.completion.chunk",
@@ -1347,74 +1284,51 @@ class ModelCoderLLM {
                         type: "response.completed",
                         response: {
                             id: responseId,
-                            output_text: text
+                            output_text: ""
                         }
                     });
                 }
-
-                this.responsesById.set(responseId, text);
+                this.responsesById.set(responseId, "");
                 session.done = true;
-            } catch (error) {
-                session.error = error;
-                session.done = true;
-            }
-        })().finally(() => {
-            this.activeGenerationTasks.delete(streamTask);
-        });
-
-        this.activeGenerationTasks.add(streamTask);
-
-        return { stream_id: streamId, response_id: responseId };
-    }
-
-    async _createStreamSession(messagesOrPrompt, streamType = "responses", requestedRunId = null) {
-        const streamId = makeId("stream");
-        const responseId = makeId("resp");
-        const createdAtVersion = this.sessionVersion;
-
-        const session = {
-            queue: [],
-            done: false,
-            error: null,
-            responseId,
-            createdAtVersion,
-            requestedRunId: Number.isFinite(Number(requestedRunId)) ? Number(requestedRunId) : null,
-        };
-
-        this.streamSessions.set(streamId, session);
-
-        let generationTask;
-        generationTask = this._complete(messagesOrPrompt, (delta) => {
-            if (createdAtVersion !== this.sessionVersion) {
                 return;
             }
 
-            if (streamType === "chat") {
-                session.queue.push({
-                    object: "chat.completion.chunk",
-                    choices: [
-                        {
-                            index: 0,
-                            delta: {
-                                content: delta
+            for (let i = 0; i < chunks.length; i += 1) {
+                if (createdAtVersion !== this.sessionVersion) {
+                    session.done = true;
+                    return;
+                }
+
+                const delta = chunks[i];
+                if (streamType === "chat") {
+                    session.queue.push({
+                        object: "chat.completion.chunk",
+                        choices: [
+                            {
+                                index: 0,
+                                delta: {
+                                    content: delta
+                                }
                             }
-                        }
-                    ]
-                });
-                return;
+                        ]
+                    });
+                } else {
+                    session.queue.push({
+                        type: "response.output_text.delta",
+                        delta
+                    });
+                }
+
+                // Small jitter to mimic natural token streaming cadence.
+                const pauseMs = 20 + Math.floor(Math.random() * 50);
+                await sleep(pauseMs);
             }
 
-            session.queue.push({
-                type: "response.output_text.delta",
-                delta
-            });
-        }, createdAtVersion).then((finalText) => {
             if (createdAtVersion !== this.sessionVersion) {
                 session.done = true;
                 return;
             }
 
-            this.responsesById.set(responseId, finalText);
             if (streamType === "chat") {
                 session.queue.push({
                     object: "chat.completion.chunk",
@@ -1431,130 +1345,163 @@ class ModelCoderLLM {
                     type: "response.completed",
                     response: {
                         id: responseId,
-                        output_text: finalText
+                        output_text: text
                     }
                 });
             }
+
+            this.responsesById.set(responseId, text);
             session.done = true;
-        }).catch((error) => {
+        } catch (error) {
             session.error = error;
             session.done = true;
-        }).finally(() => {
-            this.activeGenerationTasks.delete(generationTask);
+        }
+    })().finally(() => {
+        this.activeGenerationTasks.delete(streamTask);
+    });
+
+    this.activeGenerationTasks.add(streamTask);
+
+    return { stream_id: streamId, response_id: responseId };
+}
+
+    async _createStreamSession(messagesOrPrompt, streamType = "responses", requestedRunId = null) {
+    const streamId = makeId("stream");
+    const responseId = makeId("resp");
+    const createdAtVersion = this.sessionVersion;
+
+    const session = {
+        queue: [],
+        done: false,
+        error: null,
+        responseId,
+        createdAtVersion,
+        requestedRunId: Number.isFinite(Number(requestedRunId)) ? Number(requestedRunId) : null,
+    };
+
+    this.streamSessions.set(streamId, session);
+
+    let generationTask;
+    generationTask = this._complete(messagesOrPrompt, (delta) => {
+        if (createdAtVersion !== this.sessionVersion) {
+            return;
+        }
+
+        if (streamType === "chat") {
+            session.queue.push({
+                object: "chat.completion.chunk",
+                choices: [
+                    {
+                        index: 0,
+                        delta: {
+                            content: delta
+                        }
+                    }
+                ]
+            });
+            return;
+        }
+
+        session.queue.push({
+            type: "response.output_text.delta",
+            delta
         });
+    }, createdAtVersion).then((finalText) => {
+        if (createdAtVersion !== this.sessionVersion) {
+            session.done = true;
+            return;
+        }
 
-        this.activeGenerationTasks.add(generationTask);
+        this.responsesById.set(responseId, finalText);
+        if (streamType === "chat") {
+            session.queue.push({
+                object: "chat.completion.chunk",
+                choices: [
+                    {
+                        index: 0,
+                        delta: {},
+                        finish_reason: "stop"
+                    }
+                ]
+            });
+        } else {
+            session.queue.push({
+                type: "response.completed",
+                response: {
+                    id: responseId,
+                    output_text: finalText
+                }
+            });
+        }
+        session.done = true;
+    }).catch((error) => {
+        session.error = error;
+        session.done = true;
+    }).finally(() => {
+        this.activeGenerationTasks.delete(generationTask);
+    });
 
-        return { stream_id: streamId, response_id: responseId };
-    }
+    this.activeGenerationTasks.add(generationTask);
+
+    return { stream_id: streamId, response_id: responseId };
+}
 
     async nextStreamChunk(streamId, runId = null) {
-        this._ensureActiveRun(runId, "stream chunk");
+    this._ensureActiveRun(runId, "stream chunk");
 
-        const session = this.streamSessions.get(streamId);
-        if (!session) {
-            return { done: true, chunk: null };
-        }
-
-        if (session.requestedRunId !== null && session.requestedRunId !== this.activeRunId) {
-            this.streamSessions.delete(streamId);
-            return { done: true, chunk: null };
-        }
-
-        if (session.createdAtVersion !== this.sessionVersion) {
-            this.streamSessions.delete(streamId);
-            return { done: true, chunk: null };
-        }
-
-        for (let i = 0; i < 300; i += 1) {
-            if (session.queue.length > 0) {
-                return { done: false, chunk: session.queue.shift() };
-            }
-
-            if (session.done) {
-                if (session.error) {
-                    const message = session.error.message || "Unknown streaming error";
-                    this.streamSessions.delete(streamId);
-                    return { done: true, error: message };
-                }
-
-                this.streamSessions.delete(streamId);
-                return { done: true, chunk: null };
-            }
-
-            await sleep(50);
-        }
-
-        return { done: false, chunk: null };
+    const session = this.streamSessions.get(streamId);
+    if (!session) {
+        return { done: true, chunk: null };
     }
 
-    async _requestInternal(payload) {
-        if (!payload || typeof payload !== "object") {
-            throw new Error("Invalid request payload.");
+    if (session.requestedRunId !== null && session.requestedRunId !== this.activeRunId) {
+        this.streamSessions.delete(streamId);
+        return { done: true, chunk: null };
+    }
+
+    if (session.createdAtVersion !== this.sessionVersion) {
+        this.streamSessions.delete(streamId);
+        return { done: true, chunk: null };
+    }
+
+    for (let i = 0; i < 300; i += 1) {
+        if (session.queue.length > 0) {
+            return { done: false, chunk: session.queue.shift() };
         }
 
-        this._ensureActiveRun(payload.run_id, "model request");
-
-        if (payload.type === "chat.completions.create") {
-            this._ensureClient(payload.model);
-            let messages = Array.isArray(payload.messages) ? payload.messages : [];
-            validateMessages(messages, "messages");
-
-            const moderatedChatPrompts = this._extractModeratedPromptsFromMessages(messages);
-            if (await this._hasReversedModerationMatch(moderatedChatPrompts)) {
-                if (payload.stream) {
-                    const streamMeta = this._createSafeResponseStream("chat", payload.run_id);
-                    return {
-                        stream: true,
-                        stream_id: streamMeta.stream_id,
-                        id: streamMeta.response_id
-                    };
-                }
-
-                return this._createSafeChatResponse();
+        if (session.done) {
+            if (session.error) {
+                const message = session.error.message || "Unknown streaming error";
+                this.streamSessions.delete(streamId);
+                return { done: true, error: message };
             }
 
-            if (this.usingBasic) {
-                const userMessages = messages.filter((message) => String(message?.role || "") === "user");
-                const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
-                const previousAssistant = this._extractPreviousAssistantFromMessages(messages);
-                const wikipediaText = await this._generateWithWikipedia(latestUserText);
-                const outputText = this._appendPreviousResponseNote(wikipediaText, previousAssistant);
+            this.streamSessions.delete(streamId);
+            return { done: true, chunk: null };
+        }
 
-                if (payload.stream) {
-                    const streamMeta = await this._createStaticResponseStream("chat", outputText, payload.run_id);
-                    return {
-                        stream: true,
-                        stream_id: streamMeta.stream_id,
-                        id: streamMeta.response_id
-                    };
-                }
+        await sleep(50);
+    }
 
-                const responseId = makeId("chatcmpl");
-                this.responsesById.set(responseId, outputText);
-                return {
-                    id: responseId,
-                    object: "chat.completion",
-                    choices: [
-                        {
-                            index: 0,
-                            finish_reason: "stop",
-                            message: {
-                                role: "assistant",
-                                content: outputText
-                            }
-                        }
-                    ]
-                };
-            }
+    return { done: false, chunk: null };
+}
 
-            // Translate messages for Phi-3 when using WebLLM
-            if (!this.usingWllama) {
-                messages = this._translateToPhi3Prompt(messages);
-            }
+    async _requestInternal(payload) {
+    if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid request payload.");
+    }
 
+    this._ensureActiveRun(payload.run_id, "model request");
+
+    if (payload.type === "chat.completions.create") {
+        this._ensureClient(payload.model);
+        let messages = Array.isArray(payload.messages) ? payload.messages : [];
+        validateMessages(messages, "messages");
+
+        const moderatedChatPrompts = this._extractModeratedPromptsFromMessages(messages);
+        if (await this._hasReversedModerationMatch(moderatedChatPrompts)) {
             if (payload.stream) {
-                const streamMeta = await this._createStreamSession(messages, "chat", payload.run_id);
+                const streamMeta = this._createSafeResponseStream("chat", payload.run_id);
                 return {
                     stream: true,
                     stream_id: streamMeta.stream_id,
@@ -1562,10 +1509,27 @@ class ModelCoderLLM {
                 };
             }
 
-            const outputText = await this._complete(messages);
+            return this._createSafeChatResponse();
+        }
+
+        if (this.usingBasic) {
+            const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+            const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+            const previousAssistant = this._extractPreviousAssistantFromMessages(messages);
+            const wikipediaText = await this._generateWithWikipedia(latestUserText);
+            const outputText = this._appendPreviousResponseNote(wikipediaText, previousAssistant);
+
+            if (payload.stream) {
+                const streamMeta = await this._createStaticResponseStream("chat", outputText, payload.run_id);
+                return {
+                    stream: true,
+                    stream_id: streamMeta.stream_id,
+                    id: streamMeta.response_id
+                };
+            }
+
             const responseId = makeId("chatcmpl");
             this.responsesById.set(responseId, outputText);
-
             return {
                 id: responseId,
                 object: "chat.completion",
@@ -1582,81 +1546,49 @@ class ModelCoderLLM {
             };
         }
 
-        if (payload.type === "responses.create") {
-            this._ensureClient(payload.model);
+        // Translate messages for Phi-3 when using WebLLM
+        if (!this.usingWllama) {
+            messages = this._translateToPhi3Prompt(messages);
+        }
 
-            const normalizedInstructions = payload.instructions ?? payload.insructions;
+        if (payload.stream) {
+            const streamMeta = await this._createStreamSession(messages, "chat", payload.run_id);
+            return {
+                stream: true,
+                stream_id: streamMeta.stream_id,
+                id: streamMeta.response_id
+            };
+        }
 
-            const moderatedResponsePrompts = this._extractModeratedPromptsFromInput(payload.input, normalizedInstructions);
-            if (await this._hasReversedModerationMatch(moderatedResponsePrompts)) {
-                if (payload.stream) {
-                    const streamMeta = this._createSafeResponseStream("responses", payload.run_id);
-                    return {
-                        stream: true,
-                        stream_id: streamMeta.stream_id,
-                        id: streamMeta.response_id
-                    };
+        const outputText = await this._complete(messages);
+        const responseId = makeId("chatcmpl");
+        this.responsesById.set(responseId, outputText);
+
+        return {
+            id: responseId,
+            object: "chat.completion",
+            choices: [
+                {
+                    index: 0,
+                    finish_reason: "stop",
+                    message: {
+                        role: "assistant",
+                        content: outputText
+                    }
                 }
+            ]
+        };
+    }
 
-                return this._createSafeResponsesResponse();
-            }
+    if (payload.type === "responses.create") {
+        this._ensureClient(payload.model);
 
-            let messages = this._buildResponsesMessages(
-                payload.input,
-                normalizedInstructions,
-                payload.previous_response_id
-            );
-            validateMessages(messages, "input");
+        const normalizedInstructions = payload.instructions ?? payload.insructions;
 
-            if (this.usingBasic) {
-                const userMessages = messages.filter((message) => String(message?.role || "") === "user");
-                const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
-
-                const previousById = payload.previous_response_id && this.responsesById.has(payload.previous_response_id)
-                    ? this.responsesById.get(payload.previous_response_id)
-                    : "";
-                const previousAssistant = previousById || this._extractPreviousAssistantFromMessages(messages);
-
-                const wikipediaText = await this._generateWithWikipedia(latestUserText);
-                const outputText = this._appendPreviousResponseNote(wikipediaText, previousAssistant);
-
-                if (payload.stream) {
-                    const streamMeta = await this._createStaticResponseStream("responses", outputText, payload.run_id);
-                    return {
-                        stream: true,
-                        stream_id: streamMeta.stream_id,
-                        id: streamMeta.response_id
-                    };
-                }
-
-                const responseId = makeId("resp");
-                this.responsesById.set(responseId, outputText);
-                return {
-                    id: responseId,
-                    object: "response",
-                    output_text: outputText,
-                    output: [
-                        {
-                            type: "message",
-                            role: "assistant",
-                            content: [
-                                {
-                                    type: "output_text",
-                                    text: outputText
-                                }
-                            ]
-                        }
-                    ]
-                };
-            }
-
-            // Translate messages for Phi-3 when using WebLLM
-            if (!this.usingWllama) {
-                messages = this._translateToPhi3Prompt(messages);
-            }
-
+        const moderatedResponsePrompts = this._extractModeratedPromptsFromInput(payload.input, normalizedInstructions);
+        if (await this._hasReversedModerationMatch(moderatedResponsePrompts)) {
             if (payload.stream) {
-                const streamMeta = await this._createStreamSession(messages, "responses", payload.run_id);
+                const streamMeta = this._createSafeResponseStream("responses", payload.run_id);
                 return {
                     stream: true,
                     stream_id: streamMeta.stream_id,
@@ -1664,10 +1596,39 @@ class ModelCoderLLM {
                 };
             }
 
-            const outputText = await this._complete(messages);
+            return this._createSafeResponsesResponse();
+        }
+
+        let messages = this._buildResponsesMessages(
+            payload.input,
+            normalizedInstructions,
+            payload.previous_response_id
+        );
+        validateMessages(messages, "input");
+
+        if (this.usingBasic) {
+            const userMessages = messages.filter((message) => String(message?.role || "") === "user");
+            const latestUserText = contentToText(userMessages[userMessages.length - 1]?.content || "");
+
+            const previousById = payload.previous_response_id && this.responsesById.has(payload.previous_response_id)
+                ? this.responsesById.get(payload.previous_response_id)
+                : "";
+            const previousAssistant = previousById || this._extractPreviousAssistantFromMessages(messages);
+
+            const wikipediaText = await this._generateWithWikipedia(latestUserText);
+            const outputText = this._appendPreviousResponseNote(wikipediaText, previousAssistant);
+
+            if (payload.stream) {
+                const streamMeta = await this._createStaticResponseStream("responses", outputText, payload.run_id);
+                return {
+                    stream: true,
+                    stream_id: streamMeta.stream_id,
+                    id: streamMeta.response_id
+                };
+            }
+
             const responseId = makeId("resp");
             this.responsesById.set(responseId, outputText);
-
             return {
                 id: responseId,
                 object: "response",
@@ -1687,12 +1648,49 @@ class ModelCoderLLM {
             };
         }
 
-        throw new Error(`Unsupported request type: ${payload.type}`);
+        // Translate messages for Phi-3 when using WebLLM
+        if (!this.usingWllama) {
+            messages = this._translateToPhi3Prompt(messages);
+        }
+
+        if (payload.stream) {
+            const streamMeta = await this._createStreamSession(messages, "responses", payload.run_id);
+            return {
+                stream: true,
+                stream_id: streamMeta.stream_id,
+                id: streamMeta.response_id
+            };
+        }
+
+        const outputText = await this._complete(messages);
+        const responseId = makeId("resp");
+        this.responsesById.set(responseId, outputText);
+
+        return {
+            id: responseId,
+            object: "response",
+            output_text: outputText,
+            output: [
+                {
+                    type: "message",
+                    role: "assistant",
+                    content: [
+                        {
+                            type: "output_text",
+                            text: outputText
+                        }
+                    ]
+                }
+            ]
+        };
     }
 
+    throw new Error(`Unsupported request type: ${payload.type}`);
+}
+
     async request(payload) {
-        return this._requestInternal(payload);
-    }
+    return this._requestInternal(payload);
+}
 }
 
 const llmRuntime = new ModelCoderLLM();
