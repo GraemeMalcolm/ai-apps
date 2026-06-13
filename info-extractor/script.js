@@ -527,20 +527,21 @@ class InfoExtractorApp {
             console.error('Error stack:', error.stack);
             this.isModelLoaded = false;
 
-            // Show error in loading screen
-            this.updateModelLoadingProgress(0, `Failed to load model: ${error.message}`);
+            // Update loading screen to indicate fallback mode
+            this.updateModelLoadingProgress(100, 'Using pattern-based extraction mode...');
 
-            // Hide loading screen and show error after delay
+            // Hide loading screen and activate fallback mode silently
             setTimeout(() => {
                 this.hideModelLoading();
                 // Disable the AI toggle since model failed to load
                 this.aiToggle.checked = false;
                 this.aiToggle.disabled = true;
                 this.useAI = false;
-                this.showError(`The AI model could not be loaded in this browser.\nThe app will use a fallback mode to extract fields using OCR and pattern-matching.`, 'Fallback mode activated');
+                // Quietly proceed in fallback mode - no error modal shown
+                console.log('Fallback mode activated: Using OCR and pattern-matching for field extraction');
                 // Still load the default receipt even if model fails
                 this.loadDefaultReceipt();
-            }, 3000);
+            }, 1000);
         }
     }
 
