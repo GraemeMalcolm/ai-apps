@@ -3818,6 +3818,12 @@ class ChatPlayground {
             this.isListening = false;
             console.error('Speech recognition error:', event.error);
 
+            // If user explicitly cancelled voice interaction, don't attempt failover
+            if (this.voiceInteractionCancelled) {
+                this.resetVoiceUI();
+                return;
+            }
+
             // In voice mode, try Vosk failover for network errors or other failures
             if (this.voiceMode && event.error !== 'aborted' && event.error !== 'not-allowed') {
                 this.handleSpeechRecognitionFailure(event.error);
