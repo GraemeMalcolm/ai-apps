@@ -2483,7 +2483,7 @@ async function generateWithWebLLM(query, onChunk = null) {
             messages,
             temperature: 0.2,
             top_p: 0.9,
-            max_tokens: 250,
+            max_tokens: 280,
             stream: false
         });
 
@@ -2515,7 +2515,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                         messages,
                         temperature: 0.2,
                         top_p: 0.9,
-                        max_tokens: 250,
+                        max_tokens: 280,
                         stream: false
                     });
 
