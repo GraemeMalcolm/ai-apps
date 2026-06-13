@@ -63,10 +63,9 @@ class InfoExtractorApp {
             this.analyzeBtn.disabled = false;
         }
 
-        // Enable AI toggle (only if model loaded; will be disabled in error handler if model failed)
-        if (this.isModelLoaded) {
-            this.aiToggle.disabled = false;
-        }
+        // Always re-enable AI toggle when hiding loading screen
+        // It will be explicitly disabled in error handler if model failed with an error
+        this.aiToggle.disabled = false;
     }
 
     updateModelLoadingProgress(percentage, text) {
