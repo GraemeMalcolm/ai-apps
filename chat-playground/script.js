@@ -1969,7 +1969,7 @@ class ChatPlayground {
                     await this.initializeWllama((loaded, total) => {
                         const percentage = Math.round((loaded / total) * 100);
                         this.updateProgress(percentage, `Loading Phi-2 (CPU): ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
-                        
+
                         // Show cancel link when loading starts
                         this.showCancelLink();
                     });
