@@ -38,7 +38,7 @@ let lastWllamaCompletionErrored = false; // Track whether last CPU completion fa
 
 // Shared prompt constants for both WebLLM and Wllama
 const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
-const USER_PROMPT_SUFFIX = '\nProvide a concise and factually accurate response.';
+const USER_PROMPT_SUFFIX = '\nProvide a concise, succinct, and factually accurate response.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
