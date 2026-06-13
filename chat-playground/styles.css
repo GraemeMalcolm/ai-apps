@@ -191,6 +191,7 @@ header h1 {
 
 .progress-container {
     margin-top: 10px;
+    text-align: center;
 }
 
 .progress-bar {
