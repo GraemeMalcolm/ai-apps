@@ -38,7 +38,7 @@ let lastWllamaCompletionErrored = false; // Track whether last CPU completion fa
 
 // Shared prompt constants for both WebLLM and Wllama
 const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
-const USER_PROMPT_SUFFIX = '\nRespond with a single concise and factually accurate paragraph.';
+const USER_PROMPT_SUFFIX = '\nRespond with a single succinct and factually accurate paragraph.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -2481,7 +2481,7 @@ async function generateWithWebLLM(query, onChunk = null) {
         // Generate without streaming (complete response at once)
         const completion = await engine.chat.completions.create({
             messages,
-            temperature: 0.1,
+            temperature: 0.2,
             top_p: 0.9,
             max_tokens: 250,
             stream: false
@@ -2513,7 +2513,7 @@ async function generateWithWebLLM(query, onChunk = null) {
                     // Retry the generation
                     const retryCompletion = await engine.chat.completions.create({
                         messages,
-                        temperature: 0.1,
+                        temperature: 0.2,
                         top_p: 0.9,
                         max_tokens: 250,
                         stream: false
