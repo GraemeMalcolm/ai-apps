@@ -2623,7 +2623,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             top_k: 40,
             top_p: 0.9,
             frequency_penalty: 1.1,
-            stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:', '\n---'],
+            stop: ['\n\nUser:', '\nUser:', 'User:', '\n\nAssistant:', '\n---', "\nQuestion:", "\n**Question:**"],
             signal: currentAbortController.signal,
             stream: true
         });
