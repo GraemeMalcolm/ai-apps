@@ -3171,11 +3171,15 @@ async function tryWebSpeech() {
             // Set active state
             micBtn.classList.add('listening');
 
-            // Start no-speech timeout
+            // Start no-speech timeout - resolve quietly without fallback
             noSpeechTimer = setTimeout(() => {
-                console.log('No speech detected, cancelling...');
-                recognition.stop();
-                // Don't resolve here - let the error handler or onend handle it
+                if (!hasResolved) {
+                    hasResolved = true;
+                    console.log('No speech detected, quietly resetting...');
+                    micBtn.classList.remove('listening');
+                    resolve(true); // Don't fallback to Vosk
+                    recognition.abort();
+                }
             }, noSpeechTimeout);
 
             recognition.onresult = (event) => {
@@ -3210,13 +3214,16 @@ async function tryWebSpeech() {
 
                 if (!hasResolved) {
                     hasResolved = true;
-                    // If it's a permission error, don't fallback
                     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                         addMessage('Microphone access was denied.', 'bot');
                         resolve(true); // Don't fallback, user denied permission
+                    } else if (event.error === 'no-speech') {
+                        // No speech detected - quietly reset, no fallback
+                        console.log('No speech detected, quietly resetting...');
+                        resolve(true);
                     } else {
-                        // Any other error (network, no-speech, etc.) triggers fallback
-                        resolve(false); // Fallback to Vosk
+                        // Actual error (network, audio-capture, etc.) - fallback to Vosk
+                        resolve(false);
                     }
                 }
             };
@@ -3230,12 +3237,12 @@ async function tryWebSpeech() {
 
                 micBtn.classList.remove('listening');
 
-                // If we haven't resolved yet, it means recognition ended without a result
-                // This can happen with network errors or no speech - fallback to Vosk
+                // If we haven't resolved yet, recognition ended cleanly without a result
+                // (e.g. after abort from no-speech timer) - quietly reset, no fallback
                 if (!hasResolved) {
                     hasResolved = true;
-                    console.log('Web Speech ended without result, falling back to Vosk');
-                    resolve(false);
+                    console.log('Web Speech ended without result, quietly resetting');
+                    resolve(true);
                 }
             };
 
