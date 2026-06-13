@@ -261,6 +261,7 @@ class ModelCoderLLM {
         this.moderationLoadPromise = null;
         this.modelLoadingCancelled = false;
         this.modelLoadingAbortController = null;
+        this.initSessionId = 0;  // Track which init session we're in
     }
 
     async _ensureModerationTerms() {
@@ -632,6 +633,7 @@ class ModelCoderLLM {
         this.modelLoadingCancelled = false;
         this.modelLoadingAbortController = new AbortController();
         this.isLoading = true;
+        this.initSessionId++;  // Increment to invalidate any previous load callbacks
 
         // Preserve previously discovered mode availability when reinitializing
         const previousGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
@@ -827,10 +829,19 @@ class ModelCoderLLM {
         try {
             console.log(`Trying to load model: ${PHI3_MODEL_ID}`);
 
+            // Capture current session ID to detect stale callbacks
+            const currentSessionId = this.initSessionId;
+
             this.engine = await webllm.CreateMLCEngine(
                 PHI3_MODEL_ID,
                 {
                     initProgressCallback: (progress) => {
+                        // Ignore callbacks from old initialization sessions
+                        if (this.initSessionId !== currentSessionId) {
+                            console.log('Ignoring progress from stale GPU load session');
+                            return;
+                        }
+
                         // Check for cancellation during progress updates
                         if (this.modelLoadingCancelled) {
                             return;
@@ -843,6 +854,12 @@ class ModelCoderLLM {
                     }
                 }
             );
+
+            // Check if this load is from a stale session
+            if (this.initSessionId !== currentSessionId) {
+                console.log('GPU load completed but session has changed - discarding result');
+                throw new Error('Session changed during loading');
+            }
 
             // Check if cancelled after loading
             if (this.modelLoadingCancelled) {
@@ -860,7 +877,16 @@ class ModelCoderLLM {
     async _loadWllama(maxRetries = 3) {
         let lastError = null;
 
+        // Capture current session ID to detect stale loads
+        const currentSessionId = this.initSessionId;
+
         for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+            // Check if session changed
+            if (this.initSessionId !== currentSessionId) {
+                console.log('Wllama load aborted - session changed');
+                throw new Error('Session changed during loading');
+            }
+
             // Check for cancellation before each attempt
             if (this.modelLoadingCancelled) {
                 throw new Error('Loading cancelled by user');
@@ -869,6 +895,12 @@ class ModelCoderLLM {
             try {
                 this._status("loading", `Loading local model (attempt ${attempt}/${maxRetries})...`);
                 await this._loadWllamaModel();
+
+                // Check if session changed after loading
+                if (this.initSessionId !== currentSessionId) {
+                    console.log('Wllama load completed but session has changed - discarding result');
+                    throw new Error('Session changed during loading');
+                }
 
                 // Check if cancelled after loading
                 if (this.modelLoadingCancelled) {
