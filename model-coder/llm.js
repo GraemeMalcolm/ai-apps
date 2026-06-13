@@ -520,6 +520,21 @@ class ModelCoderLLM {
         console.log('[Model Reset] Hard reset - reloading model');
         await this.resetSession();
 
+        // Preserve availability information before reset
+        const preservedGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
+        const preservedCpuAvailable = this.availableModes.cpu;
+
+        // Cancel any ongoing model loading only if actually loading
+        if (this.isLoading) {
+            console.log('[Model Reset] Cancelling ongoing model loading');
+            this.modelLoadingCancelled = true;
+            if (this.modelLoadingAbortController) {
+                this.modelLoadingAbortController.abort();
+            }
+            // Give a moment for the cancellation to be observed
+            await sleep(100);
+        }
+
         const currentWllama = this.wllama;
         const currentEngine = this.engine;
 
@@ -529,7 +544,14 @@ class ModelCoderLLM {
         this.isLoading = false;
         this.usingWllama = false;
         this.usingBasic = false;
-        this.webllmAvailable = false;
+
+        // Only reset webllmAvailable if GPU was never successfully loaded
+        // Preserve it if WebGPU is supported or was previously loaded
+        this.webllmAvailable = preservedGpuAvailable;
+
+        // Preserve mode availability knowledge
+        this.availableModes.gpu = preservedGpuAvailable;
+        this.availableModes.cpu = preservedCpuAvailable;
 
         // Clean up wllama
         if (currentWllama) {
