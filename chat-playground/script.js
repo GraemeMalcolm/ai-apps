@@ -4489,6 +4489,23 @@ class ChatPlayground {
             return;
         }
 
+        // Vocalize acknowledgment while processing model response
+        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window) {
+            const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
+
+            // Use the selected voice if available
+            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                const voices = speechSynthesis.getVoices();
+                const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                if (selectedVoice) {
+                    acknowledgment.voice = selectedVoice;
+                }
+            }
+
+            // Speak the acknowledgment without blocking - it will play while model processes
+            speechSynthesis.speak(acknowledgment);
+        }
+
         // Generate response
         this.generateVoiceResponse(sanitizedTranscript);
     }
