@@ -3840,25 +3840,25 @@ class ChatPlayground {
                 return;
             }
 
+            // If user explicitly cancelled voice interaction, don't do anything
+            if (this.voiceInteractionCancelled) {
+                this.resetVoiceUI();
+                return;
+            }
+
             // Ignore 'no-speech' errors - these are normal when user doesn't speak
             if (event.error === 'no-speech') {
                 console.log('No speech detected, continuing in voice mode');
                 // In voice mode, automatically restart listening after no-speech
                 if (this.voiceMode) {
                     setTimeout(() => {
-                        if (this.voiceMode && !this.isListening && !this.isGenerating && !this.isSpeaking) {
+                        if (this.voiceMode && !this.isListening && !this.isGenerating && !this.isSpeaking && !this.voiceInteractionCancelled) {
                             this.startSpeechRecognition();
                         }
                     }, 500);
                 } else {
                     this.resetVoiceUI();
                 }
-                return;
-            }
-
-            // If user explicitly cancelled voice interaction, don't attempt failover
-            if (this.voiceInteractionCancelled) {
-                this.resetVoiceUI();
                 return;
             }
 
