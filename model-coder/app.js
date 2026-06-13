@@ -1,4 +1,4 @@
-import "./llm.js?v=20260612-cancel-fix";
+import "./llm.js?v=20260612-cancel-fix-v2";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");

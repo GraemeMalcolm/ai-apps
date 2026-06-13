@@ -673,7 +673,7 @@ class ModelCoderLLM {
                 return;
             } catch (wllamaError) {
                 // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
                     console.log('Wllama loading was cancelled by user - CPU stays available');
                     return;
                 }
@@ -714,7 +714,7 @@ class ModelCoderLLM {
                 return;
             } catch (wllamaError) {
                 // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
                     console.log('Wllama loading was cancelled by user - CPU stays available');
                     return;
                 }
@@ -752,7 +752,7 @@ class ModelCoderLLM {
             return;
         } catch (error) {
             // Only mark unavailable if there was a genuine error (not cancellation)
-            if (this.modelLoadingCancelled) {
+            if (this.modelLoadingCancelled || (error.message && error.message.includes('cancelled by user'))) {
                 console.log('WebLLM loading was cancelled by user - GPU stays available');
                 return;
             }
@@ -784,7 +784,7 @@ class ModelCoderLLM {
                 return;
             } catch (wllamaError) {
                 // Only mark unavailable if there was a genuine error (not cancellation)
-                if (this.modelLoadingCancelled) {
+                if (this.modelLoadingCancelled || (wllamaError.message && wllamaError.message.includes('cancelled by user'))) {
                     console.log('Wllama loading was cancelled by user - CPU stays available');
                     return;
                 }
