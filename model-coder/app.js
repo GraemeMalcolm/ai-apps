@@ -1623,6 +1623,7 @@ async function initializeApp() {
         if (kind === "ready") {
             setPill(statusModel, message, "ready");
             if (cancelModelLink) cancelModelLink.style.display = "none";
+            state.modelReady = true;
             syncModeStateFromRuntime();
             updateModeSelectDropdown();
             updateRunState();
