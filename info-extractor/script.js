@@ -20,6 +20,8 @@ class InfoExtractorApp {
         this.isModelLoaded = false;
         this.currentModelId = null;
         this.useAI = true; // Default to using AI if available
+        this.isLoadingModel = false; // Track if model is currently loading
+        this.cancelModelLoad = false; // Flag to cancel model loading
 
         // Zoom functionality
         this.zoomLevel = 1.0;
@@ -103,6 +105,7 @@ class InfoExtractorApp {
         this.modelLoadingSection = document.getElementById('modelLoadingSection');
         this.modelLoadingText = document.getElementById('modelLoadingText');
         this.modelProgressFill = document.getElementById('modelProgressFill');
+        this.cancelModelLoadLink = document.getElementById('cancelModelLoadLink');
 
         // AI toggle
         this.aiToggle = document.getElementById('aiToggle');
@@ -166,13 +169,29 @@ class InfoExtractorApp {
         // Theme toggle
         this.themeToggle.addEventListener('change', () => this.handleThemeToggle());
 
+        // Cancel model loading
+        this.cancelModelLoadLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.cancelModelLoading();
+        });
+
         // Drag and drop functionality
         this.setupDragAndDrop();
     }
 
-    handleAIToggle(event) {
+    async handleAIToggle(event) {
+        const wasChecked = this.useAI;
         this.useAI = event.target.checked;
         console.log('AI toggle changed. Use AI:', this.useAI);
+
+        // If turning on AI and model is not loaded, try to load it
+        if (this.useAI && !this.isModelLoaded && !this.isLoadingModel) {
+            console.log('AI enabled but model not loaded. Attempting to load model...');
+            this.showModelLoading();
+            await this.initializeModel();
+        } else if (!this.useAI) {
+            console.log('AI disabled, using basic mode');
+        }
     }
 
     applyTheme() {
@@ -453,10 +472,34 @@ class InfoExtractorApp {
         }
     }
 
+    cancelModelLoading() {
+        console.log('User cancelled model loading');
+        this.cancelModelLoad = true;
+        this.isLoadingModel = false;
+        this.hideModelLoading();
+
+        // Turn off AI toggle but keep it enabled for future use
+        this.aiToggle.checked = false;
+        this.useAI = false;
+
+        // Load the default receipt image
+        this.loadDefaultReceipt();
+    }
+
     async initializeModel() {
+        // Reset cancellation flag and set loading state
+        this.cancelModelLoad = false;
+        this.isLoadingModel = true;
+
         try {
             console.log('Initializing WebLLM model...');
             this.updateModelLoadingProgress(10, 'Checking WebLLM availability...');
+
+            // Check for cancellation
+            if (this.cancelModelLoad) {
+                console.log('Model loading cancelled by user');
+                return;
+            }
 
             // Check if WebLLM is available
             if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
@@ -469,6 +512,12 @@ class InfoExtractorApp {
             }
 
             this.updateModelLoadingProgress(20, 'Loading available models...');
+
+            // Check for cancellation
+            if (this.cancelModelLoad) {
+                console.log('Model loading cancelled by user');
+                return;
+            }
 
             // Get available models from WebLLM
             const models = webllm.prebuiltAppConfig.model_list;
@@ -493,6 +542,12 @@ class InfoExtractorApp {
                 throw new Error('No compatible models found');
             }
 
+            // Check for cancellation before loading
+            if (this.cancelModelLoad) {
+                console.log('Model loading cancelled by user');
+                return;
+            }
+
             console.log('Attempting to load model:', availableModels[0].model_id);
             this.updateModelLoadingProgress(30, `Loading ${availableModels[0].model_id}...`);
 
@@ -501,6 +556,11 @@ class InfoExtractorApp {
                 availableModels[0].model_id,
                 {
                     initProgressCallback: (progress) => {
+                        // Check for cancellation during progress
+                        if (this.cancelModelLoad) {
+                            console.log('Model loading cancelled by user during download');
+                            return;
+                        }
                         const percentage = 30 + Math.round(progress.progress * 70); // 30-100%
                         const progressText = `Loading ${availableModels[0].model_id}: ${Math.round(progress.progress * 100)}%`;
                         this.updateModelLoadingProgress(percentage, progressText);
@@ -509,8 +569,15 @@ class InfoExtractorApp {
                 }
             );
 
+            // Check if cancelled after model load attempt
+            if (this.cancelModelLoad) {
+                console.log('Model loading cancelled by user after download');
+                return;
+            }
+
             this.currentModelId = availableModels[0].model_id;
             this.isModelLoaded = true;
+            this.isLoadingModel = false;
             this.updateModelLoadingProgress(100, 'Model ready!');
             console.log('Model loaded successfully:', this.currentModelId);
 
@@ -522,26 +589,33 @@ class InfoExtractorApp {
             }, 1000);
 
         } catch (error) {
-            console.error('Failed to initialize model:', error);
-            console.error('Error details:', error.message);
-            console.error('Error stack:', error.stack);
-            this.isModelLoaded = false;
+            // Only handle as an error if it wasn't cancelled by user
+            if (!this.cancelModelLoad) {
+                console.error('Failed to initialize model:', error);
+                console.error('Error details:', error.message);
+                console.error('Error stack:', error.stack);
+                this.isModelLoaded = false;
+                this.isLoadingModel = false;
 
-            // Update loading screen to indicate fallback mode
-            this.updateModelLoadingProgress(100, 'Using pattern-based extraction mode...');
+                // Update loading screen to indicate fallback mode
+                this.updateModelLoadingProgress(100, 'Using pattern-based extraction mode...');
 
-            // Hide loading screen and activate fallback mode silently
-            setTimeout(() => {
-                this.hideModelLoading();
-                // Disable the AI toggle since model failed to load
-                this.aiToggle.checked = false;
-                this.aiToggle.disabled = true;
-                this.useAI = false;
-                // Quietly proceed in fallback mode - no error modal shown
-                console.log('Fallback mode activated: Using OCR and pattern-matching for field extraction');
-                // Still load the default receipt even if model fails
-                this.loadDefaultReceipt();
-            }, 1000);
+                // Hide loading screen and activate fallback mode silently
+                setTimeout(() => {
+                    this.hideModelLoading();
+                    // Disable the AI toggle since model failed to load with an error
+                    this.aiToggle.checked = false;
+                    this.aiToggle.disabled = true;
+                    this.useAI = false;
+                    // Quietly proceed in fallback mode - no error modal shown
+                    console.log('Fallback mode activated: Using OCR and pattern-matching for field extraction');
+                    // Still load the default receipt even if model fails
+                    this.loadDefaultReceipt();
+                }, 1000);
+            } else {
+                // Cancellation was already handled
+                console.log('Model loading was cancelled, no error handling needed');
+            }
         }
     }
 
