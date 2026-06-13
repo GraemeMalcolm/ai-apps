@@ -487,7 +487,7 @@ class ModelCoderLLM {
         this.usingWllama = false;
         // Keep webllmAvailable and availableModes as they are
         this.isReady = true;
-        
+
         this._status("ready", `${WIKIPEDIA_MODEL_NAME} ready (user cancelled loading)`);
 
         console.log('Switched to Basic mode after cancellation');
