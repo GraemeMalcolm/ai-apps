@@ -1992,6 +1992,14 @@ class ChatPlayground {
                     console.log('Switched to Phi-2 (CPU) mode');
                 } catch (error) {
                     console.error('Failed to load wllama:', error);
+
+                    // If loading was cancelled by user, don't mark as failed
+                    if (this.modelLoadingCancelled) {
+                        console.log('Model loading was cancelled by user - Wllama stays available');
+                        return;
+                    }
+
+                    // Only mark as failed if there was a genuine error
                     this.wllamaLoaded = false;
                     this.wllamaFailed = true;
                     this.usingWllama = false;
