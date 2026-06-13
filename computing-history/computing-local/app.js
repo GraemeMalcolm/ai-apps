@@ -37,8 +37,8 @@ const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in CPU mode.\n
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
 // Shared prompt constants for both WebLLM and Wllama
-const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
-const USER_PROMPT_SUFFIX = '\nAnswer with a single succinct, friendly and helpful paragraph.';
+const SYSTEM_PROMPT = 'You are a friendly expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
+const USER_PROMPT_SUFFIX = '\nAnswer with a single succinct and factually accurate paragraph.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
