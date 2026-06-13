@@ -1,4 +1,4 @@
-import "./llm.js?v=20260329-system-prompt-moderation";
+import "./llm.js?v=20260612-cancel-fix";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
