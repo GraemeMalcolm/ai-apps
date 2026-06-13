@@ -38,7 +38,7 @@ let lastWllamaCompletionErrored = false; // Track whether last CPU completion fa
 
 // Shared prompt constants for both WebLLM and Wllama
 const SYSTEM_PROMPT = 'You are an expert in computing history. You only discuss computing and technology topics, focusing on key facts and historical context.';
-const USER_PROMPT_SUFFIX = '\nAnswer with a single succinct paragraph.';
+const USER_PROMPT_SUFFIX = '\nAnswer with a single succinct, friendly and helpful paragraph.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -787,14 +787,16 @@ function trimIncompleteSentence(text) {
         return text;
     }
 
-    // Check if text ends with an incomplete marker
-    const endsWithIncompleteMarker = /[,\-—]$|(\band\s*$)|(\bor\s*$)|(\bthat\s*$)|(\bwhich\s*$)|(\bwho\s*$)/.test(text);
+    // If text already ends with sentence-ending punctuation, it's complete
+    if (/[.!?]$/.test(text)) {
+        return text;
+    }
 
-    if (endsWithIncompleteMarker) {
-        // Find the last complete sentence
-        const lastCompleteMatch = text.match(/(.*[.!?])\s+[^.!?]*$/);
-        if (lastCompleteMatch) {
-            const trimmed = lastCompleteMatch[1].trim();
+    // Text doesn't end with sentence-ending punctuation - trim to the last complete sentence
+    const lastCompleteMatch = text.match(/([\s\S]*[.!?])/);
+    if (lastCompleteMatch) {
+        const trimmed = lastCompleteMatch[1].trim();
+        if (trimmed.length >= 20) {
             console.log(`Trimmed incomplete sentence: ${text.length} -> ${trimmed.length} chars`);
             return trimmed;
         }
@@ -2667,6 +2669,12 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 
         // Clean up the response
         responseText = trimIncompleteSentence(responseText.trim());
+
+        // Update bubble with trimmed content to remove any incomplete fragment streamed earlier
+        if (bubbleElement && responseText) {
+            setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+            scrollToBottom();
+        }
 
         if (!responseText || responseText.length < 10) {
             return null;
