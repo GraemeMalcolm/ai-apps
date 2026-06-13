@@ -1886,23 +1886,67 @@ class ChatPlayground {
                 return;
             }
 
-            this.usingWllama = false;
-            this.usingWikipedia = false;
-            this.currentMode = 'phi3-gpu';
-            this.currentModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+            // Check if WebLLM engine is loaded, if not, load it
+            if (!this.engine) {
+                console.log('Loading WebLLM for the first time...');
 
-            // Apply Phi-3.5 default parameters
-            this.config.modelParameters = this.getModelDefaults();
-            this.updateParameterUI();
-            this.setParameterControlsEnabled(true);
+                // Disable UI during model loading
+                this.disableUI();
 
-            // Clear chat and restart conversation
-            if (previousMode !== this.currentMode) {
-                await this.clearChat();
-                this.showToast('Switched to Phi-3.5 (GPU) - Conversation restarted');
+                // Show progress
+                this.progressContainer.style.display = 'block';
+
+                try {
+                    await this.initializeWebLLM();
+
+                    this.usingWllama = false;
+                    this.usingWikipedia = false;
+                    this.currentMode = 'phi3-gpu';
+                    this.currentModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+
+                    // Apply Phi-3.5 default parameters
+                    this.config.modelParameters = this.getModelDefaults();
+                    this.updateParameterUI();
+                    this.setParameterControlsEnabled(true);
+
+                    // Clear chat and restart conversation
+                    await this.clearChat();
+                    this.showToast('Switched to Phi-3.5 (GPU) - Conversation restarted');
+
+                    console.log('Switched to Phi-3.5 (GPU) mode');
+                } catch (error) {
+                    console.error('Failed to load WebLLM:', error);
+                    this.webllmAvailable = false;
+                    this.engine = null;
+                    this.usingWllama = false;
+                    this.usingWikipedia = true;
+                    this.currentMode = 'none';
+                    this.currentModelId = 'None (Wikipedia)';
+                    this.config.modelParameters = this.getModelDefaults();
+                    this.updateParameterUI();
+                    this.populateModelDropdown();
+                    alert('Failed to load Phi-3.5 (GPU). Switching to None (Wikipedia mode).');
+                    this.enableUI();
+                }
+            } else {
+                this.usingWllama = false;
+                this.usingWikipedia = false;
+                this.currentMode = 'phi3-gpu';
+                this.currentModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
+
+                // Apply Phi-3.5 default parameters
+                this.config.modelParameters = this.getModelDefaults();
+                this.updateParameterUI();
+                this.setParameterControlsEnabled(true);
+
+                // Clear chat and restart conversation
+                if (previousMode !== this.currentMode) {
+                    await this.clearChat();
+                    this.showToast('Switched to Phi-3.5 (GPU) - Conversation restarted');
+                }
+
+                console.log('Switched to Phi-3.5 (GPU) mode');
             }
-
-            console.log('Switched to Phi-3.5 (GPU) mode');
         } else if (selectedValue === 'phi2-cpu') {
             if (this.wllamaFailed) {
                 alert('Phi-2 (CPU) is not available because it previously failed to load.');
