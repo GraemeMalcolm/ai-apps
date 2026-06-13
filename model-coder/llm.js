@@ -602,8 +602,11 @@ class ModelCoderLLM {
         this.modelLoadingAbortController = new AbortController();
         this.isLoading = true;
 
+        // Preserve previously discovered mode availability when reinitializing
+        const previousGpuAvailable = this.webllmAvailable || this.checkWebGPUSupport();
+
         this.availableModes = {
-            gpu: false,  // Only set true once WebLLM actually loads successfully, not just because navigator.gpu exists
+            gpu: previousGpuAvailable,  // Preserve if previously available or if WebGPU supported
             cpu: true,
             basic: true
         };
@@ -622,12 +625,25 @@ class ModelCoderLLM {
             this.usingBasic = false;
             try {
                 await this._loadWllama(maxRetries);
+
+                // Check if cancelled during loading
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 this.usingWllama = true;
                 this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
+                // Only mark unavailable if there was a genuine error (not cancellation)
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.error('Wllama initialization failed:', wllamaError);
                 this.availableModes.cpu = false;
                 this.isLoading = false;
@@ -649,12 +665,25 @@ class ModelCoderLLM {
             this.usingBasic = false;
             try {
                 await this._loadWllama(maxRetries);
+
+                // Check if cancelled during loading
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 this.usingWllama = true;
                 this.availableModes.cpu = true;
                 this.isReady = true;
                 this.isLoading = false;
                 return;
             } catch (wllamaError) {
+                // Only mark unavailable if there was a genuine error (not cancellation)
+                if (this.modelLoadingCancelled) {
+                    console.log('Wllama loading was cancelled by user - CPU stays available');
+                    return;
+                }
+
                 console.error('Wllama initialization failed:', wllamaError);
                 this.availableModes.cpu = false;
                 this._activateBasicMode("GPU unavailable and CPU init failed");
