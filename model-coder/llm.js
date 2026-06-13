@@ -518,6 +518,10 @@ class ModelCoderLLM {
     async hardResetSession(options = {}) {
         const { skipReinit = false } = options;
         console.log('[Model Reset] Hard reset - reloading model');
+
+        // Clear any lingering status messages
+        this._status("loading", "Resetting model...");
+
         await this.resetSession();
 
         // Preserve availability information before reset
@@ -648,6 +652,7 @@ class ModelCoderLLM {
         // If forcing CPU mode, skip GPU check and go straight to wllama
         if (forceCPU) {
             console.log('Forcing CPU mode (wllama)');
+            this._status("loading", "Initializing CPU mode (Phi-2)...");
             this.webllmAvailable = false;
             this.usingBasic = false;
             try {
@@ -687,6 +692,7 @@ class ModelCoderLLM {
                 throw new Error('GPU mode requested but WebGPU is not available');
             }
             console.log('WebGPU not available, using wllama (CPU mode)');
+            this._status("loading", "WebGPU not available - using CPU mode...");
             this.webllmAvailable = false;
             this.availableModes.gpu = false;
             this.usingBasic = false;
@@ -723,6 +729,7 @@ class ModelCoderLLM {
         // Try WebLLM first (faster with GPU) unless forcing CPU
         // Set GPU as available before attempting to load
         this.availableModes.gpu = true;
+        this._status("loading", "Initializing GPU mode (Phi-3)...");
         try {
             console.log('Attempting to initialize WebLLM with WebGPU...');
             await this._loadWebLLM();
