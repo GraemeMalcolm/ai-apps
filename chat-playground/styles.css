@@ -217,16 +217,17 @@ header h1 {
 }
 
 .cancel-link {
-    font-size: 0.85em;
-    color: #888;
+    font-size: 0.9em;
+    color: #7b2cbf;
     text-decoration: none;
     margin-top: 8px;
-    display: inline-block;
+    display: block;
+    text-align: center;
     cursor: pointer;
 }
 
 .cancel-link:hover {
-    color: #555;
+    color: #9333ea;
     text-decoration: underline;
 }
 
@@ -1941,11 +1942,11 @@ body.dark-mode .progress-text {
 }
 
 body.dark-mode .cancel-link {
-    color: #999;
+    color: #c8b6ff;
 }
 
 body.dark-mode .cancel-link:hover {
-    color: #ccc;
+    color: #d4c5ff;
 }
 
 body.dark-mode .collapsible-btn {

@@ -1292,6 +1292,7 @@ class ChatPlayground {
 
                 // Check if cancelled during initialization
                 if (this.modelLoadingCancelled) {
+                    console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
 
@@ -1309,10 +1310,11 @@ class ChatPlayground {
             } catch (wllamaError) {
                 // Check if cancelled during initialization
                 if (this.modelLoadingCancelled) {
-                    console.log('Model loading was cancelled by user');
+                    console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
 
+                // Genuine failure - mark wllama as failed
                 console.error('Wllama initialization failed:', wllamaError);
                 this.wllamaLoaded = false;
                 this.wllamaFailed = true;
@@ -1331,6 +1333,9 @@ class ChatPlayground {
         }
 
         // Try WebLLM first (faster with GPU)
+        // Mark WebLLM as available since WebGPU is supported
+        this.webllmAvailable = true;
+
         try {
             console.log('Attempting to initialize WebLLM with WebGPU...');
             await this.initializeWebLLM();
@@ -1341,7 +1346,6 @@ class ChatPlayground {
             }
 
             console.log('WebLLM initialized successfully');
-            this.webllmAvailable = true;
             this.usingWllama = false;
             this.usingWikipedia = false;
             this.currentMode = 'phi3-gpu';
@@ -1353,10 +1357,11 @@ class ChatPlayground {
         } catch (error) {
             // Check if cancelled during initialization
             if (this.modelLoadingCancelled) {
-                console.log('Model loading was cancelled by user');
+                console.log('Model loading was cancelled by user - WebLLM stays available');
                 return;
             }
 
+            // Genuine failure - mark WebLLM as unavailable
             console.error('WebLLM initialization failed, loading wllama fallback:', error);
             this.webllmAvailable = false;
 
@@ -1365,6 +1370,7 @@ class ChatPlayground {
 
                 // Check if cancelled during initialization
                 if (this.modelLoadingCancelled) {
+                    console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
 
@@ -1382,10 +1388,11 @@ class ChatPlayground {
             } catch (wllamaError) {
                 // Check if cancelled during initialization
                 if (this.modelLoadingCancelled) {
-                    console.log('Model loading was cancelled by user');
+                    console.log('Model loading was cancelled by user - CPU mode stays available');
                     return;
                 }
 
+                // Genuine failure - mark wllama as failed
                 console.error('Both WebLLM and wllama initialization failed:', wllamaError);
                 this.wllamaLoaded = false;
                 this.wllamaFailed = true;
