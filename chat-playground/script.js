@@ -46,7 +46,7 @@ class ChatPlayground {
             modelParameters: {
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 500,
+                max_tokens: 768,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -283,7 +283,7 @@ class ChatPlayground {
             return {
                 temperature: 0.5,
                 top_p: 0.9,
-                max_tokens: 500,
+                max_tokens: 768,
                 repetition_penalty: 1.1
             };
         }
@@ -1413,25 +1413,17 @@ class ChatPlayground {
 
     async initializeWebLLM() {
         console.log('initializeWebLLM called - starting model initialization');
-        this.updateProgress(0, 'Discovering available models...');
+        this.updateProgress(0, 'Loading Phi-3.5-mini (GPU mode)...');
         console.log('Starting WebLLM initialization...');
-        console.log('WebLLM object:', webllm);
-        console.log('WebLLM.CreateMLCEngine:', typeof webllm?.CreateMLCEngine);
-        console.log('WebLLM.prebuiltAppConfig:', typeof webllm?.prebuiltAppConfig);
 
         // Check if WebLLM is available
-        if (!webllm || !webllm.CreateMLCEngine || !webllm.prebuiltAppConfig) {
+        if (!webllm || !webllm.CreateMLCEngine) {
             console.error('WebLLM check failed:', {
                 webllm: !!webllm,
-                CreateMLCEngine: !!webllm?.CreateMLCEngine,
-                prebuiltAppConfig: !!webllm?.prebuiltAppConfig
+                CreateMLCEngine: !!webllm?.CreateMLCEngine
             });
             throw new Error('WebLLM not properly loaded');
         }
-
-        // Get available models from WebLLM
-        const models = webllm.prebuiltAppConfig.model_list;
-        console.log('All available models:', models.map(m => m.model_id));
 
         // Use Phi-3.5-mini with correct model library URL from WebLLM config
         const targetModelId = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
@@ -1445,7 +1437,7 @@ class ChatPlayground {
                     vram_required_MB: 3672.07,
                     low_resource_required: false,
                     overrides: {
-                        context_window_size: 1024
+                        context_window_size: 896
                     }
                 }
             ]
@@ -2209,7 +2201,7 @@ class ChatPlayground {
         if (!userMessage) userMessage = ""; // Allow empty message if there's an image
 
         const currentSystemPrompt = (this.systemMessage?.value ?? this.currentSystemMessage).trim();
-        this.currentSystemMessage = currentSystemPrompt + '\n(Obey these instructions strictly for ALL responses.)';
+        this.currentSystemMessage = currentSystemPrompt;
 
         const hasProhibitedSystemPrompt = currentSystemPrompt && this.containsProhibitedContent(currentSystemPrompt);
         const hasProhibitedUserPrompt = userMessage && this.containsProhibitedContent(userMessage);
@@ -2299,8 +2291,9 @@ class ChatPlayground {
             this.updateConversationHistoryWithCurrentSystemMessage();
 
             // Prepare conversation history
+            const systemContent = this.getEffectiveSystemMessage() + (imageAnalysis ? '\nKeep responses short and succinct.' : '');
             const messages = [
-                { role: "system", content: this.getEffectiveSystemMessage() }
+                { role: "system", content: systemContent }
             ];
 
             // Add last 2 conversation pairs
@@ -2392,98 +2385,49 @@ class ChatPlayground {
         }
     }
 
-    async handleStreamingMode(messages, thinkingIndicator, userMessage) {
-        // Streaming Mode: Type as soon as we have content
-        let fullResponse = '';
-        let hasStartedOutput = false;
-        const bufferSize = 30; // Start typing after 30 characters
-        let assistantMessageEl = null;
-        let contentEl = null;
+    renderMarkdown(text) {
+        if (!text) return '';
+        // Escape HTML first to prevent XSS
+        const escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        // Convert markdown patterns (bold before italic to avoid partial matches)
+        return escaped
+            .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/gs, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
+    }
 
+    async handleStreamingMode(messages, thinkingIndicator, userMessage) {
         const completion = await this.engine.chat.completions.create({
             messages: messages,
             temperature: this.config.modelParameters.temperature,
             max_tokens: this.config.modelParameters.max_tokens,
-            stream: true
+            stream: false
         });
 
-        this.currentStream = completion;
+        const fullResponse = completion.choices[0]?.message?.content || '';
 
-        try {
-            for await (const chunk of completion) {
-                if (!this.isGenerating) break;
+        // Remove thinking indicator
+        thinkingIndicator.remove();
 
-                const content = chunk.choices[0]?.delta?.content || '';
-                if (content) {
-                    fullResponse += content;
-
-                    // Start output once we have enough content buffered
-                    if (!hasStartedOutput && fullResponse.length >= bufferSize) {
-                        // Remove thinking indicator
-                        thinkingIndicator.remove();
-
-                        // Create message container
-                        assistantMessageEl = this.addMessage('assistant', '');
-                        contentEl = assistantMessageEl.querySelector('.message-content');
-
-                        // Start typing animation
-                        this.startTypingAnimation(contentEl, fullResponse);
-                        hasStartedOutput = true;
-                    } else if (hasStartedOutput && contentEl) {
-                        // Update the content for ongoing typing animation
-                        this.updateTypingContent(fullResponse);
-                    }
-                }
-            }
-        } catch (error) {
-            const isInterrupted = this.stopRequested ||
-                error?.name === 'AbortError' ||
-                /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
-
-            if (!isInterrupted) {
-                throw error;
-            }
-
-            console.log('WebLLM streaming interrupted');
-        } finally {
-            if (this.currentStream === completion) {
-                this.currentStream = null;
-            }
-        }
-
-        // Append file attribution if a file is uploaded and relevant content was used (for display only, after streaming completes)
+        // Append file attribution if a file is uploaded and relevant content was used (for display only)
         let displayResponse = fullResponse;
-        if (hasStartedOutput && this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
-            const attribution = `\n(Ref: ${this.config.fileUpload.fileName})`;
-            displayResponse = fullResponse + attribution;
-            // Update the typing content to include attribution
-            this.updateTypingContent(displayResponse);
+        if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName && fullResponse.trim()) {
+            displayResponse = fullResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
         }
 
-        // Handle case where response is shorter than buffer size
-        if (!hasStartedOutput) {
-            // Remove thinking indicator
-            thinkingIndicator.remove();
-
-            if (fullResponse.trim()) {
-                // Append file attribution if a file is uploaded and relevant content was used (for display only)
-                displayResponse = fullResponse;
-                if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
-                    displayResponse += `\n(Ref: ${this.config.fileUpload.fileName})`;
-                }
-
-                // Create message container
-                assistantMessageEl = this.addMessage('assistant', '');
-                contentEl = assistantMessageEl.querySelector('.message-content');
-
-                // Type out the short response
-                await this.typeResponse(contentEl, displayResponse);
-            } else {
-                const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
-                assistantMessageEl = this.addMessage('assistant', '');
-                contentEl = assistantMessageEl.querySelector('.message-content');
-                await this.typeResponse(contentEl, fallbackMessage);
-            }
+        if (fullResponse.trim()) {
+            const assistantMessageEl = this.addMessage('assistant', '');
+            const contentEl = assistantMessageEl.querySelector('.message-content');
+            await this.typeResponse(contentEl, displayResponse);
+            contentEl.innerHTML = this.renderMarkdown(displayResponse);
+        } else {
+            const fallbackMessage = "I apologize, but I couldn't generate a response. Please try again.";
+            const assistantMessageEl = this.addMessage('assistant', '');
+            const contentEl = assistantMessageEl.querySelector('.message-content');
+            await this.typeResponse(contentEl, fallbackMessage);
         }
 
         // Add to conversation history (without file attribution, to prevent cumulative citations)
@@ -2897,7 +2841,9 @@ class ChatPlayground {
         const contentEl = assistantMessageEl.querySelector('.message-content');
 
         // Show thinking indicator with CPU mode notice
-        contentEl.innerHTML = '<span class="typing-indicator">●●●</span><p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">(Responses may be slow in CPU mode. Thanks for your patience!)</p>';
+        contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I\'m working on a response. Thanks for your patience!)</p>';
+        contentEl.style.width = 'fit-content';
+        contentEl.style.whiteSpace = 'normal';
 
         // Build ChatML formatted prompt
         let fileContentForPrompt = '';
@@ -3056,14 +3002,8 @@ class ChatPlayground {
 
     addThinkingIndicator() {
         const thinkingDiv = document.createElement('div');
-        thinkingDiv.className = 'thinking-indicator';
-        thinkingDiv.innerHTML = `
-            <div class="thinking-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-        `;
+        thinkingDiv.className = 'message assistant-message thinking-indicator';
+        thinkingDiv.innerHTML = `<div class="message-content" style="width: fit-content; white-space: normal"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I'm working on a response. Thanks for your patience!)</p></div>`;
         this.chatMessages.appendChild(thinkingDiv);
 
         // Auto-scroll to bottom
@@ -4560,7 +4500,7 @@ class ChatPlayground {
             } else if (this.usingWllama && this.wllama) {
                 // Use wllama (Phi-2 CPU)
                 console.log('Using Wllama for response generation');
-                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.');
+                const prompt = this.buildPrompt(voiceModeUserMessage, this.currentSystemMessage + '\nKeep responses short and succinct.');
 
                 this.currentAbortController = new AbortController();
 
@@ -4582,7 +4522,7 @@ class ChatPlayground {
                 // Use WebLLM (Phi-3.5 GPU)
                 console.log('Using WebLLM for response generation');
                 const messages = [
-                    { role: 'system', content: this.currentSystemMessage + ' IMPORTANT: Make your responses brief and to the point.' },
+                    { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
                     ...this.conversationHistory,
                     { role: 'user', content: voiceModeUserMessage }
                 ];
@@ -4591,36 +4531,11 @@ class ChatPlayground {
                     messages: messages,
                     temperature: this.config.modelParameters.temperature,
                     max_tokens: Math.min(this.config.modelParameters.max_tokens, 250), // Limit for voice responses
-                    stream: true
+                    stream: false
                 });
 
-                this.currentStream = completion;
-
-                try {
-                    for await (const chunk of completion) {
-                        if (!this.isGenerating) break;
-
-                        const content = chunk.choices[0]?.delta?.content || '';
-                        if (content) {
-                            responseText += content;
-                        }
-                    }
-                } catch (error) {
-                    const isInterrupted = this.stopRequested ||
-                        error?.name === 'AbortError' ||
-                        /abort|interrupted|canceled|cancelled/i.test(error?.message || '');
-
-                    if (!isInterrupted) {
-                        throw error;
-                    }
-
-                    console.log('WebLLM voice generation interrupted');
-                } finally {
-                    if (this.currentStream === completion) {
-                        this.currentStream = null;
-                    }
-                }
-                console.log('WebLLM streaming complete, response length:', responseText.length);
+                responseText = completion.choices[0]?.message?.content || '';
+                console.log('WebLLM completion finished, response length:', responseText.length);
             } else {
                 responseText = "No AI model is currently available. Please wait for the model to load.";
             }
@@ -5367,7 +5282,7 @@ window.resetParametersFromModal = function () {
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
         temperature: 0.5,
         top_p: 0.9,
-        max_tokens: 500,
+        max_tokens: 768,
         repetition_penalty: 1.1
     };
 
