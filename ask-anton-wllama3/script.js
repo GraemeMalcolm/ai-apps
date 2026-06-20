@@ -541,12 +541,10 @@ class AskAnton {
                         console.log('OPFS cache directory not found; nothing to clear');
                         return;
                     }
-                    // Collect before deleting to avoid mutating while iterating.
+                    // Collect all entries before deleting to avoid mutating while iterating.
                     const toDelete = [];
                     for await (const [name] of cacheDir.entries()) {
-                        if (name.includes('Phi-4-mini') || name.includes('Phi-3.1-mini')) {
-                            toDelete.push(name);
-                        }
+                        toDelete.push(name);
                     }
                     for (const name of toDelete) {
                         await cacheDir.removeEntry(name);
