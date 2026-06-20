@@ -2361,7 +2361,7 @@ class AskAnton {
         try {
             completion = await this.wllama.createCompletion({
                 prompt: prompt,
-                max_tokens: 200,
+                max_tokens: 380,
                 temperature: 0.3,
                 top_k: 30,
                 top_p: 0.85,
