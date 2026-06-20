@@ -139,9 +139,9 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are a friendly, helpful teacher of AI-related subjects. Give factual, concise answers in a single paragraph using simple language. Do not add information you are unsure about. Do not include citations, references, or parenthetical asides. Do not generate follow-up questions or continue the conversation. Keep responses focused on AI or computing.`;
+        this.SYSTEM_PROMPT = `You are a friendly AI teacher. Answer in one short paragraph of plain prose. No bullet points, lists, or slashes. Use only the information provided. Do not ask follow-up questions.`;
 
-        this.PROMPT_WITH_CONTEXT = `Respond with a single paragraph based on the following information:`;
+        this.PROMPT_WITH_CONTEXT = `Using only the following information, write a brief explanation:`;
         this.PROMPT_WITHOUT_CONTEXT = `Continue the conversation with a single paragraph, keeping the focus on AI topics.`;
 
         // Prohibited words for content moderation (whole words only)
@@ -514,10 +514,14 @@ class AskAnton {
             };
 
             // Helper to attempt a model load; always creates a fresh Wllama instance.
+            // GPU loads use 10 of 32 layers to stay within the WebGPU driver's
+            // 30-second command queue timeout (TDR) on mobile GPUs.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
+                const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
+                    n_ctx,
                     n_gpu_layers,
                     n_threads
                 });
@@ -559,18 +563,19 @@ class AskAnton {
             // Flag prevents retrying cache-clear more than once.
             let cacheWasCleared = false;
 
-            // GPU-first (skipped if a prior GPU session crashed). Partial layer offload
-            // (20 of 32 layers) limits VRAM and per-token GPU workload on mobile GPUs.
-            // Falls back to CPU multi-thread, then CPU single-thread.
+            // GPU-first (skipped if gpuFailed is true). Partial layer offload (10 of 32
+            // layers) falls back to CPU multi-thread, then CPU single-thread.
             let initializedWithGPU = false;
 
             const loadWithFallback = async () => {
                 if (!this.gpuFailed) {
                     try {
-                        // First attempt: GPU-accelerated (20 of 32 layers to limit VRAM)
-                        await attemptLoad(20, preferredThreads);
+                        // First attempt: full GPU offload (all 32 layers) with n_ctx 1024.
+                        // Full offload avoids the precision mismatch at CPU/GPU layer boundaries
+                        // that caused garbled tokens with partial offload.
+                        await attemptLoad(32, preferredThreads);
                         initializedWithGPU = true;
-                        console.log(`Wllama initialized with GPU (20 layers) + ${preferredThreads} thread(s)`);
+                        console.log(`Wllama initialized with GPU (32 layers) + ${preferredThreads} thread(s)`);
                         return;
                     } catch (gpuErr) {
                         if (this.modelLoadingCancelled) throw gpuErr;
@@ -608,6 +613,9 @@ class AskAnton {
                     }
                 }
             };
+
+            // Set to true to force CPU-only (e.g. if GPU produces incorrect output on this device).
+            this.gpuFailed = false;
 
             await loadWithFallback();
             this.wllama_usedGPU = initializedWithGPU;
@@ -2130,31 +2138,6 @@ class AskAnton {
         return text.substring(0, 30).trim();
     }
 
-    /**
-     * Convert messages array to prompt format for wllama.
-     * Phi 3.1 uses a simple conversational format without special tokens.
-     * @param {Array<{role: string, content: string}>} messages
-     * @returns {string} Formatted prompt string
-     */
-    buildWllamaPrompt(messages) {
-        let prompt = '';
-
-        for (const msg of messages) {
-            if (msg.role === 'system') {
-                prompt += `${msg.content}\n\n`;
-            } else if (msg.role === 'user') {
-                prompt += `User: ${msg.content}\n\n`;
-            } else if (msg.role === 'assistant') {
-                prompt += `Assistant: ${msg.content}\n\n`;
-            }
-        }
-
-        // Add final prompt for assistant response
-        prompt += 'Assistant:';
-
-        return prompt;
-    }
-
     truncateParagraphsForCPU(context) {
         if (!context) return context;
 
@@ -2325,10 +2308,8 @@ class AskAnton {
         }
         messages.push({ role: 'user', content: userPrompt });
 
-        // Convert messages to prompt format for wllama
-        const prompt = this.buildWllamaPrompt(messages);
-        console.log('Sending prompt to wllama (length:', prompt.length, 'chars)');
-        console.log('Wllama prompt:', prompt);
+        console.log('Sending chat messages to wllama, message count:', messages.length);
+        console.log('Wllama messages:', JSON.stringify(messages));
 
         let assistantMessage = '';
         let audioPlayed = false;
@@ -2357,20 +2338,34 @@ class AskAnton {
 
         // Streamed completion: tokens arrive progressively for a responsive UI.
         try {
-            completion = await this.wllama.createCompletion({
-                prompt: prompt,
-                max_tokens: 300,
-                temperature: 0.3,
+            completion = await this.wllama.createChatCompletion({
+                messages: messages,
+                max_tokens: 150,
+                temperature: 0.2,
                 top_k: 30,
                 top_p: 0.85,
                 repeat_penalty: 1.1,
                 repeat_last_n: 64,
-                stop: ['\n\n', '\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
-                signal: controller.signal,
+                abortSignal: controller.signal,
                 stream: true
             });
 
             this.currentStream = completion;
+
+            // Throttle DOM updates to one per animation frame for smooth streaming.
+            // Tokens accumulate in assistantMessage at the model's full speed; the
+            // display catches up on the next rAF tick (~16 ms) regardless of burst size.
+            let renderPending = false;
+            const scheduleRender = () => {
+                if (!renderPending) {
+                    renderPending = true;
+                    requestAnimationFrame(() => {
+                        messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                        this.scrollToBottom();
+                        renderPending = false;
+                    });
+                }
+            };
 
             for await (const chunk of completion) {
                 if (this.stopRequested) {
@@ -2378,7 +2373,8 @@ class AskAnton {
                     break;
                 }
 
-                if (chunk.choices && chunk.choices[0] && chunk.choices[0].text) {
+                const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+                if (tokenText) {
                     // Clear timeout on first chunk
                     if (!firstChunkReceived) {
                         clearTimeout(slowResponseTimeout);
@@ -2395,9 +2391,8 @@ class AskAnton {
                         audioPlayed = true;
                     }
 
-                    assistantMessage += chunk.choices[0].text;
-                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                    this.scrollToBottom();
+                    assistantMessage += tokenText;
+                    scheduleRender();
                 }
             }
 
