@@ -518,7 +518,7 @@ class InfoExtractorApp {
             this.wllama = new Wllama(WASM_PATHS);
 
             const modelLoadParams = {
-                n_ctx: 712,
+                n_ctx: 2048,
                 n_gpu_layers: 0,
                 n_threads: preferredThreads,
                 progressCallback: ({ loaded, total }) => {
@@ -712,9 +712,15 @@ class InfoExtractorApp {
         }
 
         try {
+            // Truncate OCR text to avoid overflowing the model's context window
+            const MAX_OCR_CHARS = 1200;
+            const ocrText = this.ocrData.text.length > MAX_OCR_CHARS
+                ? this.ocrData.text.substring(0, MAX_OCR_CHARS) + '...'
+                : this.ocrData.text;
+
             const prompt = `The following text was extracted from a scanned receipt:
 ---
-${this.ocrData.text}
+${ocrText}
 ---
 Please identify the most likely values for these fields:
 - Vendor
@@ -730,24 +736,35 @@ Respond as a list of fields with their values.`;
 
             console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
 
-            const response = await this.wllama.createChatCompletion({
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are a helpful assistant that extracts structured information from receipt text. Always respond with a clear list of field names and their values."
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ],
-                max_tokens: 500,
-                temperature: 0.1,
-                top_k: 30,
-                top_p: 0.85,
-                repeat_penalty: 1.1,
-                stream: false
-            });
+            const abortController = new AbortController();
+            const timeoutId = setTimeout(() => {
+                console.warn('AI extraction timed out after 120 seconds, aborting');
+                abortController.abort();
+            }, 120000);
+
+            let response;
+            try {
+                response = await this.wllama.createChatCompletion({
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are a helpful assistant that extracts structured information from receipt text. Always respond with a clear list of field names and their values."
+                        },
+                        {
+                            role: "user",
+                            content: prompt
+                        }
+                    ],
+                    max_tokens: 500,
+                    temperature: 0.1,
+                    top_k: 30,
+                    top_p: 0.85,
+                    repeat_penalty: 1.1,
+                    signal: abortController.signal,
+                });
+            } finally {
+                clearTimeout(timeoutId);
+            }
 
             if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
                 console.error('Invalid response from wllama:', response);
