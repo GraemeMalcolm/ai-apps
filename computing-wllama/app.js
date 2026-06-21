@@ -180,7 +180,7 @@ async function init() {
 
     // Show loading overlay
     updateLoadingStatus('mobilenet', 'loading', 'Loading...');
-    updateLoadingStatus('smollm', 'loading', 'Loading...');
+    updateLoadingStatus('phi', 'loading', 'Loading...');
 
     // Pin TFJS to the CPU backend before any tf.* calls so it never grabs a
     // WebGL context. The image classifier is small (~470K params) and runs
@@ -219,7 +219,7 @@ async function init() {
             currentMode = 'basic';
             availableModes.cpu = false;
             updateModelName('Wikipedia API (Basic)');
-            updateLoadingStatus('smollm', 'ready', 'Basic');
+            updateLoadingStatus('phi', 'ready', 'Basic');
         }
 
         hideLoadingOverlay();
@@ -292,7 +292,7 @@ function cancelModelLoading() {
     // Switch to Basic mode
     currentMode = 'basic';
     updateModelName('Wikipedia API (Basic)');
-    updateLoadingStatus('smollm', 'ready', 'Basic');
+    updateLoadingStatus('phi', 'ready', 'Basic');
 
     hideLoadingOverlay();
     updateModeSelect();
@@ -603,7 +603,7 @@ async function initWllama(progressCallback = null) {
 
         console.log("Initializing wllama...");
         updateModelName('Phi 3.5-mini (AI mode)');
-        updateLoadingStatus('smollm', 'loading', '10%');
+        updateLoadingStatus('phi', 'loading', '10%');
 
         // Configure WASM paths for CDN
         const CONFIG_PATHS = {
@@ -619,7 +619,7 @@ async function initWllama(progressCallback = null) {
             const progress = loaded / total;
             const percentage = Math.round(progress * 100);
             const adjustedProgress = Math.round(20 + (percentage * 0.8)); // 20% to 100%
-            updateLoadingStatus('smollm', 'loading', `${adjustedProgress}%`);
+            updateLoadingStatus('phi', 'loading', `${adjustedProgress}%`);
             console.log(`Loading wllama: ${percentage}%`);
 
             // Show cancel link when loading starts
@@ -650,7 +650,7 @@ async function initWllama(progressCallback = null) {
 
         try {
             wllama = new Wllama(CONFIG_PATHS);
-            updateLoadingStatus('smollm', 'loading', '20%');
+            updateLoadingStatus('phi', 'loading', '20%');
 
             await wllama.loadModelFromHF(modelRef, modelLoadParams);
 
@@ -667,7 +667,7 @@ async function initWllama(progressCallback = null) {
                 console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
                 if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
 
-                updateLoadingStatus('smollm', 'loading', '20%');
+                updateLoadingStatus('phi', 'loading', '20%');
                 wllama = new Wllama(CONFIG_PATHS);
                 await wllama.loadModelFromHF(modelRef, { ...modelLoadParams, n_threads: 1 });
 
@@ -685,11 +685,11 @@ async function initWllama(progressCallback = null) {
         }
 
         wllamaReady = true;
-        updateLoadingStatus('smollm', 'ready', '100%');
+        updateLoadingStatus('phi', 'ready', '100%');
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
         if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
-        updateLoadingStatus('smollm', 'error', 'Failed');
+        updateLoadingStatus('phi', 'error', 'Failed');
         wllamaReady = false;
         throw error;
     }
@@ -700,7 +700,7 @@ async function initWllama(progressCallback = null) {
  * @param {string} modelName - The name of the model being loaded
  */
 function updateModelName(modelName) {
-    const statusTextElement = document.getElementById('smollmStatusText');
+    const statusTextElement = document.getElementById('phiStatusText');
     if (statusTextElement) {
         statusTextElement.textContent = modelName;
     }
@@ -708,13 +708,13 @@ function updateModelName(modelName) {
 
 /**
  * Updates the loading status display for a specific model
- * @param {string} modelType - Either 'mobilenet' or 'smollm'
+ * @param {string} modelType - Either 'mobilenet' or 'phi'
  * @param {string} status - One of 'loading', 'ready', or 'error'
  * @param {string} progress - Progress text to display
  */
 function updateLoadingStatus(modelType, status, progress) {
-    const statusId = modelType === 'mobilenet' ? 'mobilenetStatus' : 'smollmStatus';
-    const progressId = modelType === 'mobilenet' ? 'mobilenetProgress' : 'smollmProgress';
+    const statusId = modelType === 'mobilenet' ? 'mobilenetStatus' : 'phiStatus';
+    const progressId = modelType === 'mobilenet' ? 'mobilenetProgress' : 'phiProgress';
 
     const statusElement = document.getElementById(statusId);
     const progressElement = document.getElementById(progressId);
