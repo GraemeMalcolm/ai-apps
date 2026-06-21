@@ -139,10 +139,10 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using concise, simple language.`;
+        this.SYSTEM_PROMPT = `You are a friendly AI teacher. Answer in one short paragraph of plain prose. No bullet points, lists, or slashes. Use only the information provided. Do not ask follow-up questions.`;
 
-        this.PROMPT_WITH_CONTEXT = `Answer clearly with short sentences, using only information below:`;
-        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short paragraph with short sentences, keeping the focus on factual AI topics.`;
+        this.PROMPT_WITH_CONTEXT = `Using only the following information, write a brief explanation:`;
+        this.PROMPT_WITHOUT_CONTEXT = `Continue the conversation with a single paragraph, keeping the focus on AI topics.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -503,7 +503,7 @@ class AskAnton {
             };
 
             const baseModelConfig = {
-                n_ctx: 712,
+                n_ctx: 1024,
                 n_threads: preferredThreads,
                 progressCallback: progressCb
             };
@@ -566,10 +566,9 @@ class AskAnton {
             // GPU-first (skipped if gpuFailed is true). Partial layer offload (10 of 32
             // layers) falls back to CPU multi-thread, then CPU single-thread.
             let initializedWithGPU = false;
-            const GPU_ENABLED = false; // Set to true to re-enable GPU acceleration
 
             const loadWithFallback = async () => {
-                if (GPU_ENABLED && !this.gpuFailed) {
+                if (!this.gpuFailed) {
                     try {
                         // First attempt: full GPU offload (all 32 layers) with n_ctx 1024.
                         // Full offload avoids the precision mismatch at CPU/GPU layer boundaries
@@ -594,7 +593,7 @@ class AskAnton {
                         this.wllama = null;
                     }
                 } else {
-                    console.log('Skipping GPU: Using CPU directly');
+                    console.log('Skipping GPU: previous GPU failure detected, using CPU directly');
                 }
 
                 try {
@@ -614,6 +613,9 @@ class AskAnton {
                     }
                 }
             };
+
+            // Set to true to force CPU-only (e.g. if GPU produces incorrect output on this device).
+            this.gpuFailed = false;
 
             await loadWithFallback();
             this.wllama_usedGPU = initializedWithGPU;
@@ -2332,13 +2334,13 @@ class AskAnton {
                 }
                 console.log('Wllama slow response: showing waiting message after 20 seconds');
             }
-        }, 30000);
+        }, 20000);
 
         // Streamed completion: tokens arrive progressively for a responsive UI.
         try {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: 200,
+                max_tokens: 150,
                 temperature: 0.2,
                 top_k: 30,
                 top_p: 0.85,
