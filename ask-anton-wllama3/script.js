@@ -509,7 +509,8 @@ class AskAnton {
             };
 
             const modelSource = {
-                repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+                //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+                repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
                 quant: 'Q4_K_M'
             };
 
@@ -627,7 +628,7 @@ class AskAnton {
             if (!isLazyLoad) {
                 this.updateProgress(100, 'Ready to chat!');
             }
-            console.log('Wllama initialized successfully with Phi 4-mini');
+            console.log('Wllama initialized successfully with Phi 3.5-mini');
             this.availableModes.wllama = true;
 
             if (!this.modelLoadingCancelled) {
@@ -764,7 +765,7 @@ class AskAnton {
     /** Human-readable label for the model selector and aria descriptions. */
     getModeLabel(mode = this.currentMode) {
         if (mode === 'wllama') {
-            return 'Phi 4-mini';
+            return 'Phi 3.5-mini';
         }
 
         return 'None';
@@ -1413,7 +1414,7 @@ class AskAnton {
         // targetMode === 'wllama'
         if (!this.availableModes.wllama) {
             this.updateModeSelector();
-            this.addSystemMessage('Phi 4-mini is unavailable on this device.');
+            this.addSystemMessage('Phi 3.5-mini is unavailable on this device.');
             return;
         }
 
@@ -1421,7 +1422,7 @@ class AskAnton {
             this.disableInput();
             this.setCurrentMode('wllama');
             this.updateModeSelector();
-            this.addSystemMessage('Switched to Phi 4-mini');
+            this.addSystemMessage('Switched to Phi 3.5-mini');
             this.enableInput();
             return;
         }
@@ -1456,7 +1457,7 @@ class AskAnton {
             this.setCurrentMode(fallbackMode);
 
             if (loadingMsgElement) {
-                loadingMsgElement.textContent = `Failed to load Phi 4-mini. Switched to ${this.getModeLabel(fallbackMode)}.`;
+                loadingMsgElement.textContent = `Failed to load Phi 3.5-mini. Switched to ${this.getModeLabel(fallbackMode)}.`;
             }
         } finally {
             this.updateModeSelector();
@@ -1489,7 +1490,7 @@ class AskAnton {
         modeSelect.value = this.currentMode;
 
         const modeDescriptions = {
-            wllama: 'Phi 4-mini runs in your browser, GPU-accelerated when available.',
+            wllama: 'Phi 3.5-mini runs in your browser, GPU-accelerated when available.',
             basic: 'None: returns matching knowledge-base content without model inference.'
         };
 

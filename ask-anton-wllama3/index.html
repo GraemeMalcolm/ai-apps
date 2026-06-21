@@ -64,7 +64,7 @@
                                     <span class="visually-hidden">Choose a model</span>
                                 </label>
                                 <select id="mode-select" class="mode-select" aria-label="Choose a model">
-                                    <option value="wllama">🟢 Phi 4-mini</option>
+                                    <option value="wllama">🟢 Phi 3.5-mini</option>
                                     <option value="basic">⚪ None</option>
                                 </select>
                             </div>
@@ -179,7 +179,7 @@
                 </p>
                 <h3>Features</h3>
                 <ul>
-                    <li><strong>Multiple Response Modes:</strong> AI model mode (Microsoft Phi-4-mini running in wllama), and Basic mode (knowledge-base content without model inference)</li>
+                    <li><strong>Multiple Response Modes:</strong> AI model mode (Microsoft Phi-3.5-mini running in wllama), and Basic mode (knowledge-base content without model inference)</li>
                     <li><strong>Grounded Responses:</strong> Answers are based on a curated knowledge base about AI
                         topics</li>
                     <li><strong>Search Integration:</strong> Seamlessly search Microsoft Learn documentation for AI
@@ -219,13 +219,13 @@
                     type="button">×</button>
             </div>
             <div class="modal-body" id="ai-mode-modal-description">
-                <p>AI model mode uses wllama with the Phi-4-mini model (Q4_K_M, 4-bit) running directly in your browser.  No data is uploaded to Microsoft's servers.</p>
+                <p>AI model mode uses wllama with the Phi-3.5-mini model running directly in your browser.  No data is uploaded to Microsoft's servers.</p>
 
                 <p>Setting the model to <i>None</i> skips model inference entirely and returns matching content
                     directly from the built-in knowledge base.</p>
 
                 <p>If the AI model cannot be loaded, the app automatically switches to Basic mode (<i>None</i>) so you
-                    can still search the built-in AI content.</p>
+                    can still search the built-in knowledge base content and Microsoft Learn documentation.</p>
             </div>
             <div class="modal-footer">
                 <button class="modal-btn" id="modal-ok" aria-label="Acknowledge AI mode dialog" type="button">Got
