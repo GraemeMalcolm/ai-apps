@@ -1853,8 +1853,10 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             { role: 'system', content: SYSTEM_PROMPT }
         ];
 
-        // Include the previous conversation exchange for context (first sentence only)
-        if (conversationHistory.length > 0) {
+        // Only include previous exchange when the query looks like a follow-up
+        // (contains a pronoun or demonstrative that refers back to prior context)
+        const isFollowUp = /\b(it|its|they|their|them|that|this|those|these|he|she|him|her)\b/i.test(query);
+        if (isFollowUp && conversationHistory.length > 0) {
             const lastExchange = conversationHistory[conversationHistory.length - 1];
             messages.push({ role: 'user', content: lastExchange.user });
             messages.push({ role: 'assistant', content: lastExchange.assistant });
