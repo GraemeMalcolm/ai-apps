@@ -586,12 +586,12 @@ class AskAnton {
                             console.warn('Partial model download detected; clearing cache and retrying from part 1');
                             await clearModelCache();
                             cacheWasCleared = true;
-                            this.wllama = null;
+                            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
                             return loadWithFallback();
                         }
 
                         console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
-                        this.wllama = null;
+                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
                     }
                 } else {
                     console.log('Skipping GPU: Using CPU directly');
@@ -605,7 +605,7 @@ class AskAnton {
                     if (this.modelLoadingCancelled) throw cpuErr;
                     if (preferredThreads > 1) {
                         console.warn('Multi-thread CPU init failed, retrying with 1 thread');
-                        this.wllama = null;
+                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
                         // Final attempt: CPU single-threaded
                         await attemptLoad(0, 1);
                         console.log('Wllama initialized on CPU with 1 thread');
@@ -620,7 +620,7 @@ class AskAnton {
 
             // Check if cancelled before finalizing
             if (this.modelLoadingCancelled) {
-                this.wllama = null;
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
                 throw new Error('Model loading cancelled by user');
             }
 
@@ -736,7 +736,9 @@ class AskAnton {
 
         // Clean up any partially loaded models
         if (this.wllama) {
+            const _oldWllama = this.wllama;
             this.wllama = null;
+            _oldWllama.exit().catch(() => {});
         }
 
         // Hide the cancel link immediately
@@ -1918,14 +1920,10 @@ class AskAnton {
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
-            this.conversationHistory.push({
-                role: 'user',
-                content: userMessage
-            });
-            this.conversationHistory.push({
-                role: 'assistant',
-                content: historyAssistantMessage
-            });
+            this.conversationHistory = [
+                { role: 'user', content: userMessage },
+                { role: 'assistant', content: historyAssistantMessage }
+            ];
         } finally {
             this.isGenerating = false;
             this.stopRequested = false;
@@ -1982,14 +1980,10 @@ class AskAnton {
                     const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
                     fallbackActiveDiv.innerHTML = this.formatResponse(displayedMessage);
 
-                    this.conversationHistory.push({
-                        role: 'user',
-                        content: userMessage
-                    });
-                    this.conversationHistory.push({
-                        role: 'assistant',
-                        content: modelResponse.trim()
-                    });
+                    this.conversationHistory = [
+                        { role: 'user', content: userMessage },
+                        { role: 'assistant', content: modelResponse.trim() }
+                    ];
                     return;
                 }
 
@@ -2085,14 +2079,10 @@ class AskAnton {
 
             // Only add to conversation history if not stopped (to prevent corruption)
             if (!this.stopRequested && assistantMessage.trim()) {
-                this.conversationHistory.push({
-                    role: 'user',
-                    content: userMessage // Store original question, not the one with context
-                });
-                this.conversationHistory.push({
-                    role: 'assistant',
-                    content: assistantMessage
-                });
+                this.conversationHistory = [
+                    { role: 'user', content: userMessage }, // Store original question, not the one with context
+                    { role: 'assistant', content: assistantMessage }
+                ];
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
             }
@@ -2134,49 +2124,6 @@ class AskAnton {
 
         // If no sentence-ending punctuation, use first 30 characters
         return text.substring(0, 30).trim();
-    }
-
-    truncateParagraphsForCPU(context) {
-        if (!context) return context;
-
-        // Split context into sections by blank lines, then concatenate into one flow.
-        const sections = context
-            .split(/\n\s*\n+/)
-            .map(section => section.replace(/\s+/g, ' ').trim())
-            .filter(Boolean);
-
-        const truncatedSections = sections.map(section => {
-            // If section is <= 100 chars, keep it as is
-            if (section.length <= 100) return section;
-
-            // Find first sentence ending (., !, ?) after position 100
-            const searchFrom = 100;
-            let endPos = -1;
-
-            for (let i = searchFrom; i < section.length; i++) {
-                if (section[i] === '.' || section[i] === '!' || section[i] === '?') {
-                    endPos = i + 1; // Include the punctuation
-                    break;
-                }
-            }
-
-            // If found a sentence ending, truncate there
-            if (endPos > 0) {
-                return section.substring(0, endPos);
-            }
-
-            // Otherwise, truncate at 100 chars with ellipsis
-            return section.substring(0, 100) + '...';
-        });
-
-        return truncatedSections.reduce((combined, section) => {
-            if (!combined) {
-                return section;
-            }
-
-            const needsSentenceSeparator = !/[.!?]\s*$/.test(combined);
-            return combined + (needsSentenceSeparator ? '. ' : ' ') + section;
-        }, '');
     }
 
     trimIncompleteSentenceForCPU(text) {
@@ -2438,7 +2385,9 @@ class AskAnton {
             console.warn('GPU inference failed; switching to CPU and retrying prompt...');
             this.gpuFailed = true;
             this.wllama_usedGPU = false;
+            const _deadWllama = this.wllama;
             this.wllama = null;  // Dead WASM instance — must be replaced
+            _deadWllama.exit().catch(() => {});
 
             // Animate the failure notice into the current bubble as a proper assistant response.
             await this.animateTyping(
