@@ -1506,7 +1506,7 @@ function updateModeSelectDropdown() {
     if (cpuOption) {
         const enabled = Boolean(state.availableModes?.cpu);
         cpuOption.disabled = !enabled;
-        cpuOption.textContent = enabled ? "Phi 4-mini" : "Phi 4-mini (unavailable)";
+        cpuOption.textContent = enabled ? "Phi 3.5-mini" : "Phi 3.5-mini (unavailable)";
     }
 
     if (basicOption) {
@@ -1516,7 +1516,7 @@ function updateModeSelectDropdown() {
 
     const modeLabel =
         state.currentMode === "cpu"
-            ? "Phi 4-mini"
+            ? "Phi 3.5-mini"
             : "Basic Chat (Wikipedia)";
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute("aria-label", `Select AI mode. Currently: ${modeLabel}`);
