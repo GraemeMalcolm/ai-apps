@@ -637,7 +637,7 @@ async function initWllama(progressCallback = null) {
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
         const modelLoadParams = {
-            n_ctx: 712,
+            n_ctx: 2048,
             n_gpu_layers: 0, // Force CPU-only
             n_threads: preferredThreads,
             progressCallback: internalProgressCallback
@@ -1903,6 +1903,10 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         // Store stream reference for cleanup
         currentStream = completion;
 
+        // Throttle DOM updates to the browser's render cycle to prevent
+        // layout-reflow stuttering as the chat history grows.
+        let rafPending = false;
+
         for await (const chunk of completion) {
             if (shouldStopResponse) {
                 console.log('Wllama generation stopped by user');
@@ -1921,10 +1925,14 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
                 }
                 responseText += text;
 
-                // Stream to bubble if provided
-                if (bubbleElement) {
-                    setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
-                    scrollToBottom();
+                // Stream to bubble if provided, throttled to one DOM update per frame
+                if (bubbleElement && !rafPending) {
+                    rafPending = true;
+                    requestAnimationFrame(() => {
+                        setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(responseText));
+                        scrollToBottom();
+                        rafPending = false;
+                    });
                 }
             }
         }
