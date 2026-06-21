@@ -742,9 +742,13 @@ Respond as a list of fields with their values.`;
                 abortController.abort();
             }, 120000);
 
-            let response;
+            // Estimate expected output length to scale the progress bar (60→88%)
+            const MAX_TOKENS = 300;
+            const EXPECTED_CHARS = MAX_TOKENS * 4; // ~4 chars per token
+            let accumulatedText = '';
+
             try {
-                response = await this.wllama.createChatCompletion({
+                const stream = await this.wllama.createChatCompletion({
                     messages: [
                         {
                             role: "system",
@@ -755,30 +759,35 @@ Respond as a list of fields with their values.`;
                             content: prompt
                         }
                     ],
-                    max_tokens: 300,
+                    max_tokens: MAX_TOKENS,
                     temperature: 0.1,
                     top_k: 30,
                     top_p: 0.85,
                     repeat_penalty: 1.1,
-                    signal: abortController.signal,
+                    stream: true,
+                    abortSignal: abortController.signal,
                 });
+
+                for await (const chunk of stream) {
+                    if (abortController.signal.aborted) break;
+                    const delta = chunk?.choices?.[0]?.delta?.content ?? '';
+                    if (delta) {
+                        accumulatedText += delta;
+                        const pct = Math.min(accumulatedText.length / EXPECTED_CHARS, 1);
+                        this.updateProgress(60 + Math.round(pct * 28), `Extracting fields with AI...`);
+                    }
+                }
             } finally {
                 clearTimeout(timeoutId);
             }
 
-            if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
-                console.error('Invalid response from wllama:', response);
-                throw new Error('Invalid response from AI model');
-            }
+            console.log('Phi 3.5-mini response:', accumulatedText);
 
-            const result = response.choices[0].message.content;
-            console.log('Phi 3.5-mini response:', result);
-
-            if (!result || result.trim().length === 0) {
+            if (!accumulatedText || accumulatedText.trim().length === 0) {
                 throw new Error('Empty response from AI model');
             }
 
-            this.extractedFields = this.parseFieldsFromResponse(result);
+            this.extractedFields = this.parseFieldsFromResponse(accumulatedText);
             console.log('Parsed fields:', this.extractedFields);
 
         } catch (error) {
