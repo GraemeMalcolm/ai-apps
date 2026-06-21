@@ -543,7 +543,7 @@
                     "foundry",
                     "azure"
                 ],
-                "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents, and evaluate AI solutions."
+                "content": "Microsoft Foundry is a comprehensive platform designed to accelerate the development, deployment, and management of AI apps and agents on Microsoft Azure. It provides tools and services that you can use to deploy and manage models, develop agents with capabilities like speech and vision, and evaluate AI solutions."
             },
             {
                 "id": 34,
