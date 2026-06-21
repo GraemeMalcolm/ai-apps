@@ -602,7 +602,7 @@ class InfoExtractorApp {
             // Step 2: Extract fields with LLM (only if model is loaded AND user wants to use AI)
             if (this.isModelLoaded && this.wllama && this.useAI) {
                 console.log('Model is loaded and AI is enabled, proceeding with field extraction');
-                this.updateProgress(60, 'Extracting field information with AI...');
+                this.updateProgress(60, 'Extracting field values with AI (may be slow on some devices)...');
                 try {
                     await this.extractFields();
                 } catch (aiError) {
@@ -743,7 +743,7 @@ Respond as a list of fields with their values.`;
             }, 120000);
 
             // Estimate expected output length to scale the progress bar (60→88%)
-            const MAX_TOKENS = 300;
+            const MAX_TOKENS = 200;
             const EXPECTED_CHARS = MAX_TOKENS * 4; // ~4 chars per token
             let accumulatedText = '';
 
@@ -774,7 +774,7 @@ Respond as a list of fields with their values.`;
                     if (delta) {
                         accumulatedText += delta;
                         const pct = Math.min(accumulatedText.length / EXPECTED_CHARS, 1);
-                        this.updateProgress(60 + Math.round(pct * 28), `Extracting fields with AI...`);
+                        this.updateProgress(60 + Math.round(pct * 28), `Matching extracted values to fields...`);
                     }
                 }
             } finally {
