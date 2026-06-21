@@ -13,9 +13,9 @@ class ChatPlayground {
         this.wllama = null; // wllama engine for AI mode
         this.usingWllama = false; // Track if wllama is active
         this.usingWikipedia = false; // Track if no-model Wikipedia mode is active
-        this.currentMode = 'none'; // 'phi4-cpu' or 'none'
+        this.currentMode = 'none'; // 'phi-cpu' or 'none'
         this.wllamaLoaded = false; // Track if wllama is initialized
-        this.wllamaFailed = false; // Track if Phi 4-mini failed to load
+        this.wllamaFailed = false; // Track if Phi 3.5-mini failed to load
         this.isModelLoaded = false;
         this.conversationHistory = [];
         this.isGenerating = false;
@@ -1268,10 +1268,10 @@ class ChatPlayground {
             console.log('Wllama initialized successfully');
             this.usingWllama = true;
             this.usingWikipedia = false;
-            this.currentMode = 'phi4-cpu';
+            this.currentMode = 'phi-cpu';
             this.wllamaLoaded = true;
             this.wllamaFailed = false;
-            this.currentModelId = 'Phi-4-mini-GGUF';
+            this.currentModelId = 'Phi-3.5-mini-GGUF';
 
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
@@ -1318,14 +1318,15 @@ class ChatPlayground {
                 if (this.modelLoadingCancelled) return;
                 const percentage = Math.round((loaded / total) * 100);
                 const adjusted = Math.round(20 + percentage * 0.8);
-                this.updateProgress(adjusted, `Loading Phi 4-mini: ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
+                this.updateProgress(adjusted, `Loading Phi 3.5-mini: ${percentage}%<br><small style="font-size: 0.9em; color: #666;">(First-time download may take a few minutes)</small>`, true);
                 this.showCancelLink();
                 if (progressCallback) progressCallback(loaded, total);
             }
         };
 
         const modelRef = {
-            repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
             quant: 'Q4_K_M'
         };
 
@@ -1333,7 +1334,7 @@ class ChatPlayground {
             throw new Error('Model loading cancelled by user');
         }
 
-        this.updateProgress(10, 'Loading Phi 4-mini...');
+        this.updateProgress(10, 'Loading Phi 3.5-mini...');
 
         try {
             this.wllama = new Wllama(CONFIG_PATHS);
@@ -1453,9 +1454,9 @@ class ChatPlayground {
         // Determine if we're actually switching models
         const previousMode = this.currentMode;
 
-        if (selectedValue === 'phi4-cpu') {
+        if (selectedValue === 'phi-cpu') {
             if (this.wllamaFailed) {
-                alert('Phi 4-mini is not available because it previously failed to load.');
+                alert('Phi 3.5-mini is not available because it previously failed to load.');
                 this.populateModelDropdown();
                 return;
             }
@@ -1471,8 +1472,8 @@ class ChatPlayground {
 
                     this.usingWllama = true;
                     this.usingWikipedia = false;
-                    this.currentMode = 'phi4-cpu';
-                    this.currentModelId = 'Phi-4-mini-GGUF';
+                    this.currentMode = 'phi-cpu';
+                    this.currentModelId = 'Phi-3.5-mini-GGUF';
                     this.wllamaFailed = false;
 
                     this.config.modelParameters = this.getModelDefaults();
@@ -1480,9 +1481,9 @@ class ChatPlayground {
                     this.setParameterControlsEnabled(true);
 
                     await this.clearChat();
-                    this.showToast('Switched to Phi 4-mini - Conversation restarted');
+                    this.showToast('Switched to Phi 3.5-mini - Conversation restarted');
 
-                    console.log('Switched to Phi 4-mini');
+                    console.log('Switched to Phi 3.5-mini');
                 } catch (error) {
                     console.error('Failed to load wllama:', error);
 
@@ -1500,14 +1501,14 @@ class ChatPlayground {
                     this.config.modelParameters = this.getModelDefaults();
                     this.updateParameterUI();
                     this.populateModelDropdown();
-                    alert('Failed to load Phi 4-mini. Switching to None (Wikipedia mode).');
+                    alert('Failed to load Phi 3.5-mini. Switching to None (Wikipedia mode).');
                     this.enableUI();
                 }
             } else {
                 this.usingWllama = true;
                 this.usingWikipedia = false;
-                this.currentMode = 'phi4-cpu';
-                this.currentModelId = 'Phi-4-mini-GGUF';
+                this.currentMode = 'phi-cpu';
+                this.currentModelId = 'Phi-3.5-mini-GGUF';
 
                 this.config.modelParameters = this.getModelDefaults();
                 this.updateParameterUI();
@@ -1515,10 +1516,10 @@ class ChatPlayground {
 
                 if (previousMode !== this.currentMode) {
                     await this.clearChat();
-                    this.showToast('Switched to Phi 4-mini - Conversation restarted');
+                    this.showToast('Switched to Phi 3.5-mini - Conversation restarted');
                 }
 
-                console.log('Switched to Phi 4-mini');
+                console.log('Switched to Phi 3.5-mini');
             }
         } else if (selectedValue === 'none') {
             this.usingWllama = false;
@@ -1544,10 +1545,10 @@ class ChatPlayground {
         // Clear existing options
         this.modelSelect.innerHTML = '';
 
-        // Add Phi 4-mini option
+        // Add Phi 3.5-mini option
         const cpuOption = document.createElement('option');
-        cpuOption.value = 'phi4-cpu';
-        cpuOption.textContent = 'Phi 4-mini';
+        cpuOption.value = 'phi-cpu';
+        cpuOption.textContent = 'Phi 3.5-mini';
         cpuOption.disabled = this.wllamaFailed;
         this.modelSelect.appendChild(cpuOption);
 
@@ -1559,8 +1560,8 @@ class ChatPlayground {
 
         const canUseCpu = !this.wllamaFailed;
 
-        if (this.currentMode === 'phi4-cpu' && canUseCpu) {
-            this.modelSelect.value = 'phi4-cpu';
+        if (this.currentMode === 'phi-cpu' && canUseCpu) {
+            this.modelSelect.value = 'phi-cpu';
         } else {
             this.currentMode = 'none';
             this.usingWikipedia = true;
@@ -1843,7 +1844,7 @@ class ChatPlayground {
             } else if (this.usingWllama) {
                 await this.handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis);
             } else {
-                throw new Error('No AI model available. Please wait for Phi 4-mini to load or switch to Wikipedia mode.');
+                throw new Error('No AI model available. Please wait for Phi 3.5-mini to load or switch to Wikipedia mode.');
             }
 
         } catch (error) {
@@ -3595,7 +3596,7 @@ class ChatPlayground {
                     responseText = responseText + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
             } else if (this.usingWllama && this.wllama) {
-                // Use wllama (Phi 4-mini)
+                // Use wllama (Phi 3.5-mini)
                 console.log('Using Wllama for voice response generation');
                 const voiceMessages = [
                     { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
