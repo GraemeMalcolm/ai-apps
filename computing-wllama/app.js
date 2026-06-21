@@ -33,7 +33,7 @@ const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in AI mode.\nI
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
 // Shared prompt constants for Wllama and Wikipedia modes
-const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Keep responses concise and factual, using short sentences.';
+const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Always respond with a single paragraph, using short sentences.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
@@ -1898,7 +1898,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             top_p: 0.9,
             repeat_penalty: 1.1,
             repeat_last_n: 64,
-            stop: ['\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
+            stop: ['\n\n','\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
             abortSignal: currentAbortController.signal,
             stream: true
         });
