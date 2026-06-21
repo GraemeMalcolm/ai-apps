@@ -33,7 +33,7 @@ const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in AI mode.\nI
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 
 // Shared prompt constants for Wllama and Wikipedia modes
-const SYSTEM_PROMPT = 'You are a friendly and helpful expert in computing history. You only discuss computing and technology topics, focusing on verifiable facts and historical context. Respond with a single succinct and factually accurate paragraph using simple language.';
+const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
