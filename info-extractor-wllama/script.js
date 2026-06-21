@@ -518,7 +518,7 @@ class InfoExtractorApp {
             this.wllama = new Wllama(WASM_PATHS);
 
             const modelLoadParams = {
-                n_ctx: 2048,
+                n_ctx: 1024,
                 n_gpu_layers: 0,
                 n_threads: preferredThreads,
                 progressCallback: ({ loaded, total }) => {
