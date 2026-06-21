@@ -2783,9 +2783,9 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 4.1 (AI mode - running locally)';
+            modelNameElement.textContent = 'Phi 4.1-mini';
         } else if (currentMode === 'basic') {
-            modelNameElement.textContent = 'Wikipedia API (Basic (Wikipedia) - online lookup)';
+            modelNameElement.textContent = 'None (Wikipedia API)';
         } else {
             modelNameElement.textContent = 'Loading...';
         }
