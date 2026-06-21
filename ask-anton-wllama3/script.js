@@ -2214,6 +2214,9 @@ class AskAnton {
                     endIndex++;
                 }
                 lastSentenceEnd = endIndex;
+            } else if (trimmedText[i] === '\n') {
+                // A newline ends a list item cleanly — treat it as a valid trim point.
+                lastSentenceEnd = Math.max(lastSentenceEnd, i);
             }
         }
 
