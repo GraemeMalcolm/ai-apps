@@ -1310,9 +1310,8 @@ async function handleSend() {
         if (bubble && bubble.textContent && bubble.textContent.trim().length > 0) {
             const summary = bubble.textContent.trim();
             conversationHistory = [
-                ...conversationHistory.slice(-1),
                 { user: truncateToFirstSentence(text), assistant: truncateToFirstSentence(summary) }
-            ].slice(-2);
+            ];
         }
     } catch (e) {
         removeTyping();
@@ -1758,9 +1757,8 @@ async function performClassification(imgEl, userText = "") {
                         }
 
                         conversationHistory = [
-                            ...conversationHistory.slice(-1),
                             { user: historyUserPrompt, assistant: truncateToFirstSentence(summary) }
-                        ].slice(-2);
+                        ];
                     } else if (currentMode === 'cpu' && lastWllamaCompletionErrored) {
                         setBubbleContent(bubble, reply + `<br><br>${CPU_MODE_FAILURE_MESSAGE}`);
                     }
@@ -1855,12 +1853,11 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             { role: 'system', content: SYSTEM_PROMPT }
         ];
 
-        // Include last 2 conversation exchanges for context
+        // Include the previous conversation exchange for context (first sentence only)
         if (conversationHistory.length > 0) {
-            conversationHistory.forEach(exchange => {
-                messages.push({ role: 'user', content: exchange.user });
-                messages.push({ role: 'assistant', content: exchange.assistant });
-            });
+            const lastExchange = conversationHistory[conversationHistory.length - 1];
+            messages.push({ role: 'user', content: lastExchange.user });
+            messages.push({ role: 'assistant', content: lastExchange.assistant });
         }
 
         messages.push({ role: 'user', content: query });
