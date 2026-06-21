@@ -4,8 +4,8 @@ const WASM_PATHS = {
     default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
 
-const PHI4_MINI_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
-const PHI4_MINI_QUANT = "Q4_K_M";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_QUANT = "Q4_K_M";
 
 // Information Extractor Application
 // Extract structured information from images
@@ -503,8 +503,8 @@ class InfoExtractorApp {
         this.isLoadingModel = true;
 
         try {
-            console.log('Initializing Phi 4-mini (wllama)...');
-            this.updateModelLoadingProgress(10, 'Initializing Phi 4-mini...');
+            console.log('Initializing Phi 3.5-mini (wllama)...');
+            this.updateModelLoadingProgress(10, 'Initializing Phi 3.5-mini...');
 
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user');
@@ -524,15 +524,15 @@ class InfoExtractorApp {
                 progressCallback: ({ loaded, total }) => {
                     if (this.cancelModelLoad) return;
                     if (!total) {
-                        this.updateModelLoadingProgress(20, 'Loading Phi 4-mini...');
+                        this.updateModelLoadingProgress(20, 'Loading Phi 3.5-mini...');
                         return;
                     }
                     const pct = Math.round((loaded / total) * 100);
-                    this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 4-mini: ${pct}%`);
+                    this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 3.5-mini: ${pct}%`);
                 }
             };
 
-            const modelRef = { repo: PHI4_MINI_REPO, quant: PHI4_MINI_QUANT };
+            const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
             try {
                 await this.wllama.loadModelFromHF(modelRef, modelLoadParams);
             } catch (multiErr) {
@@ -553,8 +553,8 @@ class InfoExtractorApp {
 
             this.isModelLoaded = true;
             this.isLoadingModel = false;
-            this.updateModelLoadingProgress(100, 'Phi 4-mini ready!');
-            console.log('Phi 4-mini loaded successfully');
+            this.updateModelLoadingProgress(100, 'Phi 3.5-mini ready!');
+            console.log('Phi 3.5-mini loaded successfully');
 
             setTimeout(() => {
                 this.hideModelLoading();
@@ -563,7 +563,7 @@ class InfoExtractorApp {
 
         } catch (error) {
             if (!this.cancelModelLoad) {
-                console.error('Failed to initialize Phi 4-mini:', error);
+                console.error('Failed to initialize Phi 3.5-mini:', error);
                 this.isModelLoaded = false;
                 this.isLoadingModel = false;
                 if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
@@ -728,7 +728,7 @@ Date fields should be formatted as mm/dd/yyyy
 
 Respond as a list of fields with their values.`;
 
-            console.log('Sending prompt to Phi 4-mini. Prompt length:', prompt.length);
+            console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
 
             const response = await this.wllama.createChatCompletion({
                 messages: [
@@ -755,7 +755,7 @@ Respond as a list of fields with their values.`;
             }
 
             const result = response.choices[0].message.content;
-            console.log('Phi 4-mini response:', result);
+            console.log('Phi 3.5-mini response:', result);
 
             if (!result || result.trim().length === 0) {
                 throw new Error('Empty response from AI model');
@@ -765,7 +765,7 @@ Respond as a list of fields with their values.`;
             console.log('Parsed fields:', this.extractedFields);
 
         } catch (error) {
-            console.error('Phi 4-mini extraction failed:', error);
+            console.error('Phi 3.5-mini extraction failed:', error);
             throw new Error('Failed to extract field information: ' + error.message);
         }
     }
