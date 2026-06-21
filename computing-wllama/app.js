@@ -638,7 +638,7 @@ async function initWllama(progressCallback = null) {
 
         const modelLoadParams = {
             n_ctx: 712,
-            //n_gpu_layers: 0, // Force CPU-only
+            n_gpu_layers: 0, // Force CPU-only
             n_threads: preferredThreads,
             progressCallback: internalProgressCallback
         };
