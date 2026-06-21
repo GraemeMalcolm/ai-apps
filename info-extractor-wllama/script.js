@@ -518,7 +518,7 @@ class InfoExtractorApp {
             this.wllama = new Wllama(WASM_PATHS);
 
             const modelLoadParams = {
-                n_ctx: 1024,
+                n_ctx: 768,
                 n_gpu_layers: 0,
                 n_threads: preferredThreads,
                 progressCallback: ({ loaded, total }) => {
@@ -755,7 +755,7 @@ Respond as a list of fields with their values.`;
                             content: prompt
                         }
                     ],
-                    max_tokens: 500,
+                    max_tokens: 300,
                     temperature: 0.1,
                     top_k: 30,
                     top_p: 0.85,
