@@ -1893,7 +1893,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         const completion = await wllama.createChatCompletion({
             messages,
             max_tokens: 512,
-            temperature: 0.5,
+            temperature: 0.7,
             top_k: 30,
             top_p: 0.9,
             repeat_penalty: 1.1,
