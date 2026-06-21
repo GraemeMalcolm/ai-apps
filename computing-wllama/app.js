@@ -1845,6 +1845,9 @@ async function generateComputingInfo(query, _onChunk = null, bubbleElement = nul
  */
 async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
     let slowResponseTimeout;
+    let stallDetectionTimer = null;  // Fires if no new token arrives mid-stream
+    let stalledMidStream = false;    // Set when the stall timer fires
+    let responseText = '';           // Declared here so catch block can read partial content
     try {
         lastWllamaCompletionErrored = false;
 
@@ -1886,7 +1889,6 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         }, 20000);
 
         // Generate response using createChatCompletion with streaming
-        let responseText = '';
         const completion = await wllama.createChatCompletion({
             messages,
             max_tokens: 200,
@@ -1923,6 +1925,19 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
                         setBubbleContent(bubbleElement, bubblePrefix);
                     }
                 }
+
+                // Reset the mid-stream stall timer on every content chunk.
+                // If no new token arrives within 30 s the generation is aborted
+                // and whatever partial text was received is returned to the caller.
+                if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
+                stallDetectionTimer = setTimeout(() => {
+                    stalledMidStream = true;
+                    console.warn('Wllama stream stalled (no new token for 30s), aborting');
+                    if (currentAbortController) {
+                        currentAbortController.abort();
+                    }
+                }, 30000);
+
                 responseText += text;
 
                 // Stream to bubble if provided, throttled to one DOM update per frame
@@ -1940,8 +1955,9 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         currentAbortController = null;
         currentStream = null;
 
-        // Clear timeout if still pending
+        // Clear both timeouts now that the stream has finished
         clearTimeout(slowResponseTimeout);
+        if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
 
         // If stopped by user, return null
         if (shouldStopResponse) {
@@ -1966,8 +1982,26 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
 
     } catch (error) {
         clearTimeout(slowResponseTimeout);
+        if (stallDetectionTimer) clearTimeout(stallDetectionTimer);
         currentStream = null;
         if (error.name === 'AbortError') {
+            if (stalledMidStream) {
+                // Stream stalled after partial content was received.
+                // Return whatever we have so the user sees something useful.
+                const partial = trimIncompleteSentence(responseText.trim());
+                if (partial && partial.length >= 10) {
+                    console.warn('Returning partial response from stalled stream');
+                    if (bubbleElement) {
+                        setBubbleContent(bubbleElement, bubblePrefix + escapeHtml(partial));
+                        scrollToBottom();
+                    }
+                    return partial;
+                }
+                // No usable partial content – fall through to the error path
+                console.warn('Stream stalled with no usable partial response');
+                lastWllamaCompletionErrored = true;
+                return null;
+            }
             console.log('Generation aborted by user');
             lastWllamaCompletionErrored = false;
             return null;
