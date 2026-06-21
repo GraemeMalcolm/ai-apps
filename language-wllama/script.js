@@ -3,8 +3,8 @@ import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/in
 const WASM_PATHS = {
     default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
-const PHI4_MINI_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
-const PHI4_MINI_QUANT = "Q4_K_M";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
+const MODEL_QUANT = "Q4_K_M";
 
 (function () {
     "use strict";
@@ -658,7 +658,7 @@ const PHI4_MINI_QUANT = "Q4_K_M";
     async function initializeModel() {
         if (isLoadingModel || isModelLoaded) return;
         isLoadingModel = true;
-        updateModelStatus("Loading Phi 4-mini...", true);
+        updateModelStatus("Loading Phi 3.5-mini...", true);
 
         try {
             const useMultiThread = window.crossOriginIsolated === true;
@@ -673,15 +673,15 @@ const PHI4_MINI_QUANT = "Q4_K_M";
                 n_threads: preferredThreads,
                 progressCallback: function ({ loaded, total }) {
                     if (!total) {
-                        updateModelStatus("Loading Phi 4-mini...", true);
+                        updateModelStatus("Loading Phi 3.5-mini...", true);
                         return;
                     }
                     const pct = Math.round((loaded / total) * 100);
-                    updateModelStatus("Phi 4-mini: " + pct + "%", true);
+                    updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
                 }
             };
 
-            const modelRef = { repo: PHI4_MINI_REPO, quant: PHI4_MINI_QUANT };
+            const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
             try {
                 await wllamaInstance.loadModelFromHF(modelRef, modelLoadParams);
             } catch (multiErr) {
@@ -696,11 +696,11 @@ const PHI4_MINI_QUANT = "Q4_K_M";
 
             isModelLoaded = true;
             isLoadingModel = false;
-            updateModelStatus("Phi 4-mini ready", false);
-            console.log("Phi 4-mini loaded successfully");
+            updateModelStatus("Phi 3.5-mini ready", false);
+            console.log("Phi 3.5-mini loaded successfully");
 
         } catch (error) {
-            console.error("Failed to load Phi 4-mini:", error);
+            console.error("Failed to load Phi 3.5-mini:", error);
             isModelLoaded = false;
             isLoadingModel = false;
             if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
@@ -839,7 +839,7 @@ const PHI4_MINI_QUANT = "Q4_K_M";
                 lockEditor();
             } else {
                 const usingAI = isModelLoaded && wllamaInstance;
-                showStatus(usingAI ? "Detecting PII with Phi 4-mini..." : "Detecting PII using rules...", false);
+                showStatus(usingAI ? "Detecting PII with Phi 3.5-mini..." : "Detecting PII using rules...", false);
 
                 let result;
                 if (usingAI) {
