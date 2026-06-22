@@ -781,6 +781,10 @@ Respond as a list of fields with their values.`;
                 clearTimeout(timeoutId);
             }
 
+            if (abortController.signal.aborted) {
+                throw new Error('AI extraction timed out. Please try again, or disable the AI toggle to use pattern-based extraction instead.');
+            }
+
             console.log('Phi 3.5-mini response:', accumulatedText);
 
             if (!accumulatedText || accumulatedText.trim().length === 0) {

@@ -274,7 +274,7 @@ const MODEL_QUANT = "Q4_K_M";
         const aiOption = elements.modeSelect.querySelector('option[value="ai"]');
         if (aiOption) {
             aiOption.disabled = !aiAvailable;
-            aiOption.textContent = aiAvailable ? "Phi 3.5-mini" : "Phi 3.5-mini (unavailable)";
+            aiOption.textContent = aiAvailable ? "Use AI model" : "AI model unavailable";
         }
         if (!aiAvailable) {
             elements.modeSelect.value = "basic";
