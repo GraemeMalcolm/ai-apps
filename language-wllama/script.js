@@ -83,6 +83,8 @@ const MODEL_QUANT = "Q4_K_M";
     let wllamaInstance = null;
     let isModelLoaded = false;
     let isLoadingModel = false;
+    let modelLoadingCancelled = false;
+    let modelLoadingAbortController = null;
 
     const elements = {
         analyzerSelect: document.getElementById("analyzer-select"),
@@ -98,7 +100,9 @@ const MODEL_QUANT = "Q4_K_M";
         results: document.getElementById("results"),
         announcer: document.getElementById("aria-announcer"),
         themeToggle: document.getElementById("theme-toggle"),
-        modelStatus: document.getElementById("model-status")
+        modelStatus: document.getElementById("model-status"),
+        cancelLink: document.getElementById("cancel-model-link"),
+        modeSelect: document.getElementById("mode-select")
     };
 
     function announce(text) {
@@ -200,6 +204,81 @@ const MODEL_QUANT = "Q4_K_M";
 
         elements.modelStatus.textContent = message;
         elements.modelStatus.className = 'model-status-text ' + (isLoading ? 'loading' : 'ready');
+    }
+
+    function isUsingAI() {
+        return isModelLoaded && Boolean(wllamaInstance) &&
+            (!elements.modeSelect || elements.modeSelect.value === "ai");
+    }
+
+    function setupCancelLink() {
+        if (!elements.cancelLink) return;
+        elements.cancelLink.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelModelLoad();
+        });
+        elements.cancelLink.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                cancelModelLoad();
+            }
+        });
+    }
+
+    function showCancelLink() {
+        if (elements.cancelLink && !modelLoadingCancelled) {
+            elements.cancelLink.style.display = "inline-block";
+        }
+    }
+
+    function cancelModelLoad() {
+        modelLoadingCancelled = true;
+        if (modelLoadingAbortController) {
+            modelLoadingAbortController.abort();
+        }
+        if (wllamaInstance) {
+            const _old = wllamaInstance;
+            wllamaInstance = null;
+            _old.exit().catch(function () {});
+        }
+        if (elements.cancelLink) elements.cancelLink.style.display = "none";
+        isLoadingModel = false;
+        isModelLoaded = false;
+        updateModelStatus("Rule-based extraction ready", false);
+        enableUI();
+    }
+
+    function disableUI() {
+        elements.analyzerSelect.disabled = true;
+        elements.sampleSelect.disabled = true;
+        elements.attachBtn.disabled = true;
+        elements.detectBtn.disabled = true;
+        elements.sourceText.disabled = true;
+        if (elements.modeSelect) elements.modeSelect.disabled = true;
+    }
+
+    function enableUI() {
+        elements.analyzerSelect.disabled = false;
+        elements.sampleSelect.disabled = false;
+        elements.attachBtn.disabled = false;
+        elements.sourceText.disabled = false;
+        if (elements.modeSelect) elements.modeSelect.disabled = false;
+        updateDetectButton();
+        updateModeSelect();
+    }
+
+    function updateModeSelect() {
+        if (!elements.modeSelect) return;
+        const aiAvailable = isModelLoaded && Boolean(wllamaInstance);
+        const aiOption = elements.modeSelect.querySelector('option[value="ai"]');
+        if (aiOption) {
+            aiOption.disabled = !aiAvailable;
+            aiOption.textContent = aiAvailable ? "Phi 3.5-mini" : "Phi 3.5-mini (unavailable)";
+        }
+        if (!aiAvailable) {
+            elements.modeSelect.value = "basic";
+        }
     }
 
     function dedupeStrings(values) {
@@ -658,6 +737,10 @@ const MODEL_QUANT = "Q4_K_M";
     async function initializeModel() {
         if (isLoadingModel || isModelLoaded) return;
         isLoadingModel = true;
+        modelLoadingCancelled = false;
+        modelLoadingAbortController = new AbortController();
+        disableUI();
+        setupCancelLink();
         updateModelStatus("Loading Phi 3.5-mini...", true);
 
         try {
@@ -672,12 +755,14 @@ const MODEL_QUANT = "Q4_K_M";
                 n_gpu_layers: 0,
                 n_threads: preferredThreads,
                 progressCallback: function ({ loaded, total }) {
+                    if (modelLoadingCancelled) return;
                     if (!total) {
                         updateModelStatus("Loading Phi 3.5-mini...", true);
                         return;
                     }
                     const pct = Math.round((loaded / total) * 100);
                     updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
+                    showCancelLink();
                 }
             };
 
@@ -685,6 +770,7 @@ const MODEL_QUANT = "Q4_K_M";
             try {
                 await wllamaInstance.loadModelFromHF(modelRef, modelLoadParams);
             } catch (multiErr) {
+                if (modelLoadingCancelled) throw multiErr;
                 if (preferredThreads > 1) {
                     if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
                     wllamaInstance = new Wllama(WASM_PATHS);
@@ -694,17 +780,27 @@ const MODEL_QUANT = "Q4_K_M";
                 }
             }
 
+            if (modelLoadingCancelled) {
+                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+                return;
+            }
+
             isModelLoaded = true;
             isLoadingModel = false;
+            if (elements.cancelLink) elements.cancelLink.style.display = "none";
             updateModelStatus("Phi 3.5-mini ready", false);
+            enableUI();
             console.log("Phi 3.5-mini loaded successfully");
 
         } catch (error) {
+            if (modelLoadingCancelled) return;
             console.error("Failed to load Phi 3.5-mini:", error);
             isModelLoaded = false;
             isLoadingModel = false;
             if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+            if (elements.cancelLink) elements.cancelLink.style.display = "none";
             updateModelStatus("Rule-based extraction ready", false);
+            enableUI();
         }
     }
 
@@ -824,7 +920,7 @@ const MODEL_QUANT = "Q4_K_M";
         try {
             if (state.mode === "language") {
                 let result;
-                if (isModelLoaded && wllamaInstance) {
+                if (isUsingAI()) {
                     try {
                         result = await detectLanguageWithAI(text);
                     } catch (aiErr) {
@@ -838,7 +934,7 @@ const MODEL_QUANT = "Q4_K_M";
                 announce("Detected language");
                 lockEditor();
             } else {
-                const usingAI = isModelLoaded && wllamaInstance;
+                const usingAI = isUsingAI();
                 showStatus(usingAI ? "Detecting PII with Phi 3.5-mini..." : "Detecting PII using rules...", false);
 
                 let result;
@@ -887,6 +983,13 @@ const MODEL_QUANT = "Q4_K_M";
         updateDetectButton();
 
         initializeModel();
+
+        if (elements.modeSelect) {
+            elements.modeSelect.addEventListener("change", function () {
+                const isAI = elements.modeSelect.value === "ai";
+                announce(isAI ? "Switched to Phi 3.5-mini mode" : "Switched to basic pattern matching mode");
+            });
+        }
 
         elements.analyzerSelect.addEventListener("change", function () {
             state.mode = elements.analyzerSelect.value;
