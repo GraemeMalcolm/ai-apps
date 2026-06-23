@@ -28,6 +28,8 @@ class InfoExtractorApp {
         this.useAI = true; // Default to using AI if available
         this.isLoadingModel = false; // Track if model is currently loading
         this.cancelModelLoad = false; // Flag to cancel model loading
+        this.gpuFailed = false; // True after a GPU inference failure; forces CPU-only on next load
+        this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
 
         // Zoom functionality
         this.zoomLevel = 1.0;
@@ -501,6 +503,7 @@ class InfoExtractorApp {
         // Reset cancellation flag and set loading state
         this.cancelModelLoad = false;
         this.isLoadingModel = true;
+        this.wllamaUsedGPU = false;
 
         try {
             console.log('Initializing Phi 3.5-mini (wllama)...');
@@ -511,39 +514,84 @@ class InfoExtractorApp {
                 return;
             }
 
+            // Detect GPU vendor and skip WebGPU for known-problematic GPUs
+            let gpuEnabled = !this.gpuFailed && !!navigator.gpu;
+            if (gpuEnabled) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                        const vendor = (info?.vendor || '').toLowerCase();
+                        if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                            // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
+                            console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                            console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        }
+                    } else {
+                        gpuEnabled = false;
+                    }
+                } catch (e) {
+                    console.warn('Could not query WebGPU adapter info:', e);
+                    gpuEnabled = false;
+                }
+            }
+
             const useMultiThread = window.crossOriginIsolated === true;
             const availableThreads = navigator.hardwareConcurrency || 4;
             const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
 
-            this.wllama = new Wllama(WASM_PATHS);
-
-            const modelLoadParams = {
-                n_ctx: 768,
-                n_gpu_layers: 0,
-                n_threads: preferredThreads,
-                progressCallback: ({ loaded, total }) => {
-                    if (this.cancelModelLoad) return;
-                    if (!total) {
-                        this.updateModelLoadingProgress(20, 'Loading Phi 3.5-mini...');
-                        return;
-                    }
-                    const pct = Math.round((loaded / total) * 100);
-                    this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 3.5-mini: ${pct}%`);
+            const progressCallback = ({ loaded, total }) => {
+                if (this.cancelModelLoad) return;
+                if (!total) {
+                    this.updateModelLoadingProgress(20, 'Loading Phi 3.5-mini...');
+                    return;
                 }
+                const pct = Math.round((loaded / total) * 100);
+                this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 3.5-mini: ${pct}%`);
             };
 
             const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
-            try {
-                await this.wllama.loadModelFromHF(modelRef, modelLoadParams);
-            } catch (multiErr) {
-                if (preferredThreads > 1 && !this.cancelModelLoad) {
-                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
-                    this.wllama = new Wllama(WASM_PATHS);
-                    await this.wllama.loadModelFromHF(modelRef, { ...modelLoadParams, n_threads: 1 });
-                } else {
-                    throw multiErr;
+
+            const attemptLoad = async (n_gpu_layers, n_threads) => {
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                this.wllama = new Wllama(WASM_PATHS);
+                await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers, n_threads, progressCallback });
+            };
+
+            const loadWithFallback = async () => {
+                if (gpuEnabled) {
+                    try {
+                        console.log('Attempting GPU load (32 layers)...');
+                        this.updateModelLoadingProgress(15, 'Loading with GPU acceleration...');
+                        await attemptLoad(32, preferredThreads);
+                        this.wllamaUsedGPU = true;
+                        console.log('Model loaded with GPU acceleration.');
+                        return;
+                    } catch (gpuErr) {
+                        console.warn('GPU load failed, falling back to CPU:', gpuErr);
+                        this.wllamaUsedGPU = false;
+                    }
                 }
-            }
+                if (preferredThreads > 1) {
+                    try {
+                        console.log('Attempting CPU load (multi-thread)...');
+                        this.updateModelLoadingProgress(15, 'Loading with CPU (multi-thread)...');
+                        await attemptLoad(0, preferredThreads);
+                        return;
+                    } catch (multiErr) {
+                        console.warn('CPU multi-thread load failed, trying single-thread:', multiErr);
+                    }
+                }
+                console.log('Attempting CPU load (single-thread)...');
+                this.updateModelLoadingProgress(15, 'Loading with CPU (single-thread)...');
+                await attemptLoad(0, 1);
+            };
+
+            await loadWithFallback();
 
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user after download');
@@ -582,6 +630,34 @@ class InfoExtractorApp {
                 console.log('Model loading was cancelled, no error handling needed');
             }
         }
+    }
+
+    /**
+     * Tears down the current wllama instance and reloads the model on CPU only.
+     * Called when GPU inference produces empty output at runtime.
+     */
+    async _reloadModelOnCpu() {
+        this.gpuFailed = true;
+        this.wllamaUsedGPU = false;
+        this.isModelLoaded = false;
+        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const tryLoad = async (n_threads) => {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            this.wllama = new Wllama(WASM_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers: 0, n_threads, progressCallback: () => {} });
+        };
+
+        if (preferredThreads > 1) {
+            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
+        } else {
+            await tryLoad(1);
+        }
+        this.isModelLoaded = true;
     }
 
     async analyzeCurrentImage() {
@@ -788,6 +864,16 @@ Respond as a list of fields with their values.`;
             console.log('Phi 3.5-mini response:', accumulatedText);
 
             if (!accumulatedText || accumulatedText.trim().length === 0) {
+                if (this.wllamaUsedGPU && !this.gpuFailed) {
+                    console.warn('GPU produced empty extraction response. Switching to CPU and retrying...');
+                    this.updateProgress(60, 'GPU issue detected — retrying with CPU...');
+                    try {
+                        await this._reloadModelOnCpu();
+                        return await this.extractFields();
+                    } catch (cpuErr) {
+                        console.error('CPU reload failed:', cpuErr);
+                    }
+                }
                 throw new Error('Empty response from AI model');
             }
 
