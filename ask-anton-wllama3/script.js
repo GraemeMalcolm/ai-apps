@@ -515,8 +515,6 @@ class AskAnton {
             };
 
             // Helper to attempt a model load; always creates a fresh Wllama instance.
-            // GPU loads use 10 of 32 layers to stay within the WebGPU driver's
-            // 30-second command queue timeout (TDR) on mobile GPUs.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
                 const n_ctx = n_gpu_layers > 0 ? 1024 : 1024;
                 this.wllama = new Wllama(CONFIG_PATHS);
@@ -567,7 +565,7 @@ class AskAnton {
             // GPU-first (skipped if gpuFailed is true). Partial layer offload (10 of 32
             // layers) falls back to CPU multi-thread, then CPU single-thread.
             let initializedWithGPU = false;
-            const GPU_ENABLED = false; // Set to true to re-enable GPU acceleration
+            const GPU_ENABLED = true; // Set to true to re-enable GPU acceleration
 
             const loadWithFallback = async () => {
                 if (GPU_ENABLED && !this.gpuFailed) {
@@ -587,12 +585,12 @@ class AskAnton {
                             console.warn('Partial model download detected; clearing cache and retrying from part 1');
                             await clearModelCache();
                             cacheWasCleared = true;
-                            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                             return loadWithFallback();
                         }
 
                         console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
-                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                     }
                 } else {
                     console.log('Skipping GPU: Using CPU directly');
@@ -606,7 +604,7 @@ class AskAnton {
                     if (this.modelLoadingCancelled) throw cpuErr;
                     if (preferredThreads > 1) {
                         console.warn('Multi-thread CPU init failed, retrying with 1 thread');
-                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                         // Final attempt: CPU single-threaded
                         await attemptLoad(0, 1);
                         console.log('Wllama initialized on CPU with 1 thread');
@@ -621,7 +619,7 @@ class AskAnton {
 
             // Check if cancelled before finalizing
             if (this.modelLoadingCancelled) {
-                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                 throw new Error('Model loading cancelled by user');
             }
 
@@ -739,7 +737,7 @@ class AskAnton {
         if (this.wllama) {
             const _oldWllama = this.wllama;
             this.wllama = null;
-            _oldWllama.exit().catch(() => {});
+            _oldWllama.exit().catch(() => { });
         }
 
         // Hide the cancel link immediately
@@ -2113,7 +2111,7 @@ class AskAnton {
     // LLM RESPONSE GENERATION (wllama)
     // ============================================================================
 
-// Helper function to extract first sentence or first 30 characters
+    // Helper function to extract first sentence or first 30 characters
     extractFirstSentence(text) {
         if (!text) return '';
 
@@ -2388,7 +2386,7 @@ class AskAnton {
             this.wllama_usedGPU = false;
             const _deadWllama = this.wllama;
             this.wllama = null;  // Dead WASM instance — must be replaced
-            _deadWllama.exit().catch(() => {});
+            _deadWllama.exit().catch(() => { });
 
             // Animate the failure notice into the current bubble as a proper assistant response.
             await this.animateTyping(
