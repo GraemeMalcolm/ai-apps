@@ -565,7 +565,33 @@ class AskAnton {
             // GPU-first (skipped if gpuFailed is true). Partial layer offload (10 of 32
             // layers) falls back to CPU multi-thread, then CPU single-thread.
             let initializedWithGPU = false;
-            const GPU_ENABLED = true; // Set to true to re-enable GPU acceleration
+
+            // Qualcomm Adreno WebGPU has precision bugs that cause hallucinations.
+            // Detect the adapter vendor and disable GPU for known-broken implementations.
+            let GPU_ENABLED = true;
+            if (navigator.gpu) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        // Chrome 121+: adapter.info is a synchronous property.
+                        // Older Chrome: requestAdapterInfo() (now deprecated/removed).
+                        const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                        const vendor = (info?.vendor || '').toLowerCase();
+                        if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                            // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
+                            console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info.vendor}") — known precision issues cause hallucinations`);
+                            GPU_ENABLED = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
+                            // which predates the fix. Fall back to CPU until wllama is upgraded.
+                            console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
+                            GPU_ENABLED = false;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Could not query WebGPU adapter info:', e);
+                }
+            }
 
             const loadWithFallback = async () => {
                 if (GPU_ENABLED && !this.gpuFailed) {
