@@ -16,6 +16,8 @@ class ChatPlayground {
         this.currentMode = 'none'; // 'phi-cpu' or 'none'
         this.wllamaLoaded = false; // Track if wllama is initialized
         this.wllamaFailed = false; // Track if Phi 3.5-mini failed to load
+        this.wllamaUsedGPU = false; // True if current wllama instance was loaded with GPU layers
+        this.gpuFailed = false; // True after a GPU session crash; suppresses future GPU attempts
         this.isModelLoaded = false;
         this.conversationHistory = [];
         this.isGenerating = false;
@@ -39,7 +41,7 @@ class ChatPlayground {
         // Configuration objects
         this.config = {
             modelParameters: {
-                temperature: 0.7,
+                temperature: 0.5,
                 top_p: 0.9,
                 max_tokens: 768,
                 repetition_penalty: 1.1
@@ -268,9 +270,9 @@ class ChatPlayground {
     // Get model-specific default parameters
     getModelDefaults() {
         return {
-            temperature: 0.2,
-            top_p: 0.85,
-            max_tokens: 512,
+            temperature: 0.5,
+            top_p: 0.9,
+            max_tokens: 768,
             repetition_penalty: 1.1
         };
     }
@@ -1310,10 +1312,14 @@ class ChatPlayground {
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
-        const modelLoadParams = {
+        const modelRef = {
+            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+            quant: 'Q4_K_M'
+        };
+
+        const baseParams = {
             n_ctx: 712,
-            n_gpu_layers: 0,
-            n_threads: preferredThreads,
             progressCallback: ({ loaded, total }) => {
                 if (this.modelLoadingCancelled) return;
                 const percentage = Math.round((loaded / total) * 100);
@@ -1324,10 +1330,39 @@ class ChatPlayground {
             }
         };
 
-        const modelRef = {
-            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
-            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
-            quant: 'Q4_K_M'
+        // Detect GPU vendor; disable WebGPU for known-broken implementations or
+        // if a previous GPU session crashed (this.gpuFailed=true).
+        let GPU_ENABLED = !this.gpuFailed && !!navigator.gpu;
+        if (GPU_ENABLED) {
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (adapter) {
+                    // Chrome 121+: adapter.info is synchronous. Older: requestAdapterInfo().
+                    const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                    const vendor = (info?.vendor || '').toLowerCase();
+                    if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                        // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
+                        console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info?.vendor}") — known precision issues cause hallucinations`);
+                        GPU_ENABLED = false;
+                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                        // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
+                        // which predates the fix. Fall back to CPU until wllama is upgraded.
+                        console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info?.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
+                        GPU_ENABLED = false;
+                    }
+                } else {
+                    GPU_ENABLED = false; // requestAdapter returned null — no WebGPU
+                }
+            } catch (e) {
+                console.warn('Could not query WebGPU adapter info:', e);
+                GPU_ENABLED = false;
+            }
+        }
+
+        // Helper: create a fresh Wllama instance and load the model.
+        const attemptLoad = async (n_gpu_layers, n_threads) => {
+            this.wllama = new Wllama(CONFIG_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { ...baseParams, n_gpu_layers, n_threads });
         };
 
         if (this.modelLoadingCancelled) {
@@ -1335,40 +1370,51 @@ class ChatPlayground {
         }
 
         this.updateProgress(10, 'Loading Phi 3.5-mini...');
+        this.updateProgress(20, 'Downloading model...');
 
-        try {
-            this.wllama = new Wllama(CONFIG_PATHS);
-            this.updateProgress(20, 'Downloading model...');
-
-            await this.wllama.loadModelFromHF(modelRef, modelLoadParams);
-
-            if (this.modelLoadingCancelled) {
-                try { await this.wllama.exit(); } catch (_) {}
-                this.wllama = null;
-                throw new Error('Model loading cancelled by user');
-            }
-
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-        } catch (multiErr) {
-            if (this.modelLoadingCancelled) throw multiErr;
-
-            if (preferredThreads > 1) {
-                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
-
-                this.wllama = new Wllama(CONFIG_PATHS);
-                await this.wllama.loadModelFromHF(modelRef, { ...modelLoadParams, n_threads: 1 });
-
-                if (this.modelLoadingCancelled) {
-                    try { await this.wllama.exit(); } catch (_) {}
-                    this.wllama = null;
-                    throw new Error('Model loading cancelled by user');
+        const loadWithFallback = async () => {
+            if (GPU_ENABLED) {
+                try {
+                    // Full GPU offload (all 32 layers). Full offload avoids the precision
+                    // mismatch at CPU/GPU layer boundaries that caused garbled tokens.
+                    await attemptLoad(32, preferredThreads);
+                    this.wllamaUsedGPU = true;
+                    console.log(`Wllama initialized with GPU (32 layers) + ${preferredThreads} thread(s)`);
+                    return;
+                } catch (gpuErr) {
+                    if (this.modelLoadingCancelled) throw gpuErr;
+                    console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
+                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
                 }
-
-                console.log('Wllama initialized successfully with 1 thread (fallback)');
             } else {
-                throw multiErr;
+                console.log('Skipping GPU: using CPU directly');
             }
+
+            // CPU multi-threaded
+            try {
+                await attemptLoad(0, preferredThreads);
+                this.wllamaUsedGPU = false;
+                console.log(`Wllama initialized on CPU with ${preferredThreads} thread(s)`);
+            } catch (cpuErr) {
+                if (this.modelLoadingCancelled) throw cpuErr;
+                if (preferredThreads > 1) {
+                    console.warn(`Multi-thread CPU init failed (${cpuErr.message}), retrying with 1 thread`);
+                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                    // Final attempt: CPU single-threaded
+                    await attemptLoad(0, 1);
+                    this.wllamaUsedGPU = false;
+                    console.log('Wllama initialized on CPU with 1 thread');
+                } else {
+                    throw cpuErr;
+                }
+            }
+        };
+
+        await loadWithFallback();
+
+        if (this.modelLoadingCancelled) {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            throw new Error('Model loading cancelled by user');
         }
 
         this.wllamaLoaded = true;
@@ -1381,6 +1427,8 @@ class ChatPlayground {
             this.progressContainer.style.display = 'none';
             this.enableUI();
         }, 1000);
+
+        console.log(`Wllama initialized successfully (GPU: ${this.wllamaUsedGPU})`);
     }
 
 
@@ -2145,15 +2193,37 @@ class ChatPlayground {
         return trimmedText.slice(0, sentenceEndIndex).trimEnd();
     }
 
-    async handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis = '') {
+    /**
+     * HTML-escapes text then converts basic markdown (bold, italic, paragraphs)
+     * to safe HTML for display in the response bubble.
+     */
+    formatResponse(text) {
+        if (!text) return '';
+        // Escape HTML first to prevent XSS
+        let formatted = escapeHtml(text);
+        // **bold** → <strong>
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // *italic* → <em>
+        formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        // Wrap double-newline-separated blocks as paragraphs, single newlines as <br>
+        formatted = formatted.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+        return formatted;
+    }
+
+    async handleWllamaMode(messages, thinkingIndicator, userMessage, imageAnalysis = '', isGpuRetry = false, existingContentEl = null) {
         if (!this.wllama) {
             throw new Error('Wllama is not initialized. Please wait for AI mode to finish loading.');
         }
 
-        thinkingIndicator.remove();
+        if (thinkingIndicator) thinkingIndicator.remove();
 
-        const assistantMessageEl = this.addMessage('assistant', '');
-        const contentEl = assistantMessageEl.querySelector('.message-content');
+        let contentEl;
+        if (existingContentEl) {
+            contentEl = existingContentEl;
+        } else {
+            const assistantMessageEl = this.addMessage('assistant', '');
+            contentEl = assistantMessageEl.querySelector('.message-content');
+        }
 
         contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I\'m working on a response. Thanks for your patience!)</p>';
         contentEl.style.width = 'fit-content';
@@ -2225,7 +2295,7 @@ class ChatPlayground {
                     displayResponse = cleanedResponse + `\n(Ref: ${this.config.fileUpload.fileName})`;
                 }
 
-                contentEl.textContent = displayResponse;
+                contentEl.innerHTML = this.formatResponse(displayResponse);
 
                 this.conversationHistory.push({ role: 'user', content: userMessage });
                 this.conversationHistory.push({ role: 'assistant', content: cleanedResponse });
@@ -2237,6 +2307,9 @@ class ChatPlayground {
                 displayResponse += '\n\n[Response stopped by user - not saved to history]';
                 contentEl.textContent = displayResponse;
                 console.log('Stopped response not added to conversation history');
+            } else if (!isGpuRetry && this.wllamaUsedGPU && !this.stopRequested) {
+                await this.handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis);
+                return;
             } else {
                 contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
             }
@@ -2251,6 +2324,9 @@ class ChatPlayground {
                     }
                     contentEl.textContent = displayResponse;
                 }
+            } else if (!isGpuRetry && this.wllamaUsedGPU) {
+                console.warn('GPU inference error, falling back to CPU');
+                await this.handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis);
             } else {
                 console.error('Error in wllama generation:', error);
                 contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
@@ -2261,6 +2337,44 @@ class ChatPlayground {
                 this.currentStream = null;
             }
         }
+    }
+
+
+
+    async handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis) {
+        console.warn('GPU inference failed; switching to CPU and retrying prompt...');
+        this.gpuFailed = true;
+        this.wllamaUsedGPU = false;
+        this.wllamaLoaded = false;
+
+        const deadWllama = this.wllama;
+        this.wllama = null;
+        deadWllama?.exit().catch(() => {});
+
+        contentEl.style.width = 'fit-content';
+        contentEl.style.whiteSpace = 'normal';
+        contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>' +
+            '<p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">I encountered a GPU issue. Switching to CPU mode and retrying — please wait...</p>';
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+
+        try {
+            await this.initializeWllama();
+        } catch (reinitErr) {
+            console.error('CPU re-initialisation failed after GPU crash:', reinitErr);
+            contentEl.style.width = '';
+            contentEl.style.whiteSpace = '';
+            contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+            return;
+        }
+
+        if (!this.wllama || this.stopRequested) return;
+
+        // Clear the failure notice and retry into the same bubble
+        contentEl.textContent = '';
+        contentEl.style.width = '';
+        contentEl.style.whiteSpace = '';
+
+        await this.handleWllamaMode(messages, null, userMessage, imageAnalysis, true, contentEl);
     }
 
 
@@ -3604,9 +3718,7 @@ class ChatPlayground {
                     { role: 'user', content: voiceModeUserMessage }
                 ];
 
-                this.currentAbortController = new AbortController();
-
-                const completion = await this.wllama.createChatCompletion({
+                const voiceCompletionParams = {
                     messages: voiceMessages,
                     max_tokens: Math.min(this.config.modelParameters.max_tokens, 250),
                     temperature: this.config.modelParameters.temperature,
@@ -3614,13 +3726,45 @@ class ChatPlayground {
                     top_p: this.config.modelParameters.top_p,
                     repeat_penalty: this.config.modelParameters.repetition_penalty,
                     repeat_last_n: 64,
-                    abortSignal: this.currentAbortController.signal,
                     stream: false
-                });
+                };
 
+                this.currentAbortController = new AbortController();
+                const completion = await this.wllama.createChatCompletion({
+                    ...voiceCompletionParams,
+                    abortSignal: this.currentAbortController.signal
+                });
                 this.currentAbortController = null;
                 responseText = completion.choices?.[0]?.message?.content?.trim() ?? '';
                 console.log('Wllama voice completion finished, response length:', responseText.length);
+
+                // GPU failure recovery: if GPU was used and the response is empty, tear
+                // down and retry once on CPU.
+                if (!responseText && this.wllamaUsedGPU && !this.stopRequested) {
+                    console.warn('GPU voice inference produced no output; switching to CPU and retrying...');
+                    this.gpuFailed = true;
+                    this.wllamaUsedGPU = false;
+                    this.wllamaLoaded = false;
+                    const deadWllama = this.wllama;
+                    this.wllama = null;
+                    deadWllama?.exit().catch(() => {});
+                    try {
+                        await this.initializeWllama();
+                        if (this.wllama && !this.stopRequested) {
+                            this.currentAbortController = new AbortController();
+                            const retryCompletion = await this.wllama.createChatCompletion({
+                                ...voiceCompletionParams,
+                                abortSignal: this.currentAbortController.signal
+                            });
+                            this.currentAbortController = null;
+                            responseText = retryCompletion.choices?.[0]?.message?.content?.trim() ?? '';
+                            console.log('CPU voice retry finished, response length:', responseText.length);
+                        }
+                    } catch (reinitErr) {
+                        console.error('CPU re-init failed after GPU voice crash:', reinitErr);
+                        this.currentAbortController = null;
+                    }
+                }
             } else {
                 responseText = "No AI model is currently available. Please wait for the model to load.";
             }

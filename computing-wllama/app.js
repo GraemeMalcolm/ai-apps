@@ -18,6 +18,8 @@ let shouldStopResponse = false; // Flag to cancel ongoing response
 let isStoppingResponse = false; // Prevent new prompts while stream cleanup is running
 let wllama = null; // Wllama instance for CPU mode
 let wllamaReady = false; // Track if wllama is initialized
+let wllamaUsedGPU = false; // True if current wllama instance was loaded with GPU layers
+let gpuFailed = false; // True after a GPU session crash; suppresses future GPU attempts
 let mobilenetReady = false; // Track if MobileNet is initialized
 let mobilenetLoadPromise = null; // Coalesce concurrent lazy-load requests
 let conversationHistory = []; // Track conversation for context
@@ -632,16 +634,9 @@ async function initWllama(progressCallback = null) {
 
         // Try multithreaded first if cross-origin isolated, fall back to single-threaded
         const useMultiThread = window.crossOriginIsolated === true;
-        const availableThreads = navigator.hardwareConcurrency || 4; // Fallback to 4 if not available
+        const availableThreads = navigator.hardwareConcurrency || 4;
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
-
-        const modelLoadParams = {
-            n_ctx: 712,
-            n_gpu_layers: 0, // Force CPU-only
-            n_threads: preferredThreads,
-            progressCallback: internalProgressCallback
-        };
 
         const modelRef = {
             //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
@@ -649,44 +644,97 @@ async function initWllama(progressCallback = null) {
             quant: 'Q4_K_M'
         };
 
-        try {
-            wllama = new Wllama(CONFIG_PATHS);
-            updateLoadingStatus('phi', 'loading', '20%');
-
-            await wllama.loadModelFromHF(modelRef, modelLoadParams);
-
-            // Check if cancelled before finalizing
-            if (modelLoadingCancelled) {
-                try { await wllama.exit(); } catch (_) {}
-                wllama = null;
-                throw new Error('Model loading cancelled by user');
-            }
-
-            console.log(`Wllama initialized successfully with ${preferredThreads} thread(s)`);
-        } catch (multiErr) {
-            if (preferredThreads > 1) {
-                console.warn(`Multi-threaded init failed (${multiErr.message}), falling back to single thread`);
-                if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
-
-                updateLoadingStatus('phi', 'loading', '20%');
-                wllama = new Wllama(CONFIG_PATHS);
-                await wllama.loadModelFromHF(modelRef, { ...modelLoadParams, n_threads: 1 });
-
-                // Check if cancelled before finalizing (fallback path)
-                if (modelLoadingCancelled) {
-                    try { await wllama.exit(); } catch (_) {}
-                    wllama = null;
-                    throw new Error('Model loading cancelled by user');
+        // Detect GPU vendor; disable WebGPU for known-broken implementations or
+        // if a previous GPU session crashed (gpuFailed=true).
+        let GPU_ENABLED = !gpuFailed && !!navigator.gpu;
+        if (GPU_ENABLED) {
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (adapter) {
+                    // Chrome 121+: adapter.info is synchronous. Older: requestAdapterInfo().
+                    const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                    const vendor = (info?.vendor || '').toLowerCase();
+                    if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                        // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
+                        console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info?.vendor}") — known precision issues cause hallucinations`);
+                        GPU_ENABLED = false;
+                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                        // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
+                        // which predates the fix. Fall back to CPU until wllama is upgraded.
+                        console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info?.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
+                        GPU_ENABLED = false;
+                    }
+                } else {
+                    GPU_ENABLED = false; // requestAdapter returned null — no WebGPU
                 }
-
-                console.log("Wllama initialized successfully with 1 thread (fallback)");
-            } else {
-                throw multiErr;
+            } catch (e) {
+                console.warn('Could not query WebGPU adapter info:', e);
+                GPU_ENABLED = false;
             }
+        }
+
+        const baseParams = {
+            n_ctx: 712,
+            progressCallback: internalProgressCallback
+        };
+
+        // Helper: create a fresh Wllama instance and load the model.
+        const attemptLoad = async (n_gpu_layers, n_threads) => {
+            wllama = new Wllama(CONFIG_PATHS);
+            await wllama.loadModelFromHF(modelRef, { ...baseParams, n_gpu_layers, n_threads });
+        };
+
+        updateLoadingStatus('phi', 'loading', '20%');
+
+        const loadWithFallback = async () => {
+            if (GPU_ENABLED) {
+                try {
+                    // Full GPU offload (all 32 layers). Full offload avoids the precision
+                    // mismatch at CPU/GPU layer boundaries that caused garbled tokens.
+                    await attemptLoad(32, preferredThreads);
+                    wllamaUsedGPU = true;
+                    console.log(`Wllama initialized with GPU (32 layers) + ${preferredThreads} thread(s)`);
+                    return;
+                } catch (gpuErr) {
+                    if (modelLoadingCancelled) throw gpuErr;
+                    console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
+                    if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+                }
+            } else {
+                console.log('Skipping GPU: using CPU directly');
+            }
+
+            // CPU multi-threaded
+            try {
+                await attemptLoad(0, preferredThreads);
+                wllamaUsedGPU = false;
+                console.log(`Wllama initialized on CPU with ${preferredThreads} thread(s)`);
+            } catch (cpuErr) {
+                if (modelLoadingCancelled) throw cpuErr;
+                if (preferredThreads > 1) {
+                    console.warn(`Multi-thread CPU init failed (${cpuErr.message}), retrying with 1 thread`);
+                    if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+                    // Final attempt: CPU single-threaded
+                    await attemptLoad(0, 1);
+                    wllamaUsedGPU = false;
+                    console.log('Wllama initialized on CPU with 1 thread');
+                } else {
+                    throw cpuErr;
+                }
+            }
+        };
+
+        await loadWithFallback();
+
+        // Check if cancelled before finalizing
+        if (modelLoadingCancelled) {
+            if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+            throw new Error('Model loading cancelled by user');
         }
 
         wllamaReady = true;
         updateLoadingStatus('phi', 'ready', '100%');
+        console.log(`Wllama initialized successfully (GPU: ${wllamaUsedGPU})`);
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
         if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
@@ -1844,7 +1892,7 @@ async function generateComputingInfo(query, _onChunk = null, bubbleElement = nul
  * @param {HTMLElement} bubbleElement - Optional bubble element to update with waiting message
  * @param {string} bubblePrefix - Optional HTML prefix to preserve in bubble (e.g., classification result)
  */
-async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '') {
+async function generateWithWllama(query, bubbleElement = null, bubblePrefix = '', isGpuRetry = false) {
     let slowResponseTimeout;
     let stallDetectionTimer = null;  // Fires if no new token arrives mid-stream
     let stalledMidStream = false;    // Set when the stall timer fires
@@ -1893,7 +1941,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         const completion = await wllama.createChatCompletion({
             messages,
             max_tokens: 512,
-            temperature: 0.7,
+            temperature: 0.3,
             top_k: 30,
             top_p: 0.9,
             repeat_penalty: 1.1,
@@ -1979,6 +2027,16 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         }
 
         console.log('Wllama final response:', responseText);
+
+        // GPU failure recovery: if GPU was used and the response is empty or errored,
+        // the GPU session likely crashed. Tear down, switch to CPU, and retry once.
+        if (!isGpuRetry && wllamaUsedGPU && !shouldStopResponse &&
+            (lastWllamaCompletionErrored || !responseText.trim())) {
+            console.warn('GPU inference produced no output; switching to CPU and retrying...');
+            await handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix);
+            return null; // caller will use whatever handleGpuFailureAndRetry wrote to the bubble
+        }
+
         return responseText;
 
     } catch (error) {
@@ -2010,7 +2068,66 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
         console.error('Error generating info with Wllama:', error);
         currentAbortController = null;
         lastWllamaCompletionErrored = true;
+
+        // GPU failure recovery for unexpected exceptions during inference.
+        if (!isGpuRetry && wllamaUsedGPU && !shouldStopResponse) {
+            console.warn('GPU inference threw an exception; switching to CPU and retrying...');
+            await handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix);
+        }
+
         return null;
+    }
+}
+
+/**
+ * Tears down the failed GPU wllama instance, re-initialises on CPU, and
+ * retries the query once. Updates bubbleElement in-place throughout.
+ * @param {string} query
+ * @param {HTMLElement|null} bubbleElement
+ * @param {string} bubblePrefix
+ */
+async function handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix) {
+    gpuFailed = true;
+    wllamaUsedGPU = false;
+    wllamaReady = false;
+
+    const deadWllama = wllama;
+    wllama = null;
+    deadWllama?.exit().catch(() => {});
+
+    if (bubbleElement) {
+        setBubbleContent(bubbleElement,
+            bubblePrefix +
+            "I'm sorry, but I encountered an issue with the GPU. " +
+            "Switching to CPU mode and trying again — please wait..."
+        );
+        scrollToBottom();
+    }
+
+    try {
+        await initWllama();
+    } catch (reinitErr) {
+        console.error('CPU re-initialisation failed after GPU crash:', reinitErr);
+        if (bubbleElement) {
+            setBubbleContent(bubbleElement, bubblePrefix + CPU_MODE_FAILURE_MESSAGE);
+            scrollToBottom();
+        }
+        return;
+    }
+
+    if (!wllama || shouldStopResponse) return;
+
+    // Clear the failure notice so the retry streams cleanly into the bubble.
+    if (bubbleElement) {
+        setBubbleContent(bubbleElement, bubblePrefix);
+        scrollToBottom();
+    }
+
+    lastWllamaCompletionErrored = false;
+    const retryResult = await generateWithWllama(query, bubbleElement, bubblePrefix, true);
+    if (!retryResult && bubbleElement) {
+        setBubbleContent(bubbleElement, bubblePrefix + CPU_MODE_FAILURE_MESSAGE);
+        scrollToBottom();
     }
 }
 

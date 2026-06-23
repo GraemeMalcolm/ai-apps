@@ -88,7 +88,7 @@ class AskAnton {
         this.videoPopupWidth = 800;
         this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
-        this.wllamaModeFailureMessage = "I'm sorry, something went wrong. If this keeps happening, please try switching to None.";
+        this.wllamaModeFailureMessage = "I'm sorry, something went wrong. If this keeps happening, please try switching the model to None.";
         this.lastWllamaCompletionErrored = false;
         this.wllama_usedGPU = false;   // true if current wllama instance was loaded with GPU layers
         this.gpuFailed = false;         // true after a GPU session crash; suppresses future GPU attempts
