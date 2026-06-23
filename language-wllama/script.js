@@ -85,6 +85,8 @@ const MODEL_QUANT = "Q4_K_M";
     let isLoadingModel = false;
     let modelLoadingCancelled = false;
     let modelLoadingAbortController = null;
+    let gpuFailed = false;     // True after a GPU inference failure; forces CPU-only on reload
+    let wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
 
     const elements = {
         analyzerSelect: document.getElementById("analyzer-select"),
@@ -737,6 +739,7 @@ const MODEL_QUANT = "Q4_K_M";
     async function initializeModel() {
         if (isLoadingModel || isModelLoaded) return;
         isLoadingModel = true;
+        wllamaUsedGPU = false;
         modelLoadingCancelled = false;
         modelLoadingAbortController = new AbortController();
         disableUI();
@@ -744,41 +747,86 @@ const MODEL_QUANT = "Q4_K_M";
         updateModelStatus("Loading Phi 3.5-mini...", true);
 
         try {
+            // Detect GPU vendor and skip WebGPU for known-problematic GPUs
+            let gpuEnabled = !gpuFailed && !!navigator.gpu;
+            if (gpuEnabled) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                        const vendor = (info?.vendor || '').toLowerCase();
+                        if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                            // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
+                            console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                            console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                            gpuEnabled = false;
+                        }
+                    } else {
+                        gpuEnabled = false;
+                    }
+                } catch (e) {
+                    console.warn('Could not query WebGPU adapter info:', e);
+                    gpuEnabled = false;
+                }
+            }
+
             const useMultiThread = window.crossOriginIsolated === true;
             const availableThreads = navigator.hardwareConcurrency || 4;
             const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
 
-            wllamaInstance = new Wllama(WASM_PATHS);
-
-            const modelLoadParams = {
-                n_ctx: 712,
-                n_gpu_layers: 0,
-                n_threads: preferredThreads,
-                progressCallback: function ({ loaded, total }) {
-                    if (modelLoadingCancelled) return;
-                    if (!total) {
-                        updateModelStatus("Loading Phi 3.5-mini...", true);
-                        return;
-                    }
-                    const pct = Math.round((loaded / total) * 100);
-                    updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
-                    showCancelLink();
+            const progressCallback = function ({ loaded, total }) {
+                if (modelLoadingCancelled) return;
+                if (!total) {
+                    updateModelStatus("Loading Phi 3.5-mini...", true);
+                    return;
                 }
+                const pct = Math.round((loaded / total) * 100);
+                updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
+                showCancelLink();
             };
 
             const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
-            try {
-                await wllamaInstance.loadModelFromHF(modelRef, modelLoadParams);
-            } catch (multiErr) {
-                if (modelLoadingCancelled) throw multiErr;
-                if (preferredThreads > 1) {
-                    if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
-                    wllamaInstance = new Wllama(WASM_PATHS);
-                    await wllamaInstance.loadModelFromHF(modelRef, Object.assign({}, modelLoadParams, { n_threads: 1 }));
-                } else {
-                    throw multiErr;
+
+            const attemptLoad = async function (n_gpu_layers, n_threads) {
+                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+                wllamaInstance = new Wllama(WASM_PATHS);
+                await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
+            };
+
+            const loadWithFallback = async function () {
+                if (gpuEnabled) {
+                    try {
+                        console.log('Attempting GPU load (32 layers)...');
+                        updateModelStatus("Loading with GPU acceleration...", true);
+                        await attemptLoad(32, preferredThreads);
+                        wllamaUsedGPU = true;
+                        console.log('Model loaded with GPU acceleration.');
+                        return;
+                    } catch (gpuErr) {
+                        console.warn('GPU load failed, falling back to CPU:', gpuErr);
+                        wllamaUsedGPU = false;
+                    }
                 }
-            }
+                if (preferredThreads > 1) {
+                    try {
+                        console.log('Attempting CPU load (multi-thread)...');
+                        updateModelStatus("Loading with CPU (multi-thread)...", true);
+                        await attemptLoad(0, preferredThreads);
+                        return;
+                    } catch (multiErr) {
+                        if (modelLoadingCancelled) throw multiErr;
+                        console.warn('CPU multi-thread load failed, trying single-thread:', multiErr);
+                    }
+                }
+                console.log('Attempting CPU load (single-thread)...');
+                updateModelStatus("Loading with CPU (single-thread)...", true);
+                await attemptLoad(0, 1);
+            };
+
+            await loadWithFallback();
 
             if (modelLoadingCancelled) {
                 if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
@@ -802,6 +850,34 @@ const MODEL_QUANT = "Q4_K_M";
             updateModelStatus("Rule-based extraction ready", false);
             enableUI();
         }
+    }
+
+    /**
+     * Tears down wllama and reloads the model CPU-only.
+     * Called when GPU inference produces empty or invalid output at runtime.
+     */
+    async function reloadModelOnCpu() {
+        gpuFailed = true;
+        wllamaUsedGPU = false;
+        isModelLoaded = false;
+        if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const tryLoad = async function (n_threads) {
+            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+            wllamaInstance = new Wllama(WASM_PATHS);
+            await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: function () {} });
+        };
+
+        if (preferredThreads > 1) {
+            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
+        } else {
+            await tryLoad(1);
+        }
+        isModelLoaded = true;
     }
 
     async function detectLanguageWithAI(text) {
@@ -924,8 +1000,21 @@ const MODEL_QUANT = "Q4_K_M";
                     try {
                         result = await detectLanguageWithAI(text);
                     } catch (aiErr) {
-                        console.warn("AI language detection failed, using rule-based fallback:", aiErr);
-                        result = detectLanguage(text);
+                        if (wllamaUsedGPU && !gpuFailed) {
+                            console.warn("GPU language detection failed, switching to CPU and retrying:", aiErr);
+                            updateModelStatus("GPU issue — reloading on CPU...", true);
+                            try {
+                                await reloadModelOnCpu();
+                                updateModelStatus("Phi 3.5-mini ready", false);
+                                result = await detectLanguageWithAI(text);
+                            } catch (cpuErr) {
+                                console.warn("CPU language detection also failed, using rule-based fallback:", cpuErr);
+                                result = detectLanguage(text);
+                            }
+                        } else {
+                            console.warn("AI language detection failed, using rule-based fallback:", aiErr);
+                            result = detectLanguage(text);
+                        }
                     }
                 } else {
                     result = detectLanguage(text);
@@ -942,8 +1031,21 @@ const MODEL_QUANT = "Q4_K_M";
                     try {
                         result = await detectPiiWithAI(text);
                     } catch (aiErr) {
-                        console.warn("AI PII detection failed, using rule-based fallback:", aiErr);
-                        result = await detectPii(text);
+                        if (wllamaUsedGPU && !gpuFailed) {
+                            console.warn("GPU PII detection failed, switching to CPU and retrying:", aiErr);
+                            updateModelStatus("GPU issue — reloading on CPU...", true);
+                            try {
+                                await reloadModelOnCpu();
+                                updateModelStatus("Phi 3.5-mini ready", false);
+                                result = await detectPiiWithAI(text);
+                            } catch (cpuErr) {
+                                console.warn("CPU PII detection also failed, using rule-based fallback:", cpuErr);
+                                result = await detectPii(text);
+                            }
+                        } else {
+                            console.warn("AI PII detection failed, using rule-based fallback:", aiErr);
+                            result = await detectPii(text);
+                        }
                     }
                 } else {
                     result = await detectPii(text);
