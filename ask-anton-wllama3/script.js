@@ -2358,6 +2358,7 @@ class AskAnton {
                 top_p: 0.85,
                 repeat_penalty: 1.1,
                 repeat_last_n: 64,
+                cache_prompt: false, // Prevent KV cache accumulation across turns to avoid memory overflows
                 abortSignal: controller.signal,
                 stream: true
             });
