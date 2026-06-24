@@ -1950,7 +1950,7 @@ class ChatPlayground {
                 thinkingIndicator.remove();
             }
 
-            const errorMessage = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
+            const errorMessage = 'Sorry, I encountered an error while generating a response. Please try restarting the conversation. If this happens repeatedly, try switching to a different model.';
             const assistantMessageEl = this.addMessage('assistant', '');
             const contentEl = assistantMessageEl.querySelector('.message-content');
 
@@ -2355,7 +2355,7 @@ class ChatPlayground {
                 await this.handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis);
                 return;
             } else {
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try restarting the conversation. If this happens repeatedly, try switching to a different model.';
             }
 
         } catch (error) {
@@ -2373,7 +2373,7 @@ class ChatPlayground {
                 await this.handleGpuFailoverAndRetry(messages, contentEl, userMessage, imageAnalysis);
             } else {
                 console.error('Error in wllama generation:', error);
-                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again. If this happens repeatedly, try switching to a different model.';
+                contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try restarting the conversation. If this happens repeatedly, try switching to a different model.';
             }
             this.currentAbortController = null;
         } finally {
@@ -2407,7 +2407,7 @@ class ChatPlayground {
             console.error('CPU re-initialisation failed after GPU crash:', reinitErr);
             contentEl.style.width = '';
             contentEl.style.whiteSpace = '';
-            contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try again.';
+            contentEl.textContent = 'Sorry, I encountered an error while generating a response. Please try restarting the conversation. If this happens repeatedly, try switching to a different model.';
             return;
         }
 
