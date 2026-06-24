@@ -626,7 +626,7 @@ class ModelCoderLLM {
         // Check hardware requirements before attempting to load model
         if (!forceBasic && !this.checkHardwareRequirements()) {
             this.availableModes.cpu = false;
-            this._activateBasicMode("hardware requirements not met (8GB RAM, 8 CPU cores required)");
+            this._activateBasicMode("hardware requirements not met");
             this.isReady = true;
             this.isLoading = false;
             return;
