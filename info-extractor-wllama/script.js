@@ -527,7 +527,7 @@ class InfoExtractorApp {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
             errorDiv.style.cssText = 'padding: 1rem; margin: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c33;';
-            errorDiv.textContent = 'AI mode unavailable: Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model. The application will use OCR-only extraction.';
+            errorDiv.textContent = 'AI mode unavailable.';
 
             const container = this.resultsPanel || document.querySelector('.results-panel');
             if (container) {
