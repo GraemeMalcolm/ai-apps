@@ -139,10 +139,10 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language.`;
+        this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language; keeping sentences short and to the point.`;
 
-        this.PROMPT_WITH_CONTEXT = `Answer clearly with short sentences, using the information below to inform your answer:`;
-        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short paragraph with short sentences, keeping the focus on factual AI topics.`;
+        this.PROMPT_WITH_CONTEXT = `Respond using the information below to inform your answer:`;
+        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short paragraph, keeping the focus on factual AI topics.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
