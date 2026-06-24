@@ -626,7 +626,7 @@ class ModelCoderLLM {
         // Check hardware requirements before attempting to load model
         if (!forceBasic && !this.checkHardwareRequirements()) {
             this.availableModes.cpu = false;
-            this._activateBasicMode("hardware requirements not met");
+            this._activateBasicMode("AI model hardware requirements not met");
             this.isReady = true;
             this.isLoading = false;
             return;
@@ -662,7 +662,7 @@ class ModelCoderLLM {
 
             console.error('Wllama initialization failed:', wllamaError);
             this.availableModes.cpu = false;
-            this._activateBasicMode("CPU init failed");
+            this._activateBasicMode("AI model failed to load");
             this.isReady = true;
             this.isLoading = false;
         }
