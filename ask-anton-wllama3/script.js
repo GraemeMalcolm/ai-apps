@@ -2234,7 +2234,20 @@ class AskAnton {
         }
 
         if (lastSentenceEnd > 0) {
-            return trimmedText.substring(0, lastSentenceEnd).trim();
+            let result = trimmedText.substring(0, lastSentenceEnd).trim();
+
+            // Check if the result ends with a numbered list item that starts on a newline
+            // (e.g., ends with something like "\n3." where the sentence is incomplete)
+            // In this case, trim back to before the newline to avoid an orphaned number
+            const endsWithNumberedListPattern = /\n\d+\.\s*$/;
+            if (endsWithNumberedListPattern.test(result)) {
+                const lastNewlineIndex = result.lastIndexOf('\n');
+                if (lastNewlineIndex > 0) {
+                    result = result.substring(0, lastNewlineIndex).trim();
+                }
+            }
+
+            return result;
         }
 
         return trimmedText;
