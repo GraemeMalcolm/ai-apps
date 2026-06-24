@@ -43,7 +43,7 @@ class ChatPlayground {
             modelParameters: {
                 temperature: 0.5,
                 top_p: 0.9,
-                max_tokens: 768,
+                max_tokens: 400,
                 repetition_penalty: 1.1
             },
             fileUpload: {
@@ -582,6 +582,12 @@ class ChatPlayground {
         // Note: We don't modify the stored conversationHistory itself,
         // but rather rebuild the messages array with the current system message
         // at request time to avoid storing large amounts of duplicate system messages.
+    }
+
+    getFirstSentence(text) {
+        if (!text) return text;
+        const match = text.match(/^.+?[.!?](?:\s|$)/s);
+        return match ? match[0].trim() : text;
     }
 
     setupImageAnalysisToggle() {
@@ -1879,12 +1885,10 @@ class ChatPlayground {
             // Remove any previous image classifications from history to avoid confusion
             const recentHistory = this.conversationHistory.slice(-4).map(msg => {
                 if (msg.role === 'user') {
-                    return {
-                        ...msg,
-                        content: msg.content.replace(/\n\n\[Current image shows:.*?\]$/s, '')
-                    };
+                    const stripped = msg.content.replace(/\n\n\[Current image shows:.*?\]$/s, '');
+                    return { ...msg, content: this.getFirstSentence(stripped) };
                 }
-                return msg;
+                return { ...msg, content: this.getFirstSentence(msg.content) };
             });
             messages.push(...recentHistory);
 
@@ -3760,7 +3764,7 @@ class ChatPlayground {
                 console.log('Using Wllama for voice response generation');
                 const voiceMessages = [
                     { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
-                    ...this.conversationHistory,
+                    ...this.conversationHistory.map(msg => ({ ...msg, content: this.getFirstSentence(msg.content) })),
                     { role: 'user', content: voiceModeUserMessage }
                 ];
 
