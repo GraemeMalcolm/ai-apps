@@ -758,7 +758,7 @@ const MODEL_QUANT = "Q4_K_M";
         // Check hardware requirements before attempting to load model
         if (!checkHardwareRequirements()) {
             isModelLoaded = false;
-            updateModelStatus("Rule-based detection ready<br><small style='color: #888;'>Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.</small>", false);
+            updateModelStatus("Rule-based detection ready", false);
             enableUI();
             console.log('Model loading skipped - hardware requirements not met');
             return;
