@@ -1881,9 +1881,9 @@ class ChatPlayground {
                 { role: "system", content: systemContent }
             ];
 
-            // Add last 2 conversation pairs
+            // Add only the last conversation pair (previous prompt + response)
             // Remove any previous image classifications from history to avoid confusion
-            const recentHistory = this.conversationHistory.slice(-4).map(msg => {
+            const recentHistory = this.conversationHistory.slice(-2).map(msg => {
                 if (msg.role === 'user') {
                     const stripped = msg.content.replace(/\n\n\[Current image shows:.*?\]$/s, '');
                     return { ...msg, content: this.getFirstSentence(stripped) };
@@ -3764,7 +3764,7 @@ class ChatPlayground {
                 console.log('Using Wllama for voice response generation');
                 const voiceMessages = [
                     { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
-                    ...this.conversationHistory.map(msg => ({ ...msg, content: this.getFirstSentence(msg.content) })),
+                    ...this.conversationHistory.slice(-2).map(msg => ({ ...msg, content: this.getFirstSentence(msg.content) })),
                     { role: 'user', content: voiceModeUserMessage }
                 ];
 
