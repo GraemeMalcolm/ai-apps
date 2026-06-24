@@ -257,6 +257,8 @@ class ModelCoderLLM {
         this.modelLoadingCancelled = false;
         this.modelLoadingAbortController = null;
         this.initSessionId = 0;  // Track which init session we're in
+        this.gpuFailed = false;     // True after a GPU inference failure; forces CPU-only on reload
+        this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
     }
 
     async _ensureModerationTerms() {
@@ -694,37 +696,109 @@ class ModelCoderLLM {
     }
 
     async _loadWllamaModel() {
-        this.wllama = new Wllama(WASM_PATHS);
+        this.wllamaUsedGPU = false;
+
+        // Detect GPU vendor and skip WebGPU for known-problematic GPUs
+        let gpuEnabled = !this.gpuFailed && !!navigator.gpu;
+        if (gpuEnabled) {
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (adapter) {
+                    const info = adapter.info ?? await adapter.requestAdapterInfo?.();
+                    const vendor = (info?.vendor || '').toLowerCase();
+                    if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
+                        // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
+                        console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
+                        gpuEnabled = false;
+                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                        // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                        console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                        gpuEnabled = false;
+                    }
+                } else {
+                    gpuEnabled = false;
+                }
+            } catch (e) {
+                console.warn('Could not query WebGPU adapter info:', e);
+                gpuEnabled = false;
+            }
+        }
 
         const useMultiThread = window.crossOriginIsolated === true;
         const availableThreads = navigator.hardwareConcurrency || 4;
         const preferredThreads = useMultiThread ? Math.max(1, availableThreads - 2) : 1;
 
-        const modelLoadParams = {
-            n_ctx: 712,
-            n_gpu_layers: 0,
-            n_threads: preferredThreads,
-            progressCallback: ({ loaded, total }) => {
-                if (!total) {
-                    this._status("loading", "Loading Phi 3.5-mini...");
-                    return;
-                }
-                const pct = Math.round((loaded / total) * 100);
-                this._status("loading", `Downloading Phi 3.5-mini: ${pct}%`);
+        const progressCallback = ({ loaded, total }) => {
+            if (!total) {
+                this._status("loading", "Loading Phi 3.5-mini...");
+                return;
             }
+            const pct = Math.round((loaded / total) * 100);
+            this._status("loading", `Downloading Phi 3.5-mini: ${pct}%`);
         };
 
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
-        try {
-            await this.wllama.loadModelFromHF(modelRef, modelLoadParams);
-        } catch (multiErr) {
-            if (preferredThreads > 1) {
-                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
-                this.wllama = new Wllama(WASM_PATHS);
-                await this.wllama.loadModelFromHF(modelRef, { ...modelLoadParams, n_threads: 1 });
-            } else {
-                throw multiErr;
+
+        const attemptLoad = async (n_gpu_layers, n_threads) => {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            this.wllama = new Wllama(WASM_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
+        };
+
+        if (gpuEnabled) {
+            try {
+                console.log('Attempting GPU load (32 layers)...');
+                this._status("loading", "Loading with GPU acceleration...");
+                await attemptLoad(32, preferredThreads);
+                this.wllamaUsedGPU = true;
+                console.log('Model loaded with GPU acceleration.');
+                return;
+            } catch (gpuErr) {
+                console.warn('GPU load failed, falling back to CPU:', gpuErr);
+                this.wllamaUsedGPU = false;
             }
+        }
+
+        if (preferredThreads > 1) {
+            try {
+                console.log('Attempting CPU load (multi-thread)...');
+                this._status("loading", "Loading with CPU (multi-thread)...");
+                await attemptLoad(0, preferredThreads);
+                return;
+            } catch (multiErr) {
+                console.warn('CPU multi-thread load failed, trying single-thread:', multiErr);
+            }
+        }
+
+        console.log('Attempting CPU load (single-thread)...');
+        this._status("loading", "Loading with CPU (single-thread)...");
+        await attemptLoad(0, 1);
+    }
+
+    /**
+     * Tears down wllama and reloads the model CPU-only.
+     * Called when GPU inference produces empty output at runtime.
+     */
+    async _reloadOnCpu() {
+        console.warn('GPU produced empty response — reloading model on CPU.');
+        this.gpuFailed = true;
+        this.wllamaUsedGPU = false;
+        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+
+        const useMultiThread = window.crossOriginIsolated === true;
+        const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
+        const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
+
+        const tryLoad = async (n_threads) => {
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            this.wllama = new Wllama(WASM_PATHS);
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: () => {} });
+        };
+
+        if (preferredThreads > 1) {
+            try { await tryLoad(preferredThreads); } catch (_) { await tryLoad(1); }
+        } else {
+            await tryLoad(1);
         }
     }
 
@@ -815,7 +889,12 @@ class ModelCoderLLM {
                     onDelta(token);
                 }
             }
-            return fullText.trim();
+            const trimmed = fullText.trim();
+            if (!trimmed && this.wllamaUsedGPU && !this.gpuFailed) {
+                await this._reloadOnCpu();
+                return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+            }
+            return trimmed;
         }
 
         // Non-streaming: single completion call, returns when fully generated
@@ -829,7 +908,12 @@ class ModelCoderLLM {
             repeat_last_n: 64,
             stream: false
         });
-        return String(result?.choices?.[0]?.message?.content ?? '').trim();
+        const text = String(result?.choices?.[0]?.message?.content ?? '').trim();
+        if (!text && this.wllamaUsedGPU && !this.gpuFailed) {
+            await this._reloadOnCpu();
+            return await this._completeWithWllama(messages, onDelta, expectedSessionVersion);
+        }
+        return text;
     }
 
     _parseChatMLToMessages(chatMLPrompt) {
