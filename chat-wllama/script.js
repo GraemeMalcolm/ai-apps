@@ -1876,15 +1876,8 @@ class ChatPlayground {
             ];
 
             // Add only the last conversation pair (previous prompt + response)
-            // Remove any previous image classifications from history to avoid confusion
-            const recentHistory = this.conversationHistory.slice(-2).map(msg => {
-                if (msg.role === 'user') {
-                    const stripped = msg.content.replace(/\n\n\[Current image shows:.*?\]$/s, '');
-                    return { ...msg, content: this.getFirstSentence(stripped) };
-                }
-                return { ...msg, content: this.getFirstSentence(msg.content) };
-            });
-            messages.push(...recentHistory);
+            // History already stores first-sentence-only content, so no truncation needed here
+            messages.push(...this.conversationHistory.slice(-2));
 
             // Add user message with image analysis and file context if available
             let finalUserMessage = userMessage;
@@ -2202,8 +2195,9 @@ class ChatPlayground {
         await this.typeResponse(contentEl, displayResponse);
 
         // Add to conversation history (without file attribution, to prevent cumulative citations)
-        this.conversationHistory.push({ role: 'user', content: userMessage });
-        this.conversationHistory.push({ role: 'assistant', content: responseText });
+        // Store only the first sentence so cached tokens match what is sent on the next request
+        this.conversationHistory.push({ role: 'user', content: this.getFirstSentence(userMessage) });
+        this.conversationHistory.push({ role: 'assistant', content: this.getFirstSentence(responseText) });
     }
 
     // Helper function to remove a trailing incomplete sentence
@@ -2341,8 +2335,8 @@ class ChatPlayground {
 
                 contentEl.innerHTML = this.formatResponse(displayResponse);
 
-                this.conversationHistory.push({ role: 'user', content: userMessage });
-                this.conversationHistory.push({ role: 'assistant', content: cleanedResponse });
+                this.conversationHistory.push({ role: 'user', content: this.getFirstSentence(userMessage) });
+                this.conversationHistory.push({ role: 'assistant', content: this.getFirstSentence(cleanedResponse) });
             } else if (this.stopRequested && fullResponse.trim()) {
                 let displayResponse = fullResponse;
                 if (this.fileContentUsedInPrompt && this.config.fileUpload.fileName) {
@@ -3701,8 +3695,8 @@ class ChatPlayground {
             }
             if (chatIcon) chatIcon.style.animation = 'pulse 1s infinite';
             this.conversationHistory.push(
-                { role: 'user', content: sanitizedTranscript },
-                { role: 'assistant', content: plainText }
+                { role: 'user', content: this.getFirstSentence(sanitizedTranscript) },
+                { role: 'assistant', content: this.getFirstSentence(plainText) }
             );
             this.speakResponse(plainText);
             return;
@@ -3758,7 +3752,7 @@ class ChatPlayground {
                 console.log('Using Wllama for voice response generation');
                 const voiceMessages = [
                     { role: 'system', content: this.currentSystemMessage + '\nKeep responses short and succinct.' },
-                    ...this.conversationHistory.slice(-2).map(msg => ({ ...msg, content: this.getFirstSentence(msg.content) })),
+                    ...this.conversationHistory.slice(-2),
                     { role: 'user', content: voiceModeUserMessage }
                 ];
 
@@ -3845,8 +3839,8 @@ class ChatPlayground {
 
             // Add to conversation history
             this.conversationHistory.push(
-                { role: 'user', content: userMessage },
-                { role: 'assistant', content: responseText }
+                { role: 'user', content: this.getFirstSentence(userMessage) },
+                { role: 'assistant', content: this.getFirstSentence(responseText) }
             );
 
             console.log('generateVoiceResponse completed successfully');
