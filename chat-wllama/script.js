@@ -584,12 +584,6 @@ class ChatPlayground {
         // at request time to avoid storing large amounts of duplicate system messages.
     }
 
-    getFirstSentence(text) {
-        if (!text) return text;
-        const match = text.match(/^.+?[.!?](?:\s|$)/s);
-        return match ? match[0].trim() : text;
-    }
-
     setupImageAnalysisToggle() {
         // Handle image analysis toggle
         const imageAnalysisToggle = document.getElementById('image-analysis-toggle');
