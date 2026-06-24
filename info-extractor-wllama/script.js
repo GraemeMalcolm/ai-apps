@@ -521,18 +521,6 @@ class InfoExtractorApp {
             this.isModelLoaded = false;
             this.useAI = false;
             this.hideModelLoading();
-            this.updateModelLoadingProgress(0, 'Hardware requirements not met');
-
-            // Show error message to user
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.style.cssText = 'padding: 1rem; margin: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c33;';
-            errorDiv.textContent = 'AI mode unavailable.';
-
-            const container = this.resultsPanel || document.querySelector('.results-panel');
-            if (container) {
-                container.insertBefore(errorDiv, container.firstChild);
-            }
 
             // Disable AI toggle since model cannot load
             if (this.aiToggle) {
