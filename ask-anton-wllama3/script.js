@@ -562,7 +562,7 @@ class AskAnton {
                     n_ctx,
                     n_gpu_layers,
                     n_threads,
-                    warmup: false  // Skip cache warmup since we use cache_prompt: false
+                    no_warmup: true  // Skip cache warmup since we use cache_prompt: false
                 });
             };
 
