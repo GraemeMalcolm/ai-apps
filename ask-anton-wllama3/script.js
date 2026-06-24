@@ -561,8 +561,9 @@ class AskAnton {
                     ...baseModelConfig,
                     n_ctx,
                     n_gpu_layers,
-                    n_threads,
-                    no_warmup: true  // Skip cache warmup since we use cache_prompt: false
+                    n_threads
+                    // Note: no_warmup not supported in wllama 3.1.1
+                    // Warmup is ~1-2 seconds and only runs once on load
                 });
             };
 
