@@ -540,6 +540,9 @@ class InfoExtractorApp {
                 this.aiToggle.checked = false;
             }
 
+            // Load the default receipt image
+            this.loadDefaultReceipt();
+
             return;
         }
 
