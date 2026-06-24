@@ -42,7 +42,7 @@ class ChatPlayground {
         this.config = {
             modelParameters: {
                 temperature: 0.5,
-                top_p: 0.9,
+                top_p: 0.7,
                 max_tokens: 400,
                 repetition_penalty: 1.1
             },
@@ -271,7 +271,7 @@ class ChatPlayground {
     getModelDefaults() {
         return {
             temperature: 0.5,
-            top_p: 0.9,
+            top_p: 0.7,
             max_tokens: 768,
             repetition_penalty: 1.1
         };
