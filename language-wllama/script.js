@@ -135,42 +135,42 @@ const MODEL_QUANT = "Q4_K_M";
         elements.results.hidden = false;
         elements.results.style.display = "flex";
         elements.results.innerHTML = "<div class='loading-state'><div class='loading-message'></div><div class='loading-dots'><span></span><span></span><span></span></div></div>";
-        
+
         // Clear any existing timers
         clearLoadingTimers();
-        
+
         // Set up progressive loading messages
         const messageEl = elements.results.querySelector('.loading-message');
         if (messageEl) {
             // After 5 seconds: "Analyzing"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Analyzing";
             }, 5000));
-            
+
             // After 20 seconds: "Still analyzing"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Still analyzing";
             }, 20000));
-            
+
             // After 35 seconds: "Almost there"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Almost there";
             }, 35000));
-            
+
             // After 50 seconds: "Hold tight"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Hold tight";
             }, 50000));
 
             // After 65 seconds: "Nearly done"
-            loadingTimers.push(setTimeout(function() {
+            loadingTimers.push(setTimeout(function () {
                 messageEl.textContent = "Nearly done";
             }, 65000));
         }
     }
-    
+
     function clearLoadingTimers() {
-        loadingTimers.forEach(function(timer) {
+        loadingTimers.forEach(function (timer) {
             clearTimeout(timer);
         });
         loadingTimers = [];
@@ -242,7 +242,7 @@ const MODEL_QUANT = "Q4_K_M";
         if (wllamaInstance) {
             const _old = wllamaInstance;
             wllamaInstance = null;
-            _old.exit().catch(function () {});
+            _old.exit().catch(function () { });
         }
         if (elements.cancelLink) elements.cancelLink.style.display = "none";
         isLoadingModel = false;
@@ -736,8 +736,34 @@ const MODEL_QUANT = "Q4_K_M";
         reader.readAsText(file);
     }
 
+    function checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+        return true;
+    }
+
     async function initializeModel() {
         if (isLoadingModel || isModelLoaded) return;
+
+        // Check hardware requirements before attempting to load model
+        if (!checkHardwareRequirements()) {
+            isModelLoaded = false;
+            updateModelStatus("Rule-based detection ready<br><small style='color: #888;'>Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.</small>", false);
+            enableUI();
+            console.log('Model loading skipped - hardware requirements not met');
+            return;
+        }
+
         isLoadingModel = true;
         wllamaUsedGPU = false;
         modelLoadingCancelled = false;
@@ -791,7 +817,7 @@ const MODEL_QUANT = "Q4_K_M";
             const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
             const attemptLoad = async function (n_gpu_layers, n_threads) {
-                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
                 wllamaInstance = new Wllama(WASM_PATHS);
                 await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
             };
@@ -829,7 +855,7 @@ const MODEL_QUANT = "Q4_K_M";
             await loadWithFallback();
 
             if (modelLoadingCancelled) {
-                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+                if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
                 return;
             }
 
@@ -845,7 +871,7 @@ const MODEL_QUANT = "Q4_K_M";
             console.error("Failed to load Phi 3.5-mini:", error);
             isModelLoaded = false;
             isLoadingModel = false;
-            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
             if (elements.cancelLink) elements.cancelLink.style.display = "none";
             updateModelStatus("Rule-based extraction ready", false);
             enableUI();
@@ -860,16 +886,16 @@ const MODEL_QUANT = "Q4_K_M";
         gpuFailed = true;
         wllamaUsedGPU = false;
         isModelLoaded = false;
-        if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+        if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
 
         const useMultiThread = window.crossOriginIsolated === true;
         const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
         const tryLoad = async function (n_threads) {
-            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) {} wllamaInstance = null; }
+            if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
             wllamaInstance = new Wllama(WASM_PATHS);
-            await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: function () {} });
+            await wllamaInstance.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: function () { } });
         };
 
         if (preferredThreads > 1) {
@@ -1142,7 +1168,7 @@ const MODEL_QUANT = "Q4_K_M";
 
         window.addEventListener("beforeunload", function () {
             if (wllamaInstance) {
-                wllamaInstance.exit().catch(function () {});
+                wllamaInstance.exit().catch(function () { });
             }
         });
 

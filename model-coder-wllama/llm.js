@@ -261,6 +261,22 @@ class ModelCoderLLM {
         this.wllamaUsedGPU = false; // True when the loaded model is using GPU acceleration
     }
 
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+        return true;
+    }
+
     async _ensureModerationTerms() {
         if (Array.isArray(this.moderationTerms)) {
             return this.moderationTerms;
@@ -607,6 +623,15 @@ class ModelCoderLLM {
             basic: true
         };
 
+        // Check hardware requirements before attempting to load model
+        if (!forceBasic && !this.checkHardwareRequirements()) {
+            this.availableModes.cpu = false;
+            this._activateBasicMode("hardware requirements not met (8GB RAM, 8 CPU cores required)");
+            this.isReady = true;
+            this.isLoading = false;
+            return;
+        }
+
         if (forceBasic) {
             this._activateBasicMode("forced fallback mode");
             this.isReady = true;
@@ -740,7 +765,7 @@ class ModelCoderLLM {
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
         const attemptLoad = async (n_gpu_layers, n_threads) => {
-            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
             this.wllama = new Wllama(WASM_PATHS);
             await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers, n_threads, progressCallback });
         };
@@ -783,16 +808,16 @@ class ModelCoderLLM {
         console.warn('GPU produced empty response — reloading model on CPU.');
         this.gpuFailed = true;
         this.wllamaUsedGPU = false;
-        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
 
         const useMultiThread = window.crossOriginIsolated === true;
         const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
         const tryLoad = async (n_threads) => {
-            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
             this.wllama = new Wllama(WASM_PATHS);
-            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: () => {} });
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 712, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
         };
 
         if (preferredThreads > 1) {

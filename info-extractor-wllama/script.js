@@ -44,6 +44,22 @@ class InfoExtractorApp {
         this.initializeModel();
     }
 
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+        return true;
+    }
+
     showModelLoading() {
         // Show the model loading overlay
         this.modelLoadingSection.style.display = 'flex';
@@ -500,6 +516,33 @@ class InfoExtractorApp {
     }
 
     async initializeModel() {
+        // Check hardware requirements before attempting to load model
+        if (!this.checkHardwareRequirements()) {
+            this.isModelLoaded = false;
+            this.useAI = false;
+            this.hideModelLoading();
+            this.updateModelLoadingProgress(0, 'Hardware requirements not met');
+
+            // Show error message to user
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.style.cssText = 'padding: 1rem; margin: 1rem; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c33;';
+            errorDiv.textContent = 'AI mode unavailable: Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model. The application will use OCR-only extraction.';
+
+            const container = this.resultsPanel || document.querySelector('.results-panel');
+            if (container) {
+                container.insertBefore(errorDiv, container.firstChild);
+            }
+
+            // Disable AI toggle since model cannot load
+            if (this.aiToggle) {
+                this.aiToggle.disabled = true;
+                this.aiToggle.checked = false;
+            }
+
+            return;
+        }
+
         // Reset cancellation flag and set loading state
         this.cancelModelLoad = false;
         this.isLoadingModel = true;
@@ -557,7 +600,7 @@ class InfoExtractorApp {
             const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
             const attemptLoad = async (n_gpu_layers, n_threads) => {
-                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                 this.wllama = new Wllama(WASM_PATHS);
                 await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers, n_threads, progressCallback });
             };
@@ -595,7 +638,7 @@ class InfoExtractorApp {
 
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user after download');
-                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                 return;
             }
 
@@ -614,7 +657,7 @@ class InfoExtractorApp {
                 console.error('Failed to initialize Phi 3.5-mini:', error);
                 this.isModelLoaded = false;
                 this.isLoadingModel = false;
-                if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
 
                 this.updateModelLoadingProgress(100, 'Using pattern-based extraction mode...');
 
@@ -640,16 +683,16 @@ class InfoExtractorApp {
         this.gpuFailed = true;
         this.wllamaUsedGPU = false;
         this.isModelLoaded = false;
-        if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+        if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
 
         const useMultiThread = window.crossOriginIsolated === true;
         const preferredThreads = useMultiThread ? Math.max(1, (navigator.hardwareConcurrency || 4) - 2) : 1;
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
         const tryLoad = async (n_threads) => {
-            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
             this.wllama = new Wllama(WASM_PATHS);
-            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers: 0, n_threads, progressCallback: () => {} });
+            await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
         };
 
         if (preferredThreads > 1) {
@@ -1438,7 +1481,7 @@ window.addEventListener('beforeunload', () => {
     if (window.app) {
         window.app.uploadedImages.forEach(img => URL.revokeObjectURL(img.url));
         if (window.app.wllama) {
-            window.app.wllama.exit().catch(() => {});
+            window.app.wllama.exit().catch(() => { });
         }
     }
 });
