@@ -391,6 +391,34 @@ class AskAnton {
     }
 
     // ============================================================================
+    // HARDWARE REQUIREMENTS CHECK
+    // ============================================================================
+
+    /**
+     * Check if the device meets minimum hardware requirements for running
+     * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+     * are below the minimum thresholds.
+     * @returns {boolean} true if hardware meets requirements, false otherwise.
+     */
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+
+        return true;
+    }
+
+    // ============================================================================
     // LLM ENGINE INITIALIZATION (wllama)
     // ============================================================================
 
@@ -405,6 +433,17 @@ class AskAnton {
             this.initializeBasicMode(
                 'Ready to chat! (Basic mode)',
                 '🧪 DEBUG: Running in forced Basic mode for testing.'
+            );
+            return;
+        }
+
+        // Check hardware requirements before attempting to load model
+        if (!this.checkHardwareRequirements()) {
+            console.log('Hardware requirements not met, using Basic mode only');
+            this.availableModes.wllama = false;
+            this.initializeBasicMode(
+                'Ready to chat! (Basic mode)',
+                'Using Basic mode because your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.'
             );
             return;
         }
