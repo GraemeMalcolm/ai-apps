@@ -2313,7 +2313,7 @@ class AskAnton {
         try {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: 300,
+                max_tokens: this.wllama_usedGPU ? 400 : 250,
                 temperature: 0.2,
                 top_k: 30,
                 top_p: 0.85,
