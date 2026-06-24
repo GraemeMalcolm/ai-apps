@@ -2313,7 +2313,7 @@ class AskAnton {
         try {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: 200,
+                max_tokens: 300,
                 temperature: 0.2,
                 top_k: 30,
                 top_p: 0.85,
