@@ -1185,6 +1185,34 @@ class ChatPlayground {
         this.modelSelect.addEventListener('change', () => this.handleModelChange());
     }
 
+    // ============================================================================
+    // HARDWARE REQUIREMENTS CHECK
+    // ============================================================================
+
+    /**
+     * Check if the device meets minimum hardware requirements for running
+     * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+     * are below the minimum thresholds.
+     * @returns {boolean} true if hardware meets requirements, false otherwise.
+     */
+    checkHardwareRequirements() {
+        const MIN_MEMORY_GB = 8;
+        const MIN_CORES = 8;
+
+        const deviceMemory = navigator.deviceMemory || 0;
+        const cores = navigator.hardwareConcurrency || 0;
+
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            return false;
+        }
+
+        return true;
+    }
+
     async initializeModel() {
         // Setup cancel link event listener first
         this.setupCancelLink();
@@ -1230,7 +1258,7 @@ class ChatPlayground {
         if (this.wllama) {
             const _old = this.wllama;
             this.wllama = null;
-            _old.exit().catch(() => {});
+            _old.exit().catch(() => { });
         }
 
         // Hide the cancel link
@@ -1257,6 +1285,24 @@ class ChatPlayground {
     }
 
     async initializeEngine() {
+        // Check hardware requirements before attempting to load model
+        if (!this.checkHardwareRequirements()) {
+            console.log('Hardware requirements not met, using Wikipedia mode only');
+            this.wllamaFailed = true;
+            this.wllamaLoaded = false;
+            this.usingWllama = false;
+            this.usingWikipedia = true;
+            this.currentMode = 'none';
+            this.currentModelId = 'None (Wikipedia)';
+            this.config.modelParameters = this.getModelDefaults();
+            this.updateParameterUI();
+            this.updateProgress(100, 'Wikipedia mode ready!<br><small style="font-size: 0.9em; color: #666;">Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.</small>', true);
+            setTimeout(() => {
+                this.enableUI();
+            }, 2000);
+            return;
+        }
+
         this.modelLoadingAbortController = new AbortController();
 
         try {
@@ -1384,7 +1430,7 @@ class ChatPlayground {
                 } catch (gpuErr) {
                     if (this.modelLoadingCancelled) throw gpuErr;
                     console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
-                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                 }
             } else {
                 console.log('Skipping GPU: using CPU directly');
@@ -1399,7 +1445,7 @@ class ChatPlayground {
                 if (this.modelLoadingCancelled) throw cpuErr;
                 if (preferredThreads > 1) {
                     console.warn(`Multi-thread CPU init failed (${cpuErr.message}), retrying with 1 thread`);
-                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+                    if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
                     // Final attempt: CPU single-threaded
                     await attemptLoad(0, 1);
                     this.wllamaUsedGPU = false;
@@ -1413,7 +1459,7 @@ class ChatPlayground {
         await loadWithFallback();
 
         if (this.modelLoadingCancelled) {
-            if (this.wllama) { try { await this.wllama.exit(); } catch (_) {} this.wllama = null; }
+            if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
             throw new Error('Model loading cancelled by user');
         }
 
@@ -2349,7 +2395,7 @@ class ChatPlayground {
 
         const deadWllama = this.wllama;
         this.wllama = null;
-        deadWllama?.exit().catch(() => {});
+        deadWllama?.exit().catch(() => { });
 
         contentEl.style.width = 'fit-content';
         contentEl.style.whiteSpace = 'normal';
@@ -3747,7 +3793,7 @@ class ChatPlayground {
                     this.wllamaLoaded = false;
                     const deadWllama = this.wllama;
                     this.wllama = null;
-                    deadWllama?.exit().catch(() => {});
+                    deadWllama?.exit().catch(() => { });
                     try {
                         await this.initializeWllama();
                         if (this.wllama && !this.stopRequested) {
