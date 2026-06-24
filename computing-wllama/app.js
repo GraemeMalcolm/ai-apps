@@ -170,6 +170,34 @@ function buildClassInfoPrompt(classIndex) {
 }
 
 // ============================================================================
+// HARDWARE REQUIREMENTS CHECK
+// ============================================================================
+
+/**
+ * Check if the device meets minimum hardware requirements for running
+ * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+ * are below the minimum thresholds.
+ * @returns {boolean} true if hardware meets requirements, false otherwise.
+ */
+function checkHardwareRequirements() {
+    const MIN_MEMORY_GB = 8;
+    const MIN_CORES = 8;
+
+    const deviceMemory = navigator.deviceMemory || 0;
+    const cores = navigator.hardwareConcurrency || 0;
+
+    console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+    console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
+
+    if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+        console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+        return false;
+    }
+
+    return true;
+}
+
+// ============================================================================
 // INITIALIZATION FUNCTIONS
 // ============================================================================
 
@@ -208,6 +236,23 @@ async function init() {
 
         // Create abort controller for model loading
         modelLoadingAbortController = new AbortController();
+
+        // Check hardware requirements before attempting to load model
+        if (!checkHardwareRequirements()) {
+            console.log('Hardware requirements not met, using Basic mode only');
+            currentMode = 'basic';
+            availableModes.cpu = false;
+            updateModelName('Wikipedia API (Basic)');
+            updateLoadingStatus('phi', 'ready', 'Basic');
+            const infoMsg = 'Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model. Using Basic (Wikipedia) mode.';
+            hideLoadingOverlay();
+            updateModeSelect();
+            setTimeout(() => {
+                textInput.focus();
+                addMessage(infoMsg, 'bot');
+            }, 550);
+            return;
+        }
 
         console.log('Initializing wllama (CPU mode)...');
         try {
@@ -281,7 +326,7 @@ function cancelModelLoading() {
     if (wllama) {
         const _old = wllama;
         wllama = null;
-        _old.exit().catch(() => {});
+        _old.exit().catch(() => { });
     }
 
     // Hide the cancel link immediately
@@ -698,7 +743,7 @@ async function initWllama(progressCallback = null) {
                 } catch (gpuErr) {
                     if (modelLoadingCancelled) throw gpuErr;
                     console.warn(`GPU initialization failed (${gpuErr.message}), falling back to CPU`);
-                    if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+                    if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
                 }
             } else {
                 console.log('Skipping GPU: using CPU directly');
@@ -713,7 +758,7 @@ async function initWllama(progressCallback = null) {
                 if (modelLoadingCancelled) throw cpuErr;
                 if (preferredThreads > 1) {
                     console.warn(`Multi-thread CPU init failed (${cpuErr.message}), retrying with 1 thread`);
-                    if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+                    if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
                     // Final attempt: CPU single-threaded
                     await attemptLoad(0, 1);
                     wllamaUsedGPU = false;
@@ -728,7 +773,7 @@ async function initWllama(progressCallback = null) {
 
         // Check if cancelled before finalizing
         if (modelLoadingCancelled) {
-            if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+            if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
             throw new Error('Model loading cancelled by user');
         }
 
@@ -737,7 +782,7 @@ async function initWllama(progressCallback = null) {
         console.log(`Wllama initialized successfully (GPU: ${wllamaUsedGPU})`);
     } catch (error) {
         console.error('Failed to initialize wllama:', error);
-        if (wllama) { try { await wllama.exit(); } catch (_) {} wllama = null; }
+        if (wllama) { try { await wllama.exit(); } catch (_) { } wllama = null; }
         updateLoadingStatus('phi', 'error', 'Failed');
         wllamaReady = false;
         throw error;
@@ -1946,7 +1991,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             top_p: 0.9,
             repeat_penalty: 1.1,
             repeat_last_n: 64,
-            stop: ['\n\n','\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
+            stop: ['\n\n', '\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
             abortSignal: currentAbortController.signal,
             stream: true
         });
@@ -2093,7 +2138,7 @@ async function handleGpuFailureAndRetry(query, bubbleElement, bubblePrefix) {
 
     const deadWllama = wllama;
     wllama = null;
-    deadWllama?.exit().catch(() => {});
+    deadWllama?.exit().catch(() => { });
 
     if (bubbleElement) {
         setBubbleContent(bubbleElement,
