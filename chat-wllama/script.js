@@ -148,6 +148,45 @@ class ChatPlayground {
         }
     };
 
+    // Stopwords for text summarization
+    static STOPWORDS = new Set([
+        // Articles, prepositions, conjunctions
+        'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+        'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
+        'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+        'after', 'before', 'between', 'during', 'into', 'through', 'over',
+        'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
+        // Pronouns
+        'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
+        'us', 'them', 'my', 'your', 'his', 'her', 'our', 'their', 'i\'m',
+        'you\'re', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
+        // Determiners and quantifiers
+        'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
+        'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
+        'own', 'same', 'other', 'another', 'much', 'many',
+        // Verbs (auxiliary, modal, and common generic)
+        'am', 'was', 'were', 'been', 'being', 'have', 'has',
+        'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should',
+        'may', 'might', 'must', 'shall', 'ought', 'will',
+        'get', 'make', 'know', 'see', 'take', 'come', 'go', 'want',
+        'use', 'find', 'need', 'try', 'ask', 'work', 'help', 'like', 'seem',
+        'become', 'let', 'tell', 'show', 'give', 'provide', 'explain',
+        'describe', 'define',
+        // Question words
+        'what', 'when', 'where', 'who', 'how', 'why', 'which', 'whom',
+        'whose', 'whether', 'what\'s', 'whats', 'who\'s', 'whos', 'how\'s',
+        'hows',
+        // Common adverbs
+        'also', 'just', 'now', 'here', 'there', 'very', 'too',
+        'really', 'still', 'always', 'never', 'often', 'sometimes', 'maybe',
+        'perhaps', 'about',
+        // Other common words
+        'yes', 'no', 'thing', 'something', 'anything', 'nothing',
+        'everything', 'someone', 'anyone', 'everyone', 'understand',
+        'think', 'believe', 'feel', 'appear',
+        'search', 'look', 'information', 'info'
+    ]);
+
     // Centralized initialization
     async initialize() {
         await this.loadProhibitedTerms();
@@ -1296,7 +1335,7 @@ class ChatPlayground {
             this.currentModelId = 'None (Wikipedia)';
             this.config.modelParameters = this.getModelDefaults();
             this.updateParameterUI();
-            this.updateProgress(100, 'Wikipedia mode ready!<br><small style="font-size: 0.9em; color: #666;">Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.</small>', true);
+            this.updateProgress(100, 'Wikipedia mode ready!<br><small style="font-size: 0.9em; color: #666;">Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for the AI model.</small>', true);
             setTimeout(() => {
                 this.enableUI();
             }, 2000);
@@ -1847,6 +1886,54 @@ class ChatPlayground {
             return;
         }
 
+        // Text summarization intercept (Basic mode only)
+        const isBasicMode = this.currentMode === 'none' || this.usingWikipedia;
+        if (isBasicMode) {
+            const lines = userMessage.split('\n');
+            const firstLine = lines[0].trim().toLowerCase();
+
+            // Check for Summarization Command
+            if (lines.length > 1 && firstLine.startsWith('summarize')) {
+                const contentToAnalyze = lines.slice(1).join('\n');
+
+                this.addMessage('user', userMessage, imageElement);
+                this.userInput.value = '';
+                this.userInput.style.height = 'auto';
+                if (this.pendingImage) this.removePendingImage();
+
+                this.isGenerating = true;
+                this.updateUIForGeneration(true);
+
+                // Show typing indicator
+                const typingIndicator = this.addTypingIndicator();
+
+                // Simulate "reading" delay
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                if (this.stopRequested) {
+                    typingIndicator.remove();
+                    this.isGenerating = false;
+                    this.updateUIForGeneration(false);
+                    return;
+                }
+
+                const summary = this.summarizeText(contentToAnalyze);
+                typingIndicator.remove();
+
+                const assistantMessageEl = this.addMessage('assistant', '');
+                const contentEl = assistantMessageEl.querySelector('.message-content');
+
+                const summaryText = `<b>Summary:</b><br><br>${this.renderMarkdown(summary)}`;
+                await this.typeResponse(contentEl, summary);
+
+                // Add to conversation history
+                this.conversationHistory.push({ role: 'user', content: this.getFirstSentence(userMessage) });
+                this.conversationHistory.push({ role: 'assistant', content: this.getFirstSentence(summary) });
+
+                return;
+            }
+        }
+
         // Add user message to chat (with image if available)
         this.addMessage('user', userMessage, imageElement);
 
@@ -1899,6 +1986,15 @@ class ChatPlayground {
                     this.fileContentUsedInPrompt = true;
                 } else {
                     console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
+                }
+            }
+
+            // If system prompt indicates short response is wanted and there's no image/file context, guide the model
+            if (!imageAnalysis && !this.fileContentUsedInPrompt) {
+                const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
+                const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
+                if (wantsShortResponse) {
+                    finalUserMessage += '\nRespond with a single, short paragraph.';
                 }
             }
 
@@ -2160,13 +2256,67 @@ class ChatPlayground {
         }
 
         const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
-        const wantsShortResponse = /\b(short|concise|summarize|summary|brief)\b/i.test(promptFromUi);
+        const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
 
         if (!wantsShortResponse) {
             return text;
         }
 
         return this.extractLeadingSentences(text, 1);
+    }
+
+    /**
+     * Summarizes text using TextRank algorithm
+     * @param {string} text - The text to summarize
+     * @returns {string} Summary of top 3 sentences
+     */
+    summarizeText(text) {
+        // 1. Split into sentences (simple approximation)
+        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+
+        if (sentences.length <= 3) return sentences.join(' ');
+
+        // 2. Tokenize sentences
+        const tokenizedSentences = sentences.map(s => {
+            return s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => !ChatPlayground.STOPWORDS.has(w) && w.length > 0);
+        });
+
+        // 3. Build Similarity Matrix (Graph)
+        // We'll calculate score for each sentence based on overlaps with others
+        const scores = new Array(sentences.length).fill(0);
+
+        for (let i = 0; i < sentences.length; i++) {
+            for (let j = 0; j < sentences.length; j++) {
+                if (i === j) continue;
+
+                const wordsI = new Set(tokenizedSentences[i]);
+                const wordsJ = new Set(tokenizedSentences[j]);
+
+                // Jaccard similarity or simple intersection
+                // TextRank uses intersection / (log(|Si|) + log(|Sj|))
+                let intersection = 0;
+                for (let w of wordsI) {
+                    if (wordsJ.has(w)) intersection++;
+                }
+
+                if (intersection > 0) {
+                    const norm = Math.log(wordsI.size || 1) + Math.log(wordsJ.size || 1);
+                    // Prevent div by zero if empty
+                    if (norm > 0) {
+                        scores[i] += intersection / norm;
+                    }
+                }
+            }
+        }
+
+        // 4. Sort and Pick Top 3
+        // We want to keep original order for readability, so we'll pick indices
+        const indicesWithScores = scores.map((score, i) => ({ index: i, score }));
+        indicesWithScores.sort((a, b) => b.score - a.score);
+
+        const topIndices = indicesWithScores.slice(0, 3).map(item => item.index).sort((a, b) => a - b);
+
+        return topIndices.map(i => sentences[i].trim()).join(' ');
     }
 
     async handleWikipediaMode(thinkingIndicator, userMessage, imageAnalysis = '') {
@@ -2295,6 +2445,7 @@ class ChatPlayground {
                 top_p: this.config.modelParameters.top_p,
                 repeat_penalty: this.config.modelParameters.repetition_penalty,
                 repeat_last_n: 64,
+                cache_prompt: false, // Prevent KV cache accumulation to avoid memory buffer errors with small context window
                 abortSignal: controller.signal,
                 stream: true
             });
