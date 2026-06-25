@@ -1,4 +1,4 @@
-import "./llm.js?v=20260612-phi4mini-wllama3";
+import "./llm.js?v=20260625-final";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
@@ -1540,6 +1540,7 @@ async function switchMode(targetMode) {
     }
 
     state.switchingMode = true;
+    state.modelReady = false;
     updateRunState();
 
     try {
@@ -1551,25 +1552,27 @@ async function switchMode(targetMode) {
 
         // Re-initialize with the target mode
         if (typeof window.modelCoderInitWithMode === "function") {
-            console.log(`[Mode Select] Initializing with mode: ${normalizedTarget}`);
             await window.modelCoderInitWithMode(normalizedTarget, 3);
         } else {
             // Fallback to regular init if new function not available
             console.warn("[Mode Select] modelCoderInitWithMode not available, using regular init");
             await window.modelCoderInit(3);
         }
+        state.modelReady = true;
 
+        // Sync available modes from runtime
         syncModeStateFromRuntime();
-        if (!state.currentMode) {
-            state.currentMode = normalizedTarget;
-        }
 
-        console.log(`[Mode Select] Switched to ${state.currentMode.toUpperCase()} mode`);
+        // Ensure currentMode is still correct after sync
+        state.currentMode = normalizedTarget;
+
+        console.log(`[Mode Select] Successfully switched to ${state.currentMode.toUpperCase()} mode`);
         updateModeSelectDropdown();
     } catch (error) {
         console.error("[Mode Select] Failed to switch mode:", error);
         setPill(statusModel, `Mode switch failed: ${error.message}`, "error");
 
+        state.modelReady = false;
         syncModeStateFromRuntime();
         updateModeSelectDropdown();
     } finally {

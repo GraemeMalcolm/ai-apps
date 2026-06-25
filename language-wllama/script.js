@@ -925,6 +925,7 @@ const MODEL_QUANT = "Q4_K_M";
             temperature: 0.1,
             top_k: 30,
             top_p: 0.85,
+            cache_prompt: false,
             stream: false
         });
 
@@ -966,6 +967,7 @@ const MODEL_QUANT = "Q4_K_M";
             temperature: 0.1,
             top_k: 30,
             top_p: 0.85,
+            cache_prompt: false,
             stream: false
         });
 

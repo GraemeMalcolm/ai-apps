@@ -1991,6 +1991,7 @@ async function generateWithWllama(query, bubbleElement = null, bubblePrefix = ''
             top_p: 0.9,
             repeat_penalty: 1.1,
             repeat_last_n: 64,
+            cache_prompt: false,
             stop: ['\n\n', '\nUser:', '\nUser :', 'User:', 'User :', '\nAssistant:', 'Assistant:'],
             abortSignal: currentAbortController.signal,
             stream: true

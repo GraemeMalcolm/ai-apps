@@ -518,10 +518,8 @@ class ModelCoderLLM {
             ]);
         }
 
-        // Clear KV cache for wllama if it's being used
-        if (this.wllama && this.usingWllama) {
-            await this.wllama.kvClear().catch(() => { });
-        }
+        // Note: KV cache clearing removed - not needed when doing hard resets
+        // and not supported in all wllama versions
     }
 
     async hardResetSession(options = {}) {
@@ -538,7 +536,6 @@ class ModelCoderLLM {
 
         // Cancel any ongoing model loading only if actually loading
         if (this.isLoading) {
-            console.log('[Model Reset] Cancelling ongoing model loading');
             this.modelLoadingCancelled = true;
             if (this.modelLoadingAbortController) {
                 this.modelLoadingAbortController.abort();
@@ -904,6 +901,7 @@ class ModelCoderLLM {
                 top_p: 0.85,
                 repeat_penalty: 1.1,
                 repeat_last_n: 64,
+                cache_prompt: false,
                 stream: true
             });
             for await (const chunk of completion) {
@@ -931,6 +929,7 @@ class ModelCoderLLM {
             top_p: 0.85,
             repeat_penalty: 1.1,
             repeat_last_n: 64,
+            cache_prompt: false,
             stream: false
         });
         const text = String(result?.choices?.[0]?.message?.content ?? '').trim();

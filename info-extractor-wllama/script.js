@@ -874,6 +874,7 @@ Respond as a list of fields with their values.`;
                     top_k: 30,
                     top_p: 0.85,
                     repeat_penalty: 1.1,
+                    cache_prompt: false,
                     stream: true,
                     abortSignal: abortController.signal,
                 });
