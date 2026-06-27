@@ -516,14 +516,20 @@ IMPORTANT: Follow these guidelines when responding:
             this.indexData = await response.json();
             console.log('Loaded index with', this.indexData.length, 'categories');
 
-            // Build a flat lookup map: keyword -> {document, category, link}
+            // Build a flat lookup map: keyword -> [{document, category, link}, ...]
+            // A keyword can map to multiple documents
             this.keywordMap = new Map();
             this.indexData.forEach(category => {
                 category.documents.forEach(doc => {
                     doc.keywords.forEach(keyword => {
                         const normalizedKeyword = keyword.toLowerCase().trim();
                         if (normalizedKeyword) {
-                            this.keywordMap.set(normalizedKeyword, {
+                            let entries = this.keywordMap.get(normalizedKeyword);
+                            if (!entries) {
+                                entries = [];
+                                this.keywordMap.set(normalizedKeyword, entries);
+                            }
+                            entries.push({
                                 document: doc,
                                 category: category.category,
                                 link: category.link
@@ -536,7 +542,7 @@ IMPORTANT: Follow these guidelines when responding:
 
             // Build vocabulary from all keywords for fuzzy correction
             this.vocabulary = new Set();
-            this.keywordMap.forEach((entry, keyword) => {
+            this.keywordMap.forEach((entries, keyword) => {
                 // Split multi-word keywords into individual words
                 keyword.split(/\s+/).forEach(word => {
                     if (word.length >= 2) {  // Filter out single-letter words
@@ -1228,15 +1234,17 @@ IMPORTANT: Follow these guidelines when responding:
 
         console.log('Extracted n-grams:', nGrams.map(ng => `"${ng.text}" (${ng.length})`));
 
-        // Match n-grams to keywords in the index
+        // Match n-grams to keywords in the index. Each keyword may map to
+        // multiple documents; record a per-document match for each one.
         const matchedKeywords = new Set();
         const documentMatches = new Map(); // doc id -> {doc, category, link, matchedKeywords[]}
 
         nGrams.forEach(ngram => {
-            const match = this.keywordMap.get(ngram.text);
-            if (match) {
-                matchedKeywords.add(ngram.text);
+            const matches = this.keywordMap.get(ngram.text);
+            if (!matches) return;
+            matchedKeywords.add(ngram.text);
 
+            matches.forEach(match => {
                 const docId = match.document.id;
                 if (!documentMatches.has(docId)) {
                     documentMatches.set(docId, {
@@ -1246,8 +1254,11 @@ IMPORTANT: Follow these guidelines when responding:
                         matchedKeywords: []
                     });
                 }
-                documentMatches.get(docId).matchedKeywords.push(ngram.text);
-            }
+                const matchRecord = documentMatches.get(docId);
+                if (!matchRecord.matchedKeywords.includes(ngram.text)) {
+                    matchRecord.matchedKeywords.push(ngram.text);
+                }
+            });
         });
 
         // Filter out keywords that are subsets of longer matched keywords
