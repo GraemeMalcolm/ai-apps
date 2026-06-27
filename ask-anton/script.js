@@ -70,6 +70,8 @@ class AskAnton {
         this.conversationHistory = [];
         this.isGenerating = false;
         this.indexData = null;
+        this.vocabulary = null;  // Set of unique words from keyphrases, used for fuzzy correction
+        this.vocabList = null;    // Array version for iteration
         this.stopRequested = false;
         this.currentStream = null;
         this.currentAbortController = null;
@@ -218,6 +220,108 @@ class AskAnton {
     // UTILITY METHODS
     // ============================================================================
 
+    /**
+     * Calculate Jaro-Winkler similarity between two strings.
+     * Returns a value between 0 (completely different) and 1 (identical).
+     * Optimized for short strings and typo detection.
+     * @param {string} s1 - First string
+     * @param {string} s2 - Second string
+     * @returns {number} Similarity score (0-1)
+     */
+    jaroWinkler(s1, s2) {
+        if (s1 === s2) return 1.0;
+        if (!s1 || !s2) return 0.0;
+
+        const len1 = s1.length;
+        const len2 = s2.length;
+        const matchWindow = Math.max(Math.floor(Math.max(len1, len2) / 2) - 1, 0);
+
+        const s1Matches = new Array(len1).fill(false);
+        const s2Matches = new Array(len2).fill(false);
+
+        let matches = 0;
+        let transpositions = 0;
+
+        // Find matches
+        for (let i = 0; i < len1; i++) {
+            const start = Math.max(0, i - matchWindow);
+            const end = Math.min(i + matchWindow + 1, len2);
+
+            for (let j = start; j < end; j++) {
+                if (s2Matches[j] || s1[i] !== s2[j]) continue;
+                s1Matches[i] = true;
+                s2Matches[j] = true;
+                matches++;
+                break;
+            }
+        }
+
+        if (matches === 0) return 0.0;
+
+        // Count transpositions
+        let k = 0;
+        for (let i = 0; i < len1; i++) {
+            if (!s1Matches[i]) continue;
+            while (!s2Matches[k]) k++;
+            if (s1[i] !== s2[k]) transpositions++;
+            k++;
+        }
+
+        // Calculate Jaro similarity
+        const jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3;
+
+        // Apply Winkler modification (boost for common prefix)
+        const prefixLength = Math.min(4, Math.min(len1, len2));
+        let commonPrefix = 0;
+        for (let i = 0; i < prefixLength; i++) {
+            if (s1[i] === s2[i]) commonPrefix++;
+            else break;
+        }
+
+        return jaro + commonPrefix * 0.1 * (1 - jaro);
+    }
+
+    /**
+     * Correct a single token by fuzzy-matching against the known vocabulary.
+     * Returns the original token if no good match is found (similarity < threshold).
+     * @param {string} token - Word to correct
+     * @returns {string} Corrected word or original token
+     */
+    correctToken(token) {
+        if (!this.vocabList || token.length < 2) return token;
+
+        // Exact match - no correction needed
+        if (this.vocabulary.has(token)) return token;
+
+        let bestMatch = token;
+        let bestScore = 0;
+
+        // Dynamic threshold: stricter for short words, more lenient for longer ones
+        // Short words need higher similarity to avoid false corrections
+        const threshold = token.length <= 3 ? 0.90 : (token.length <= 5 ? 0.88 : 0.85);
+
+        for (const vocabWord of this.vocabList) {
+            // Skip if length difference is too large (optimization)
+            if (Math.abs(vocabWord.length - token.length) > 3) continue;
+
+            const score = this.jaroWinkler(token, vocabWord);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = vocabWord;
+            }
+        }
+
+        // Only return correction if similarity exceeds threshold
+        if (bestScore >= threshold) {
+            if (bestMatch !== token) {
+                console.log(`🔧 Corrected "${token}" → "${bestMatch}" (similarity: ${bestScore.toFixed(3)})`);
+            }
+            return bestMatch;
+        }
+
+        return token;
+    }
+
     /** Reverse a string character-by-character. */
     reverseWord(text) {
         return text.split('').reverse().join('');
@@ -301,6 +405,19 @@ class AskAnton {
                 });
             });
             console.log('Built keyword map with', this.keywordMap.size, 'keywords');
+
+            // Build vocabulary from all keywords for fuzzy correction
+            this.vocabulary = new Set();
+            this.keywordMap.forEach((entries, keyword) => {
+                // Split multi-word keywords into individual words
+                keyword.split(/\s+/).forEach(word => {
+                    if (word.length >= 2) {  // Filter out single-letter words
+                        this.vocabulary.add(word);
+                    }
+                });
+            });
+            this.vocabList = Array.from(this.vocabulary);
+            console.log('Built vocabulary with', this.vocabulary.size, 'unique words for fuzzy matching');
         } catch (error) {
             console.error('Error loading index:', error);
             throw error;
@@ -1158,7 +1275,13 @@ class AskAnton {
 
         // Normalize the question: remove punctuation, extra spaces
         const normalizedQuestion = this.normalizeSearchText(lowerQuestion);
-        const words = normalizedQuestion.split(' ');
+        let words = normalizedQuestion.split(' ');
+
+        // Apply fuzzy correction to each word before n-gram matching
+        if (this.vocabList) {
+            words = words.map(word => this.correctToken(word));
+            console.log('After fuzzy correction:', words.join(' '));
+        }
 
         // Extract all n-grams (trigrams, bigrams, unigrams)
         const nGrams = [];
