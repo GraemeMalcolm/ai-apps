@@ -117,6 +117,7 @@ class AskAnton {
         this.silenceTimeout = 2000; // Auto-stop after 2 seconds of silence
         this.noSpeechTimeout = 5000; // Cancel after 5 seconds of no speech
         this.usingWebSpeech = true; // Try Web Speech API first
+        this.isMobile = false; // Set to true if mobile device is detected
 
         this.elements = {
             progressSection: document.getElementById('progress-section'),
@@ -187,6 +188,9 @@ class AskAnton {
      */
     async initialize() {
         try {
+            // Detect mobile device early and apply mobile layout
+            this.detectAndApplyMobileLayout();
+
             // Setup event listeners FIRST so cancel link works during loading
             this.setupEventListeners();
 
@@ -398,14 +402,35 @@ class AskAnton {
     // ============================================================================
 
     /**
+     * Detect mobile device and apply mobile-specific layout styles.
+     * Called early in initialization to ensure proper UI rendering on mobile.
+     */
+    detectAndApplyMobileLayout() {
+        // Check for mobile devices
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+            (window.innerWidth <= 768 && 'ontouchstart' in window);
+
+        if (this.isMobile) {
+            console.log('Mobile device detected - applying mobile layout');
+            document.body.classList.add('mobile-layout');
+        }
+    }
+
+    /**
      * Check if the device meets minimum hardware requirements for running
      * the Phi 3.5-mini model. Returns false if device memory or CPU cores
-     * are below the minimum thresholds.
+     * are below the minimum thresholds, or if a mobile device is detected.
      * @returns {boolean} true if hardware meets requirements, false otherwise.
      */
     checkHardwareRequirements() {
         const MIN_MEMORY_GB = 8;
         const MIN_CORES = 8;
+
+        // Check for mobile devices
+        if (this.isMobile) {
+            console.log('Mobile device detected - disabling Phi 3.5-mini');
+            return false;
+        }
 
         const deviceMemory = navigator.deviceMemory || 0;
         const cores = navigator.hardwareConcurrency || 0;
@@ -446,7 +471,7 @@ class AskAnton {
             this.availableModes.wllama = false;
             this.initializeBasicMode(
                 'Ready to chat! (Basic mode)',
-                'Using Basic mode because your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model.'
+                'This device does not meet the minimum requirements for AI mode.'
             );
             return;
         }
