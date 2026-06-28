@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Test - Fallback Speech Synthesizer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎙️ Voice Test</h1>
+            <p class="subtitle">Browser-based Speech Synthesizer</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <label for="text-input">Enter text to synthesize:</label>
+                <textarea 
+                    id="text-input" 
+                    placeholder="Type your text here..."
+                    rows="4"
+>The boy saw the boat floating down the river.</textarea>
+                
+                <div class="examples">
+                    <p><strong>Try these examples:</strong></p>
+                    <button class="example-btn" data-text="Hello, how are you today?">Questions</button>
+                    <button class="example-btn" data-text="The boy enjoys playing with his toy.">Diphthongs (oy, ay)</button>
+                    <button class="example-btn" data-text="She bought food for the group.">Digraphs (ough, oo)</button>
+                    <button class="example-btn" data-text="The bird chirped cheerfully.">Consonant Clusters (ch, sh)</button>
+                    <button class="example-btn" data-text="Every nation should share their vision.">Complex (-tion, -sion)</button>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="speak-btn" class="speak-button">
+                    🔊 Speak
+                </button>
+            </div>
+
+            <div class="info-section">
+                <h3>About</h3>
+                <p>This is an advanced speech synthesizer using <strong>phoneme-based formant synthesis with coarticulation</strong> to create realistic human-like speech entirely in the browser.</p>
+                
+                <h4>Phoneme Recognition:</h4>
+                <ul>
+                    <li><strong>Diphthongs</strong> - "ow" (how), "oi" (boy), "ay" (say), "ou" (out)</li>
+                    <li><strong>Digraphs</strong> - "ee" (see), "oo" (food), "ai" (rain), "ea" (eat), "oa" (boat)</li>
+                    <li><strong>R-colored vowels</strong> - "er" (her), "ar" (car), "or" (for), "ur" (fur)</li>
+                    <li><strong>Consonant clusters</strong> - "th" (the), "sh" (ship), "ch" (chip), "ng" (sing)</li>
+                    <li><strong>Special patterns</strong> - "tion" (action), "sion" (vision), "ough" (rough)</li>
+                </ul>
+                
+                <h4>Natural Speech Features:</h4>
+                <ul>
+                    <li><strong>Coarticulation</strong> - Sounds blend smoothly like in natural speech</li>
+                    <li><strong>Formant Transitions</strong> - Vowel formants shift gradually between phonemes</li>
+                    <li><strong>Vibrato</strong> - Subtle pitch variation mimics human vocal cords</li>
+                    <li><strong>Stress Patterns</strong> - First syllables of words are emphasized</li>
+                    <li><strong>Natural Timing</strong> - Variable durations based on phoneme context</li>
+                    <li><strong>Prosody</strong> - Questions rise in pitch, statements fall naturally</li>
+                    <li><strong>Consonant Variety</strong> - Each consonant has unique spectral characteristics</li>
+                </ul>
+                
+                <p><em>Try the example buttons to hear different phoneme combinations with natural coarticulation!</em></p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Universal fallback voice synthesizer - works on every browser, OS, and device</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
