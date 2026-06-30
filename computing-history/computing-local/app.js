@@ -31,6 +31,7 @@ let currentStream = null; // Track active stream for proper cleanup
 let typingAnimationsInProgress = 0; // Track active typewriter animations
 let modelLoadingCancelled = false; // Track if user cancelled model loading
 let modelLoadingAbortController = null; // Track abort controller for model loading
+let usingPrerecordedVoice = false; // Track if using pre-recorded voice fallback
 const CPU_MODE_FAILURE_MESSAGE = "I'm sorry, something went wrong in AI mode.\nIf this keeps happening, please try switching to Basic (Wikipedia) mode.";
 let lastWllamaCompletionErrored = false; // Track whether last CPU completion failed with an error
 let wllamaShouldFailoverToBasic = false; // Flag to trigger failover from wllama to basic mode
@@ -2989,10 +2990,18 @@ function speakTextContent(text) {
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
 
+    // Check for debug parameter to simulate no voices
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugNoVoices = urlParams.get('debug_no_voices') === 'true';
+
     // Use default voice
     const voices = speechSynthesis.getVoices();
-    if (voices.length > 0) {
+    if (voices.length > 0 && !debugNoVoices) {
         utterance.voice = voices[0];
+        usingPrerecordedVoice = false;
+    } else {
+        // No voices available - use pre-recorded voice
+        usingPrerecordedVoice = true;
     }
 
     // Keep stop button enabled (already set by startResponse)
@@ -3008,7 +3017,22 @@ function speakTextContent(text) {
         endResponse();
     };
 
-    speechSynthesis.speak(utterance);
+    // Use pre-recorded audio if no voices available, otherwise use speech synthesis
+    if (usingPrerecordedVoice) {
+        const audio = new Audio('./audio/response.wav');
+        audio.onended = () => {
+            endResponse();
+        };
+        audio.onerror = () => {
+            endResponse();
+        };
+        audio.play().catch(error => {
+            console.error('Error playing pre-recorded audio:', error);
+            endResponse();
+        });
+    } else {
+        speechSynthesis.speak(utterance);
+    }
 }
 
 /**
