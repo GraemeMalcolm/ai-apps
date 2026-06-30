@@ -83,6 +83,7 @@ class ChatPlayground {
         this.recognition = null;
         this.voicesAvailable = false;
         this.voicesLoaded = false;
+        this.usingPrerecordedVoice = false; // Track if using pre-recorded voice fallback
         this.showCaptions = false; // Track whether to show conversation text
         this.prohibitedTerms = []; // Content moderation terms loaded from file
 
@@ -2959,10 +2960,14 @@ class ChatPlayground {
         if (!voiceSelect) return;
 
         const loadVoices = () => {
+            // Check for debug parameter to simulate no voices
+            const urlParams = new URLSearchParams(window.location.search);
+            const debugNoVoices = urlParams.get('debug_no_voices') === 'true';
+
             const voices = speechSynthesis.getVoices();
             // Get all English voices
             const englishVoices = voices.filter(voice => voice && voice.lang && voice.lang.startsWith('en'));
-            const displayVoices = this.getDisplayableVoices(englishVoices);
+            const displayVoices = debugNoVoices ? [] : this.getDisplayableVoices(englishVoices);
 
             // Preserve currently selected voice
             const currentlySelectedVoice = this.speechSettings.voice || voiceSelect.value;
@@ -2993,14 +2998,20 @@ class ChatPlayground {
                 if (this.voiceMode) {
                     voiceSelect.disabled = false;
                 }
+
+                // Clear pre-recorded voice flag when real voices are available
+                this.usingPrerecordedVoice = false;
             } else {
-                this.voicesAvailable = false;
+                // No voices available - add pre-recorded voice fallback
+                this.voicesAvailable = true; // Still mark as available so voice mode can work
+                this.usingPrerecordedVoice = true;
                 const option = document.createElement('option');
-                option.value = 'none';
-                option.textContent = 'No voices available on this device';
+                option.value = 'Guy (pre-recorded)';
+                option.textContent = 'Guy (pre-recorded)';
                 voiceSelect.appendChild(option);
-                voiceSelect.disabled = true;
-                this.speechSettings.voice = null;
+                voiceSelect.value = 'Guy (pre-recorded)';
+                this.speechSettings.voice = 'Guy (pre-recorded)';
+                voiceSelect.disabled = false;
             }
 
             this.voicesLoaded = true;
@@ -3742,21 +3753,30 @@ class ChatPlayground {
         }
 
         // Vocalize acknowledgment while processing model response (skip for Wikipedia mode - too fast)
-        if (this.speechSettings.textToSpeech && this.voicesAvailable && 'speechSynthesis' in window &&
-            !this.usingWikipedia && this.currentMode !== 'none') {
-            const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
-
-            // Use the selected voice if available
-            if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
-                const voices = speechSynthesis.getVoices();
-                const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
-                if (selectedVoice) {
-                    acknowledgment.voice = selectedVoice;
+        if (this.speechSettings.textToSpeech && this.voicesAvailable && !this.usingWikipedia && this.currentMode !== 'none') {
+            if (this.usingPrerecordedVoice) {
+                // Play pre-recorded thinking audio
+                try {
+                    const audio = new Audio('audio/think.wav');
+                    audio.play().catch(error => console.warn('Error playing think audio:', error));
+                } catch (error) {
+                    console.warn('Error creating think audio:', error);
                 }
-            }
+            } else if ('speechSynthesis' in window) {
+                const acknowledgment = new SpeechSynthesisUtterance("OK, let me think about that...");
 
-            // Speak the acknowledgment without blocking - it will play while model processes
-            speechSynthesis.speak(acknowledgment);
+                // Use the selected voice if available
+                if (this.speechSettings.voice && this.speechSettings.voice !== 'default') {
+                    const voices = speechSynthesis.getVoices();
+                    const selectedVoice = voices.find(voice => voice.name === this.speechSettings.voice);
+                    if (selectedVoice) {
+                        acknowledgment.voice = selectedVoice;
+                    }
+                }
+
+                // Speak the acknowledgment without blocking - it will play while model processes
+                speechSynthesis.speak(acknowledgment);
+            }
         }
 
         // Generate response
@@ -3937,11 +3957,43 @@ class ChatPlayground {
     }
 
     speakResponse(text) {
-        console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable });
+        console.log('speakResponse called:', { text: text.substring(0, 100) + '...', textToSpeech: this.speechSettings.textToSpeech, voicesAvailable: this.voicesAvailable, usingPrerecordedVoice: this.usingPrerecordedVoice });
 
         if (!this.speechSettings.textToSpeech || !this.voicesAvailable) {
             console.log('TTS disabled or voices unavailable, skipping speech');
             this.onSpeechComplete();
+            return;
+        }
+
+        // Handle pre-recorded voice
+        if (this.usingPrerecordedVoice) {
+            console.log('Using pre-recorded voice, playing response.wav');
+            try {
+                const audio = new Audio('audio/response.wav');
+                this.isSpeaking = true;
+
+                audio.onended = () => {
+                    console.log('Pre-recorded audio ended');
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                };
+
+                audio.onerror = (error) => {
+                    console.error('Pre-recorded audio error:', error);
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                };
+
+                audio.play().catch(error => {
+                    console.error('Error playing pre-recorded audio:', error);
+                    this.isSpeaking = false;
+                    this.onSpeechComplete();
+                });
+            } catch (error) {
+                console.error('Error creating pre-recorded audio:', error);
+                this.isSpeaking = false;
+                this.onSpeechComplete();
+            }
             return;
         }
 
@@ -4128,6 +4180,39 @@ class ChatPlayground {
 
         if (!selectedVoiceName) {
             this.showToast('Please select a voice first');
+            return;
+        }
+
+        // Handle pre-recorded voice preview
+        if (selectedVoiceName === 'Guy (pre-recorded)') {
+            if (previewBtn) {
+                previewBtn.disabled = true;
+                previewBtn.textContent = '...';
+            }
+            try {
+                const audio = new Audio('audio/preview.wav');
+                audio.onended = () => {
+                    if (previewBtn) {
+                        previewBtn.disabled = false;
+                        previewBtn.textContent = '▶';
+                    }
+                };
+                audio.onerror = () => {
+                    this.showToast('Error playing preview audio');
+                    if (previewBtn) {
+                        previewBtn.disabled = false;
+                        previewBtn.textContent = '▶';
+                    }
+                };
+                await audio.play();
+            } catch (error) {
+                console.error('Error playing preview audio:', error);
+                this.showToast('Error playing preview audio');
+                if (previewBtn) {
+                    previewBtn.disabled = false;
+                    previewBtn.textContent = '▶';
+                }
+            }
             return;
         }
 
