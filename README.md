@@ -1,6 +1,6 @@
-# Microsoft Learning AI Apps
+# Microsoft Learning Apps
 
-This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft AI Skills Navigator](https://aiskillsnavigator.microsoft.com/) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or low-spec computers.
+This repository contains source code and published web apps for educational use. The apps are designed to support training modules on [Microsoft AI Skills Navigator](https://aiskillsnavigator.microsoft.com/) and should be considered *experimental*. They are <u>not</u> intended (or supported) for use in production solutions. They may run slowly (or not at all) on older or lower-spec computers.
 
 > **Important**: These apps are <u>not</u> supported Microsoft services or products. They are educational resources to support practical exercises in training courses; and are provided as-is without warranty of any kind. Performance issues and occasional failures are to be expected.
 
@@ -39,7 +39,7 @@ Many of the apps use generative AI models. Reasonable precautions have been take
 
 #### Azure-based models (in Microsoft Foundry)
 
-The Azure-based **Ask Anton** and **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 4.1 Mini](https://ai.azure.com/catalog/models/gpt-4.1-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
+The Azure-based **Ask Anton** and **Computing History** apps use a model that you choose to deploy in your Microsoft Foundry resource. We recommend deploying a [GPT 5 Mini](https://ai.azure.com/catalog/models/gpt-5-mini) model. When used in Microsoft Foundry, default content safety guardrails are applied to mitigate the risk of offensive or harmful content generation.
 
 #### Local (in-browser) LLMs
 
