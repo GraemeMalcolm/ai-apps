@@ -589,7 +589,7 @@
                     "develop agents",
                     "create agents"
                 ],
-                "content": "Create AI agents that use the provided language models in Microsoft Foundry. Use the Foundry Agent Service to create agents in Foundry, or use an agent development SDK such as the Microsoft Agent Framework, and host your agent in Foundry. Connect your agent to tools and knowledge sources to enable it to perform tasks."
+                "content": "Create AI agents that use the provided large language models (LLMs) in Microsoft Foundry. Use the Foundry Agent Service to create agents in Foundry, or use an agent development SDK (such as the Microsoft Agent Framework) and host your agent in Foundry. Connect your agent to tools and knowledge sources to enable it to perform tasks."
             },
             {
                 "id": 38,
