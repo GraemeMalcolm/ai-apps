@@ -146,7 +146,7 @@ class AskAnton {
         // Prompt constants for consistent behavior across both models
         this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language; keeping sentences short and to the point.`;
 
-        this.PROMPT_WITH_CONTEXT = `Respond concisely, based only on the following information:`;
+        this.PROMPT_WITH_CONTEXT = `Respond concisely, using ONLY the following information:`;
         this.PROMPT_WITHOUT_CONTEXT = `Answer in one short, concise paragraph, keeping the focus on factual AI topics. Provide only general information.`;
 
         // Prohibited words for content moderation (whole words only)
@@ -2601,7 +2601,7 @@ class AskAnton {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
                 max_tokens: this.wllama_usedGPU ? 400 : 250,
-                temperature: 0.2,
+                temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
                 repeat_penalty: 1.1,
