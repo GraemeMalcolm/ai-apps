@@ -589,7 +589,7 @@
                     "develop agents",
                     "create agents"
                 ],
-                "content": "Microsoft Foundry enables developers to create AI agents that use models and tools in a Foundry Azure resource. Use the Foundry Agent Service to create prompt agents natively in Foundry, or host agents created with SDKs such as the Microsoft Agent Framework."
+                "content": "Microsoft Foundry enables developers to create AI agents that use the provided language models in a Foundry Azure resource. Use the Foundry Agent Service to create agents natively in Foundry, or host agents in Microsoft Foundry that you created with agent development SDKs such as the Microsoft Agent Framework. Connect your agent to tools and knowledge sources to enable it to perform tasks."
             },
             {
                 "id": 38,
