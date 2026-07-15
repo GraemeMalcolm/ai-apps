@@ -228,7 +228,7 @@
                 ],
                 "content": "Retrieval-Augmented Generation (RAG) combines a generative AI model with external knowledge retrieval. Relevant documents are retrieved at query time and added to the prompt. This improves accuracy when answers depend on current or domain-specific information."
             },
-            
+            {
                 "id": 16,
                 "title": "Tools and Skills",
                 "keywords": [
