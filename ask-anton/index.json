@@ -574,9 +574,15 @@
                     "foundry agent",
                     "foundry agents",
                     "agent framework",
-                    "agent service"
+                    "agent service",
+                    "build an agent",
+                    "develop an agent",
+                    "create an agent",
+                    "build agents",
+                    "develop agents",
+                    "create agents"
                 ],
-                "content": "Microsoft Foundry enables developers to create AI agents that can perform tasks autonomously. The Foundry agent service provides tools and APIs for defining agent behavior, integrating with external systems, and managing agent interactions."
+                "content": "Microsoft Foundry enables developers to create AI agents that use models and tools in a Foundry Azure resource. Use the Foundry Agent Service to create prompt agents natively in Foundry, or host agents created with SDKs such as the Microsoft Agent Framework."
             },
             {
                 "id": 37,
@@ -590,7 +596,7 @@
                     "chatcompletions api",
                     "azureprojects"
                 ],
-                "content": "Developers use the Foundry SDK for programmatic access to projects and agents. The OpenAI API integrates language models, with the ChatCompletions API for managing conversations and the Responses API for generating responses."
+                "content": "Developers use the Foundry SDK for programmatic access to projects and agents. The OpenAI ChatCompletions and Responses APIs enable conversations with large language models and agents."
             },
             {
                 "id": 38,
