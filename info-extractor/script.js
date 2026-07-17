@@ -465,7 +465,7 @@ class InfoExtractorApp {
     calculateFitZoom() {
         const viewer = this.imageViewer;
         const img = this.selectedImage;
-        
+
         if (!viewer || !img.naturalWidth || !img.naturalHeight) return;
 
         const viewerWidth = viewer.clientWidth;
@@ -477,13 +477,13 @@ class InfoExtractorApp {
         const padding = 40; // pixels of padding
         const scaleX = (viewerWidth - padding) / imageWidth;
         const scaleY = (viewerHeight - padding) / imageHeight;
-        
+
         // Use the smaller scale to ensure the entire image fits
         let fitZoom = Math.min(scaleX, scaleY, 1.0); // Don't zoom in beyond 100%
-        
+
         // Clamp to min/max zoom levels
         fitZoom = Math.max(this.minZoom, Math.min(this.maxZoom, fitZoom));
-        
+
         this.zoomLevel = fitZoom;
         this.updateZoom();
     }
@@ -827,7 +827,7 @@ class InfoExtractorApp {
                 console.log('OCR/Read mode: Displaying OCR results only');
                 this.updateProgress(90, 'Preparing results...');
                 this.displayOCRResultOnly();
-                
+
                 this.updateProgress(100, 'Analysis complete!');
                 setTimeout(() => {
                     this.hideProgress();
