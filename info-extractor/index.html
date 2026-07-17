@@ -69,6 +69,10 @@
                 <!-- Center area - Main content -->
                 <div class="main-content">
                     <div class="analyze-header">
+                        <select id="analysisMode" class="analysis-mode-select" aria-label="Select analysis type">
+                            <option value="ocr-read">OCR/Read</option>
+                            <option value="receipt-fields">Receipt fields</option>
+                        </select>
                         <button id="analyzeBtn" class="analyze-btn" disabled
                             aria-label="Run OCR and AI analysis on selected image"
                             aria-describedby="analyze-description">🔬 Run analysis</button>
