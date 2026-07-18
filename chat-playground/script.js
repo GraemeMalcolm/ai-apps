@@ -2289,6 +2289,11 @@ class ChatPlayground {
             return text;
         }
 
+        // Don't shorten if we're returning file content - we want all matching lines
+        if (this.fileContentUsedInPrompt) {
+            return text;
+        }
+
         const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
         const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
 
