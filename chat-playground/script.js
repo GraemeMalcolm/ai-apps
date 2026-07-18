@@ -2214,30 +2214,21 @@ class ChatPlayground {
                 const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
                 return firstParagraph.trim();
             } else {
-                // Return the full lead section (everything up to the first subheading)
-                const parseUrl = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&section=0&format=json&origin=*`;
-                const parseResponse = await fetch(parseUrl);
-                if (!parseResponse.ok) throw new Error('Wikipedia parse request failed');
+                // Return the full lead section using the extracts API (plain text)
+                const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=extracts&exintro=1&explaintext=1&format=json&origin=*`;
+                const extractResponse = await fetch(extractUrl);
+                if (!extractResponse.ok) throw new Error('Wikipedia extract request failed');
 
-                const parseData = await parseResponse.json();
-                const html = parseData?.parse?.text?.['*'];
-                if (!html) return null;
+                const extractData = await extractResponse.json();
+                const pages = extractData?.query?.pages;
+                if (!pages) return null;
 
-                // Extract text from HTML and clean it up
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = html;
-
-                // Remove unwanted elements (references, tables, infoboxes, etc.)
-                tempDiv.querySelectorAll('.reference, .mw-references-wrap, table, sup, .noprint').forEach(el => el.remove());
-
-                // Get the text content
-                let text = tempDiv.textContent || tempDiv.innerText || '';
-
-                // Clean up whitespace and normalize line breaks
-                text = text.replace(/\n{3,}/g, '\n\n').trim();
-
-                if (!text || text.length < 20) return null;
-                return text;
+                // Get the first (and only) page from the result
+                const pageId = Object.keys(pages)[0];
+                const extract = pages[pageId]?.extract;
+                
+                if (!extract || extract.length < 20) return null;
+                return extract.trim();
             }
         } catch (error) {
             console.error('Wikipedia lookup failed:', error);
