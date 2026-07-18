@@ -152,8 +152,8 @@ class ChatPlayground {
     static STOPWORDS = new Set([
         // Articles, prepositions, conjunctions
         'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-        'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
-        'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+        'in', 'is', 'it', 'its', 'it\'s', 'of', 'on', 'that', 'the', 'to', 'with',
+        'or', 'but', 'if', 'than', 'then', 'so', 'yet', 'that\'s',
         'after', 'before', 'between', 'during', 'into', 'through', 'over',
         'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
         // Pronouns
@@ -583,11 +583,11 @@ class ChatPlayground {
         const stopwords = new Set([
             'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
             'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'with',
-            'or', 'but', 'if', 'than', 'then', 'so', 'yet',
+            'or', 'but', 'if', 'than', 'then', 'so', 'yet', 'that\'s', 'what\'s',
             'after', 'before', 'between', 'during', 'into', 'through', 'over',
             'under', 'until', 'up', 'down', 'out', 'off', 'above', 'below',
             'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her',
-            'us', 'them', 'my', 'your', 'his', 'our', 'their',
+            'us', 'them', 'my', 'your', 'his', 'our', 'their', 'he\'s', 'she\'s', 'we\'re', 'they\'re',
             'this', 'these', 'those', 'some', 'any', 'all', 'each', 'every',
             'both', 'few', 'more', 'most', 'such', 'no', 'nor', 'not', 'only',
             'own', 'same', 'other', 'another', 'much', 'many',
