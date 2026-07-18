@@ -1856,7 +1856,7 @@ class ChatPlayground {
             try {
                 // Get image analysis (requires MobileNet to be pre-loaded)
                 const predictions = await this.classifyImage(this.pendingImage.img);
-                imageAnalysis = predictions[0].className.replace(/_/g, ' ')
+                imageAnalysis = predictions[0].className.replace(/_/g, ' ');
 
                 // Create image element for message bubble
                 imageElement = document.createElement('img');
@@ -1939,7 +1939,6 @@ class ChatPlayground {
                 const assistantMessageEl = this.addMessage('assistant', '');
                 const contentEl = assistantMessageEl.querySelector('.message-content');
 
-                const summaryText = `<b>Summary:</b><br><br>${this.renderMarkdown(summary)}`;
                 await this.typeResponse(contentEl, summary);
 
                 // Add to conversation history
@@ -1982,31 +1981,14 @@ class ChatPlayground {
             // History already stores first-sentence-only content, so no truncation needed here
             messages.push(...this.conversationHistory.slice(-2));
 
-            // Add user message with image analysis and file context if available
+            // Add user message with image analysis if available
             let finalUserMessage = userMessage;
             if (imageAnalysis) {
                 finalUserMessage += '\n\n[Current image shows: ' + imageAnalysis + ']';
             }
 
-            // If file is uploaded, extract the most relevant line and append to user message
-            this.fileContentUsedInPrompt = false;
-            if (this.config.fileUpload.content) {
-                const keywords = this.extractKeywords(userMessage);
-                console.log('Extracted keywords from user prompt:', keywords);
-
-                const relevantLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
-
-                if (relevantLine) {
-                    console.log('Found most relevant line from file:', relevantLine);
-                    finalUserMessage += '\nAnswer with a single, succinct sentence based on this information:\n' + relevantLine;
-                    this.fileContentUsedInPrompt = true;
-                } else {
-                    console.log('No relevant lines found in file for the given keywords, treating as normal prompt');
-                }
-            }
-
             // If system prompt indicates short response is wanted and there's no image/file context, guide the model
-            if (!imageAnalysis && !this.fileContentUsedInPrompt) {
+            if (!imageAnalysis && !this.config.fileUpload.content) {
                 const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
                 const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
                 if (wantsShortResponse) {
@@ -2238,14 +2220,22 @@ class ChatPlayground {
 
         if (this.config.fileUpload.content) {
             const keywords = this.extractKeywords(firstLine);
-            const bestLine = this.extractRelevantLines(this.config.fileUpload.content, keywords);
 
-            if (bestLine) {
-                this.fileContentUsedInPrompt = true;
-                return bestLine;
+            if (keywords && keywords.length > 0) {
+                const lines = this.config.fileUpload.content.split('\n');
+                const matchingLines = lines
+                    .filter(line => {
+                        const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
+                        return keywords.some(keyword => lineWords.includes(keyword));
+                    })
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+
+                if (matchingLines.length > 0) {
+                    this.fileContentUsedInPrompt = true;
+                    return matchingLines.join('\n');
+                }
             }
-
-            return "I couldn't find a relevant line in the uploaded file for your prompt keywords.";
         }
 
         const wikiResponse = await this.generateWithWikipedia(query, imageClassName);
@@ -2463,13 +2453,21 @@ class ChatPlayground {
 
         this.fileContentUsedInPrompt = false;
         if (this.config.fileUpload.content) {
-            const keywords = this.extractKeywords(userMessage);
-            const relevantLines = this.extractRelevantLines(this.config.fileUpload.content, keywords);
-            if (relevantLines) {
-                this.fileContentUsedInPrompt = true;
-                const lastMsg = messages[messages.length - 1];
-                if (lastMsg && lastMsg.role === 'user') {
-                    lastMsg.content += '\nRespond based only on the following information:\n' + relevantLines;
+            const fileKeywords = this.extractKeywords(userMessage);
+            if (fileKeywords && fileKeywords.length > 0) {
+                const matchingLines = this.config.fileUpload.content.split('\n')
+                    .filter(line => {
+                        const lineWords = this.stripPunctuation(line.toLowerCase()).split(/\s+/);
+                        return fileKeywords.some(keyword => lineWords.includes(keyword));
+                    })
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                if (matchingLines.length > 0) {
+                    this.fileContentUsedInPrompt = true;
+                    const lastMsg = messages[messages.length - 1];
+                    if (lastMsg && lastMsg.role === 'user') {
+                        lastMsg.content += '\nUse the following information to answer:\n' + matchingLines.join('\n');
+                    }
                 }
             }
         }
