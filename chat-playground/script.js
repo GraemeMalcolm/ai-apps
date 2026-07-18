@@ -2226,7 +2226,7 @@ class ChatPlayground {
                 // Get the first (and only) page from the result
                 const pageId = Object.keys(pages)[0];
                 const extract = pages[pageId]?.extract;
-                
+
                 if (!extract || extract.length < 20) return null;
                 return extract.trim();
             }
