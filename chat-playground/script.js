@@ -2196,19 +2196,49 @@ class ChatPlayground {
             if (!results || results.length === 0) return null;
 
             const title = results[0].title;
-            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-            const summaryResponse = await fetch(summaryUrl);
-            if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
 
-            const summaryData = await summaryResponse.json();
-            const extract = summaryData?.extract;
-            if (!extract || extract.length < 20) return null;
+            // Check if shortening is requested
+            const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
+            const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
 
-            const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
-            const extractedSentences = this.extractLeadingSentences(firstParagraph, 2);
-            const result = extractedSentences || firstParagraph.substring(0, 300).trim();
+            if (wantsShortResponse) {
+                // Return just the first paragraph (using summary endpoint)
+                const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+                const summaryResponse = await fetch(summaryUrl);
+                if (!summaryResponse.ok) throw new Error('Wikipedia summary request failed');
 
-            return result.length >= 20 ? result : null;
+                const summaryData = await summaryResponse.json();
+                const extract = summaryData?.extract;
+                if (!extract || extract.length < 20) return null;
+
+                const firstParagraph = extract.split('\n').find(p => p.trim().length > 0) || extract;
+                return firstParagraph.trim();
+            } else {
+                // Return the full lead section (everything up to the first subheading)
+                const parseUrl = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&section=0&format=json&origin=*`;
+                const parseResponse = await fetch(parseUrl);
+                if (!parseResponse.ok) throw new Error('Wikipedia parse request failed');
+
+                const parseData = await parseResponse.json();
+                const html = parseData?.parse?.text?.['*'];
+                if (!html) return null;
+
+                // Extract text from HTML and clean it up
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+
+                // Remove unwanted elements (references, tables, infoboxes, etc.)
+                tempDiv.querySelectorAll('.reference, .mw-references-wrap, table, sup, .noprint').forEach(el => el.remove());
+
+                // Get the text content
+                let text = tempDiv.textContent || tempDiv.innerText || '';
+
+                // Clean up whitespace and normalize line breaks
+                text = text.replace(/\n{3,}/g, '\n\n').trim();
+
+                if (!text || text.length < 20) return null;
+                return text;
+            }
         } catch (error) {
             console.error('Wikipedia lookup failed:', error);
             return null;
@@ -2284,24 +2314,11 @@ class ChatPlayground {
     }
 
     maybeShortenNoneModeResponse(text) {
-        const isNoneMode = this.currentMode === 'none' || this.usingWikipedia;
-        if (!isNoneMode || !text) {
-            return text;
-        }
-
-        // Don't shorten if we're returning file content - we want all matching lines
-        if (this.fileContentUsedInPrompt) {
-            return text;
-        }
-
-        const promptFromUi = (this.systemMessage?.value || this.currentSystemMessage || '').toLowerCase();
-        const wantsShortResponse = /\b(short|concise|brief|succinct)\b/i.test(promptFromUi);
-
-        if (!wantsShortResponse) {
-            return text;
-        }
-
-        return this.extractLeadingSentences(text, 1);
+        // Shortening is now handled within the respective functions:
+        // - File content: never shortened (we want all matching lines)
+        // - Wikipedia: shortened based on prompt inside generateWithWikipedia
+        // So this function now just passes through the text
+        return text;
     }
 
     /**
