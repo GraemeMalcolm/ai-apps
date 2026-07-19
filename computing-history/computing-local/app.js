@@ -977,7 +977,7 @@ function searchPcbInfo(ocrText, userText) {
         combined
             .split(/[\s\-]+/)
             .map(t => t.replace(/[^\w]/g, ''))
-            .filter(t => t.length >= 2 && !STOPWORDS.has(t) && !PCB_COMMON.has(t))
+            .filter(t => t.length >= 3 && /[a-zA-Z0-9]/.test(t) && !STOPWORDS.has(t) && !PCB_COMMON.has(t))
     );
 
     if (tokens.size === 0) return null;
