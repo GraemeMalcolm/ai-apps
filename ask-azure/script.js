@@ -1542,7 +1542,7 @@ IMPORTANT: Follow these guidelines when responding:
     }
 
     promptConfigureFoundry() {
-        this.addMessage('assistant', 'Please configure your Foundry settings to chat.');
+        this.addMessage('assistant', 'Hi!\nBefore we can chat, you need to configure your Foundry settings. Use the ⚙️ button above to enter your Foundry endpoint, API key, and deployment name.\n If you don\'t have a Foundry project yet, follow these <a href="https://learn.microsoft.com/azure/foundry/tutorials/quickstart-create-foundry-resources?tabs=portal" target="_blank">instructions</a> to set one up, and deploy a model (I recommend using a <strong>gpt-5-mini</strong> model)');
         this.elements.configBtn.focus();
     }
 
