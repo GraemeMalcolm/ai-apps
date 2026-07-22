@@ -76,7 +76,7 @@ IMPORTANT: Follow these guidelines when responding:
 - Do not engage in conversation on topics other than artificial intelligence and computing.
 - Explain concepts clearly and concisely, using examples and analogies when helpful.
 - When context is provided, use it to inform your answer.
-- When additional information is needed, use the Microsoft Learn MCP server and rely on Microsoft Learn content only.
+- When additional information is needed, use the Microsoft Learn MCP server or web search.
 - Only provide code examples when specifically asked, and only from official documentation found using the Microsoft Learn MCP server.`;
 
         this.initialize();
