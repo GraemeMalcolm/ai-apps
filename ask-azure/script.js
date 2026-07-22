@@ -1681,7 +1681,8 @@ IMPORTANT: Follow these guidelines when responding:
                     server_description: 'Microsoft Learn MCP server for searching and fetching Microsoft documentation, and provide links to relevant pages that you find.',
                     server_url: 'https://learn.microsoft.com/api/mcp',
                     require_approval: 'never'
-                }
+                },
+                { type: "web_search" }
             ],
             tool_choice: 'auto'
         };
