@@ -48,7 +48,7 @@ class ChatPlayground {
         // Configuration objects
         this.config = {
             modelParameters: {
-                temperature: 0.5,
+                temperature: 0.2,
                 top_p: 0.7,
                 max_tokens: 400,
                 repetition_penalty: 1.1
@@ -326,7 +326,7 @@ class ChatPlayground {
     // Get model-specific default parameters
     getModelDefaults() {
         return {
-            temperature: 0.5,
+            temperature: 0.2,
             top_p: 0.7,
             max_tokens: 768,
             repetition_penalty: 1.1
