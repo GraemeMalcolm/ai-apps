@@ -2501,7 +2501,7 @@ class ChatPlayground {
                     this.fileContentUsedInPrompt = true;
                     const lastMsg = messages[messages.length - 1];
                     if (lastMsg && lastMsg.role === 'user') {
-                        lastMsg.content += '\nRespond succinctly, based on the following information:\n' + matchingLines.join('\n');
+                        lastMsg.content += '\nAnswer succinctly, based only on the following information:\n' + matchingLines.join('\n');
                     }
                 }
             }
@@ -2533,7 +2533,7 @@ class ChatPlayground {
                 messages,
                 max_tokens: this.config.modelParameters.max_tokens,
                 temperature: this.config.modelParameters.temperature,
-                top_k: 25,
+                top_k: 50,
                 top_p: this.config.modelParameters.top_p,
                 repeat_penalty: this.config.modelParameters.repetition_penalty,
                 repeat_last_n: 64,
@@ -3855,7 +3855,7 @@ class ChatPlayground {
                     messages: voiceMessages,
                     max_tokens: Math.min(this.config.modelParameters.max_tokens, 250),
                     temperature: this.config.modelParameters.temperature,
-                    top_k: 25,
+                    top_k: 50,
                     top_p: this.config.modelParameters.top_p,
                     repeat_penalty: this.config.modelParameters.repetition_penalty,
                     repeat_last_n: 64,
