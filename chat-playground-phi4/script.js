@@ -2501,7 +2501,7 @@ class ChatPlayground {
                     this.fileContentUsedInPrompt = true;
                     const lastMsg = messages[messages.length - 1];
                     if (lastMsg && lastMsg.role === 'user') {
-                        lastMsg.content += '\nUse the following information to answer:\n' + matchingLines.join('\n');
+                        lastMsg.content = '\nContext:\n---\n' + matchingLines.join('\n') + '\n---\n' + lastMsg.content;
                     }
                 }
             }
