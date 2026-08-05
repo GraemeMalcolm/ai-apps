@@ -2488,7 +2488,7 @@ class ChatPlayground {
             contentEl = assistantMessageEl.querySelector('.message-content');
         }
 
-        contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">(I\'m working on a response. Thanks for your patience!)</p>';
+        contentEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p style="font-size: 0.85em; color: #666; margin: 8px 0 0 0; font-style: italic;">I\'m working on a response. Thanks for your patience!<br/>(If I take too long, try switching the model to <strong>None</strong>)</p>';
         contentEl.style.width = 'fit-content';
         contentEl.style.whiteSpace = 'normal';
 
@@ -4738,8 +4738,8 @@ function handleModalParameterChange(e) {
 window.resetParametersFromModal = function () {
     // Get model-specific defaults
     const defaults = window.chatPlaygroundApp ? window.chatPlaygroundApp.getModelDefaults() : {
-        temperature: 0.5,
-        top_p: 0.9,
+        temperature: 0.2,
+        top_p: 0.7,
         max_tokens: 768,
         repetition_penalty: 1.1
     };
