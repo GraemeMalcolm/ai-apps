@@ -1,5 +1,7 @@
 import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
+const DEVICE_MEMORY_GB = navigator.deviceMemory || 0;
+
 // Delay (ms) before clearing the search-status hint shown beneath the input
 // after a response finishes streaming. Tuned to stay visible long enough to read.
 const SEARCH_STATUS_CLEAR_DELAY = 2000;
@@ -552,13 +554,12 @@ class AskAnton {
             return false;
         }
 
-        const deviceMemory = navigator.deviceMemory || 0;
         const cores = navigator.hardwareConcurrency || 0;
 
-        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
+        console.log(`Hardware check: ${DEVICE_MEMORY_GB}GB RAM, ${cores} cores`);
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
-        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
+        if (DEVICE_MEMORY_GB < MIN_MEMORY_GB || cores < MIN_CORES) {
             console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
             return false;
         }
@@ -732,7 +733,7 @@ class AskAnton {
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
                 const n_ctx = 1024;
-                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${navigator.deviceMemory ?? 'unknown'}GB)`);
+                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${DEVICE_MEMORY_GB}GB)`);
                 this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
@@ -1476,9 +1477,8 @@ class AskAnton {
         // Build context from matched documents.
         // On low-memory devices (<16GB), inject only the first sentence of each document
         // to keep the prompt short and reduce prefill time on slow CPUs.
-        const isLowMemory = (navigator.deviceMemory || 0) < 16;
         const contextParts = rankedMatches.map(match => {
-            return isLowMemory
+            return DEVICE_MEMORY_GB < 16
                 ? this.extractFirstSentence(match.document.content) || match.document.content
                 : match.document.content;
         });
@@ -1964,13 +1964,14 @@ class AskAnton {
         return true;
     }
 
-    /** Store the two most recent complete user/assistant turns. */
+    /** Store one complete turn on low-memory devices, otherwise store two. */
     rememberConversationTurn(userMessage, assistantMessage) {
         this.conversationHistory.push(
             { role: 'user', content: userMessage },
             { role: 'assistant', content: assistantMessage }
         );
-        this.conversationHistory = this.conversationHistory.slice(-4);
+        const historyEntryLimit = DEVICE_MEMORY_GB < 16 ? 2 : 4;
+        this.conversationHistory = this.conversationHistory.slice(-historyEntryLimit);
     }
 
     // === Microsoft Learn MCP server integration ============================
@@ -2636,7 +2637,7 @@ class AskAnton {
         try {
             completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: this.wllama_usedGPU ? 400 : (navigator.deviceMemory || 0) >= 16 ? 250 : 175,
+                max_tokens: this.wllama_usedGPU ? 400 : DEVICE_MEMORY_GB >= 16 ? 250 : 175,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
