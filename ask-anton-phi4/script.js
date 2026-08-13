@@ -6,6 +6,10 @@ const DEVICE_MEMORY_GB = navigator.deviceMemory || 0;
 // after a response finishes streaming. Tuned to stay visible long enough to read.
 const SEARCH_STATUS_CLEAR_DELAY = 2000;
 
+// Keep long-running sessions responsive by limiting retained chat DOM nodes.
+// Model conversation history has its own, much smaller limit below.
+const MAX_RETAINED_CHAT_ITEMS = 40;
+
 // Inline styles for the small italic note that accompanies the typing indicator
 // in wllama and Basic modes (kept inline so a single innerHTML write covers both).
 const TYPING_NOTE_STYLE = 'font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;';
@@ -893,6 +897,7 @@ class AskAnton {
 
         } catch (error) {
             console.error('Failed to initialize wllama:', error);
+            await this.releaseWllama();
             this.availableModes.wllama = false;
             if (showFatalError) {
                 this.showError('Failed to load AI model. Please refresh the page.');
@@ -990,11 +995,7 @@ class AskAnton {
         }
 
         // Clean up any partially loaded models
-        if (this.wllama) {
-            const _oldWllama = this.wllama;
-            this.wllama = null;
-            _oldWllama.exit().catch(() => { });
-        }
+        this.releaseWllama();
 
         // Hide the cancel link immediately
         if (this.elements.cancelLoadingLink) {
@@ -1054,6 +1055,14 @@ class AskAnton {
 
     /** Bind all DOM event listeners. Called once from {@link initialize}. */
     setupEventListeners() {
+        // A hard refresh does not reliably reclaim WASM workers and WebGPU
+        // allocations promptly. Explicitly release them when this page is discarded.
+        window.addEventListener('pagehide', (event) => {
+            if (!event.persisted) {
+                this.cleanupForPageExit();
+            }
+        });
+
         // Send button click
         this.elements.sendBtn.addEventListener('click', () => {
             if (this.isGenerating) {
@@ -1700,9 +1709,10 @@ class AskAnton {
 
         if (targetMode === 'basic') {
             this.disableInput();
+            await this.releaseWllama();
             this.setCurrentMode('basic');
             this.updateModeSelector();
-            this.addSystemMessage('Switched to Basic mode (no model)');
+            this.addSystemMessage('Switched to Basic mode (no model). Model memory released.');
             this.enableInput();
             return;
         }
@@ -1837,6 +1847,7 @@ class AskAnton {
         p.textContent = message;
         messageDiv.appendChild(p);
         this.elements.chatMessages.appendChild(messageDiv);
+        this.pruneChatMessages();
         this.scrollToBottom();
         return messageDiv;
     }
@@ -1879,9 +1890,19 @@ class AskAnton {
         }
 
         this.elements.chatMessages.appendChild(messageDiv);
+        this.pruneChatMessages();
         this.scrollToBottom();
 
         return messageDiv;
+    }
+
+    /** Remove the oldest chat nodes after a long session to bound DOM memory. */
+    pruneChatMessages() {
+        const items = this.elements.chatMessages.querySelectorAll('.message:not(.welcome-message), .system-message');
+        const excessCount = items.length - MAX_RETAINED_CHAT_ITEMS;
+        for (let index = 0; index < excessCount; index++) {
+            items[index].remove();
+        }
     }
 
     /**
@@ -2883,6 +2904,48 @@ class AskAnton {
             this.mediaStream.getTracks().forEach(track => track.stop());
             this.mediaStream = null;
         }
+    }
+
+    /** Stop the Wllama worker and release its WASM/WebGPU allocations. */
+    async releaseWllama() {
+        const instance = this.wllama;
+        this.wllama = null;
+        this.wllama_usedGPU = false;
+
+        if (!instance) {
+            return;
+        }
+
+        try {
+            await instance.exit();
+        } catch (error) {
+            console.warn('Failed to release Wllama resources:', error);
+        }
+    }
+
+    /** Best-effort cleanup for refresh, navigation, and tab close. */
+    cleanupForPageExit() {
+        this.stopRequested = true;
+        this.currentAbortController?.abort();
+        this.currentAbortController = null;
+        this.clearSpeechTimers();
+        this.cleanupAudioResources();
+        this.releaseWllama();
+
+        try {
+            this.voskRecognizer?.remove?.();
+        } catch (error) {
+            console.warn('Failed to release Vosk recognizer:', error);
+        }
+        this.voskRecognizer = null;
+
+        try {
+            this.voskModel?.terminate?.();
+        } catch (error) {
+            console.warn('Failed to release Vosk model:', error);
+        }
+        this.voskModel = null;
+        this.voskLoaded = false;
     }
 
     // ============================================================================
