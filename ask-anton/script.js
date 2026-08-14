@@ -1,62 +1,4 @@
-import {
-    Wllama,
-    WllamaAbortError,
-    WllamaError
-} from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
-
-class FixedWllama extends Wllama {
-    async getResponse(options, isStream) {
-        let finalResult = null;
-
-        while (true) {
-            if (options.abortSignal?.aborted) {
-                throw new WllamaAbortError();
-            }
-
-            const resultChunk = await this.proxy.wllamaAction('get_result', {
-                _name: 'gres_req'
-            });
-            const jsonString = resultChunk.data_json;
-
-            if (!jsonString || jsonString.length === 0) {
-                if (!resultChunk.has_more) {
-                    break;
-                }
-                continue;
-            }
-
-            if (jsonString === 'null') {
-                continue;
-            }
-
-            let jsonData = this.jsonDecode(jsonString);
-            finalResult = jsonData;
-
-            if (resultChunk.is_error) {
-                this.logger().error('Model returned an error:', jsonData);
-                throw new WllamaError(
-                    jsonData.message || 'Unknown inference error',
-                    'inference_error'
-                );
-            }
-
-            if (isStream) {
-                if (!Array.isArray(jsonData)) {
-                    jsonData = [jsonData];
-                }
-
-                for (const chunk of jsonData) {
-                    options.onData?.(chunk);
-                    finalResult = chunk;
-                }
-            }
-        }
-
-        return finalResult;
-    }
-}
-
-const DEVICE_MEMORY_GB = navigator.deviceMemory || 0;
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
 
 // Delay (ms) before clearing the search-status hint shown beneath the input
 // after a response finishes streaming. Tuned to stay visible long enough to read.
@@ -150,7 +92,6 @@ class AskAnton {
         this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
         this.lastWllamaCompletionErrored = false;
-        this.lastWllamaCompletionFinishedNaturally = false;
         this.wllama_usedGPU = false;   // true if current wllama instance was loaded with GPU layers
         this.gpuFailed = false;         // true after a GPU session crash; suppresses future GPU attempts
         this.wllamaShouldFailoverToBasic = false;  // true when wllama fails and should switch to basic mode
@@ -203,10 +144,10 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are a teacher of artificial intelligence. Answer using helpful, concise, simple language in short sentences.`;
+        this.SYSTEM_PROMPT = `You are a friendly teacher of topics related to artificial intelligence. Answer using helpful, concise, simple language; keeping sentences short and to the point.`;
 
-        this.PROMPT_WITH_CONTEXT = `Respond succinctly, using ONLY the following information:`;
-        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short, succinct paragraph, keeping the focus on general facts related to AI topics.`;
+        this.PROMPT_WITH_CONTEXT = `Respond concisely, using ONLY the following information:`;
+        this.PROMPT_WITHOUT_CONTEXT = `Answer in one short, concise paragraph, keeping the focus on factual AI topics. Provide only general information.`;
 
         // Prohibited words for content moderation (whole words only)
         this.prohibitedWords = [];
@@ -611,12 +552,13 @@ class AskAnton {
             return false;
         }
 
+        const deviceMemory = navigator.deviceMemory || 0;
         const cores = navigator.hardwareConcurrency || 0;
 
-        console.log(`Hardware check: ${DEVICE_MEMORY_GB}GB RAM, ${cores} cores`);
+        console.log(`Hardware check: ${deviceMemory}GB RAM, ${cores} cores`);
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
-        if (DEVICE_MEMORY_GB < MIN_MEMORY_GB || cores < MIN_CORES) {
+        if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
             console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
@@ -682,7 +624,7 @@ class AskAnton {
     }
 
     /**
-    * Bring up the wllama engine with the Phi-3.5-mini model (Q4_K_M, 4-bit).
+     * Bring up the wllama engine with the Phi-4-mini model (Q4_K_M, 4-bit).
      * Attempts GPU acceleration first; falls back to CPU multi-thread, then
      * CPU single-thread. Reuses an existing instance if one is already loaded.
      * @param {(p:number)=>void|null} [progressCallback] Forwarded download progress (0..1).
@@ -730,9 +672,9 @@ class AskAnton {
                 this.updateProgress(15, 'Loading AI model...');
             }
 
-            // Configure the unified WASM build from the same wllama release.
+            // Configure WASM paths for CDN (single unified build in wllama 3.1)
             const CONFIG_PATHS = {
-                default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm',
+                default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
             };
 
             const useMultiThread = window.crossOriginIsolated === true;
@@ -790,13 +732,15 @@ class AskAnton {
             // Helper to attempt a model load; always creates a fresh Wllama instance.
             const attemptLoad = async (n_gpu_layers, n_threads) => {
                 const n_ctx = 1024;
-                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${DEVICE_MEMORY_GB}GB)`);
-                this.wllama = new FixedWllama(CONFIG_PATHS);
+                console.log(`n_ctx: ${n_ctx} (deviceMemory: ${navigator.deviceMemory ?? 'unknown'}GB)`);
+                this.wllama = new Wllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
                     n_ctx,
                     n_gpu_layers,
                     n_threads
+                    // Note: no_warmup not supported in wllama 3.1.1
+                    // Warmup is ~1-2 seconds and only runs once on load
                 });
             };
 
@@ -855,6 +799,10 @@ class AskAnton {
                         if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
                             // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
                             console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info.vendor}") — known precision issues cause hallucinations`);
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
+                            // which predates the fix. Fall back to CPU until wllama is upgraded.
+                            console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
                         } else {
                             GPU_ENABLED = true;
                         }
@@ -1528,8 +1476,9 @@ class AskAnton {
         // Build context from matched documents.
         // On low-memory devices (<16GB), inject only the first sentence of each document
         // to keep the prompt short and reduce prefill time on slow CPUs.
+        const isLowMemory = (navigator.deviceMemory || 0) < 16;
         const contextParts = rankedMatches.map(match => {
-            return DEVICE_MEMORY_GB < 16
+            return isLowMemory
                 ? this.extractFirstSentence(match.document.content) || match.document.content
                 : match.document.content;
         });
@@ -1537,8 +1486,8 @@ class AskAnton {
         const categories = [...new Set(rankedMatches.map(m => m.category))];
         const links = [...new Set(rankedMatches.map(m => m.link))];
         const documents = rankedMatches.map(m => m.document);
-        const videos = documents.filter(doc => doc.video_url).map(doc => ({
-            video_url: doc.video_url,
+        const videos = documents.filter(doc => doc.video_id).map(doc => ({
+            video_id: doc.video_id,
             title: doc.title
         }));
 
@@ -1666,26 +1615,71 @@ class AskAnton {
     stopGeneration() {
         this.stopRequested = true;
 
-        const activeStream = this.currentStream;
-        const isWllamaCallbackStream = activeStream?.type === 'wllama-callback-stream';
-
-        // Wllama must keep polling until has_more is false or its pending
-        // native output can be returned as the start of the next response.
-        if (this.currentAbortController && !isWllamaCallbackStream) {
+        // Abort the generation properly using AbortController
+        if (this.currentAbortController) {
             console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
 
-        if (isWllamaCallbackStream) {
+        const activeStream = this.currentStream;
+
+        if (activeStream && this.currentMode === 'wllama') {
             this.isStoppingGeneration = true;
-            console.log('Stop requested; draining remaining wllama output');
+            this.safeStopWllamaStream(activeStream)
+                .catch((error) => {
+                    console.warn('Wllama stop cleanup failed:', error);
+                })
+                .finally(() => {
+                    this.isStoppingGeneration = false;
+                    if (this.currentStream === activeStream) {
+                        this.currentStream = null;
+                    }
+                });
         } else {
             this.currentStream = null;
         }
 
         this.updateSendButton(false);
         console.log('Stop requested');
+    }
+
+    /**
+     * Drain a wllama stream after interruption so its WASM state is left
+     * in a clean condition for the next prompt. Safe to call with a null
+     * or already-closed stream.
+     */
+    async safeStopWllamaStream(stream) {
+        if (!stream) {
+            return;
+        }
+
+        for (let i = 0; i < 2; i++) {
+            try {
+                const nextPromise = stream.next?.();
+                if (!nextPromise || typeof nextPromise.then !== 'function') {
+                    break;
+                }
+
+                await Promise.race([
+                    nextPromise,
+                    new Promise((resolve) => setTimeout(resolve, 120))
+                ]);
+            } catch (error) {
+                break;
+            }
+        }
+
+        try {
+            if (typeof stream.return === 'function') {
+                await stream.return();
+            }
+        } catch (error) {
+            console.warn('Stream return failed during wllama stop cleanup:', error);
+        }
+
+        // Wllama state is reset automatically after interruption
+        console.log('Wllama state reset after stop');
     }
 
     /**
@@ -1918,12 +1912,12 @@ class AskAnton {
         if (videos && videos.length > 0) {
             if (videos.length === 1) {
                 const video = videos[0];
-                const videoUrl = this.getSynthesiaVideoUrl(video.video_url);
+                const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
                 const videoLinkHtml = `<a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
                 formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINK_0\]\]/g, videoLinkHtml);
             } else {
                 const videoLinksHtml = videos.map(video => {
-                    const videoUrl = this.getSynthesiaVideoUrl(video.video_url);
+                    const videoUrl = this.getSynthesiaVideoUrl(video.video_id);
                     return `• <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="video-link">${this.escapeHtml(video.title)}</a>`;
                 }).join('<br>');
                 formattedMessage = formattedMessage.replace(/\[\[VIDEO_LINKS\]\]/g, videoLinksHtml);
@@ -1968,16 +1962,6 @@ class AskAnton {
         }
 
         return true;
-    }
-
-    /** Store one complete turn on low-memory devices, otherwise store two. */
-    rememberConversationTurn(userMessage, assistantMessage) {
-        this.conversationHistory.push(
-            { role: 'user', content: userMessage },
-            { role: 'assistant', content: assistantMessage }
-        );
-        const historyEntryLimit = DEVICE_MEMORY_GB < 16 ? 2 : 4;
-        this.conversationHistory = this.conversationHistory.slice(-historyEntryLimit);
     }
 
     // === Microsoft Learn MCP server integration ============================
@@ -2233,7 +2217,10 @@ class AskAnton {
                 { '[[SEARCH_RESULT_LINK]]': searchLinkHtml }
             );
 
-            this.rememberConversationTurn(userMessage, historyAssistantMessage);
+            this.conversationHistory = [
+                { role: 'user', content: userMessage },
+                { role: 'assistant', content: historyAssistantMessage }
+            ];
 
             // Track keywords for next potential no-results search
             this.previousKeywords = this.extractBingSearchKeywords(searchQuery) || this.normalizeSearchText(searchQuery);
@@ -2311,11 +2298,10 @@ class AskAnton {
                     const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
                     messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
 
-                    if (this.lastWllamaCompletionFinishedNaturally) {
-                        this.rememberConversationTurn(userMessage, modelResponse.trim());
-                    } else {
-                        console.log('Length-limited response not added to conversation history');
-                    }
+                    this.conversationHistory = [
+                        { role: 'user', content: userMessage },
+                        { role: 'assistant', content: modelResponse.trim() }
+                    ];
                     return;
                 }
             }
@@ -2414,12 +2400,11 @@ class AskAnton {
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
-            const canRememberResponse = this.currentMode !== 'wllama' || this.lastWllamaCompletionFinishedNaturally;
-            if (!this.stopRequested && assistantMessage.trim() && canRememberResponse) {
-                // Store the original question, not the version augmented with context.
-                this.rememberConversationTurn(userMessage, assistantMessage);
-            } else if (!this.stopRequested && assistantMessage.trim()) {
-                console.log('Length-limited response not added to conversation history');
+            if (!this.stopRequested && assistantMessage.trim()) {
+                this.conversationHistory = [
+                    { role: 'user', content: userMessage }, // Store original question, not the one with context
+                    { role: 'assistant', content: assistantMessage }
+                ];
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
             }
@@ -2449,17 +2434,18 @@ class AskAnton {
     // LLM RESPONSE GENERATION (wllama)
     // ============================================================================
 
-    // Return only a complete first sentence; incomplete model fragments are not history.
+    // Helper function to extract first sentence or first 30 characters
     extractFirstSentence(text) {
         if (!text) return '';
 
         // Find the first occurrence of sentence-ending punctuation
-        const match = text.trim().match(/^[^.!?]*[.!?]["')\]]*/);
+        const match = text.match(/^[^.!?:]*[.!?:]/);
         if (match) {
             return match[0].trim();
         }
 
-        return '';
+        // If no sentence-ending punctuation, use first 30 characters
+        return text.substring(0, 30).trim();
     }
 
     trimIncompleteSentenceForCPU(text) {
@@ -2569,7 +2555,6 @@ class AskAnton {
      */
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         this.lastWllamaCompletionErrored = false;
-        this.lastWllamaCompletionFinishedNaturally = false;
 
         // 🧪 DEBUG: Force generation failure for testing failover to Basic mode
         if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
@@ -2596,20 +2581,19 @@ class AskAnton {
             { role: 'system', content: this.SYSTEM_PROMPT }
         ];
 
-        // Add the first sentence from each of the two most recent complete turns.
-        for (let i = 0; i + 1 < this.conversationHistory.length; i += 2) {
-            const previousUser = this.conversationHistory[i];
-            const previousAssistant = this.conversationHistory[i + 1];
+        // Add truncated previous conversation if available
+        if (this.conversationHistory.length >= 2) {
+            const prevUser = this.conversationHistory[this.conversationHistory.length - 2];
+            const prevAssistant = this.conversationHistory[this.conversationHistory.length - 1];
 
-            if (previousUser.role === 'user' && previousAssistant.role === 'assistant') {
-                const previousUserSentence = this.extractFirstSentence(previousUser.content) || previousUser.content.trim();
-                const previousAssistantSentence = this.extractFirstSentence(previousAssistant.content);
-                if (previousUserSentence && previousAssistantSentence) {
-                    messages.push(
-                        { role: 'user', content: previousUserSentence },
-                        { role: 'assistant', content: previousAssistantSentence }
-                    );
-                }
+            if (prevUser.role === 'user' && prevAssistant.role === 'assistant') {
+                const prevUserSentence = this.extractFirstSentence(prevUser.content);
+                const prevAssistantSentence = this.extractFirstSentence(prevAssistant.content);
+
+                messages.push(
+                    { role: 'user', content: prevUserSentence },
+                    { role: 'assistant', content: prevAssistantSentence }
+                );
             }
         }
 
@@ -2627,15 +2611,9 @@ class AskAnton {
 
         let assistantMessage = '';
         let audioPlayed = false;
+        let completion = null;
         let firstChunkReceived = false;
         let timeoutMessageAdded = false;
-        let finishReason = null;
-        let completionId = null;
-        let chunkCount = 0;
-        let completionUsage = null;
-        let firstChunkText = '';
-        let lastChunkText = '';
-        let renderFrameId = null;
 
         // Create AbortController for consistency with other generation paths.
         const controller = new AbortController();
@@ -2656,58 +2634,46 @@ class AskAnton {
             }
         }, 30000);
 
-        // Throttle DOM updates to one per animation frame for smooth streaming.
-        // Tokens accumulate in assistantMessage at the model's full speed; the
-        // display catches up on the next rAF tick (~16 ms) regardless of burst size.
-        const scheduleRender = () => {
-            if (renderFrameId === null) {
-                renderFrameId = requestAnimationFrame(() => {
-                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                    this.scrollToBottom();
-                    renderFrameId = null;
-                });
-            }
-        };
-
         // Streamed completion: tokens arrive progressively for a responsive UI.
         try {
-            this.currentStream = { type: 'wllama-callback-stream' };
-
-            await this.wllama.createChatCompletion({
+            completion = await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: this.wllama_usedGPU ? 384 : (navigator.deviceMemory || 0) >= 16 ? 200 : 140,
+                max_tokens: this.wllama_usedGPU ? 400 : (navigator.deviceMemory || 0) >= 16 ? 250 : 175,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
-                penalty_repeat: 1.1,
-                penalty_last_n: 64,
+                repeat_penalty: 1.1,
+                repeat_last_n: 64,
                 cache_prompt: false, // Prevent KV cache accumulation across turns to avoid memory overflows
                 abortSignal: controller.signal,
-                stream: true,
-                onData: (chunk) => {
-                    chunkCount++;
-                    completionId ??= chunk.id ?? null;
-                    completionUsage = chunk.usage ?? completionUsage;
+                stream: true
+            });
 
-                    if (this.stopRequested) {
-                        return;
-                    }
+            this.currentStream = completion;
 
-                    const choice = chunk.choices?.[0];
-                    if (choice?.finish_reason) {
-                        finishReason = choice.finish_reason;
-                    }
+            // Throttle DOM updates to one per animation frame for smooth streaming.
+            // Tokens accumulate in assistantMessage at the model's full speed; the
+            // display catches up on the next rAF tick (~16 ms) regardless of burst size.
+            let renderPending = false;
+            const scheduleRender = () => {
+                if (!renderPending) {
+                    renderPending = true;
+                    requestAnimationFrame(() => {
+                        messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                        this.scrollToBottom();
+                        renderPending = false;
+                    });
+                }
+            };
 
-                    const tokenText = choice?.delta?.content ?? '';
-                    if (!tokenText) {
-                        return;
-                    }
+            for await (const chunk of completion) {
+                if (this.stopRequested) {
+                    console.log('Wllama generation stopped by user');
+                    break;
+                }
 
-                    if (!firstChunkText) {
-                        firstChunkText = tokenText;
-                    }
-                    lastChunkText = tokenText;
-
+                const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+                if (tokenText) {
                     // Clear timeout on first chunk
                     if (!firstChunkReceived) {
                         clearTimeout(slowResponseTimeout);
@@ -2727,34 +2693,14 @@ class AskAnton {
                     assistantMessage += tokenText;
                     scheduleRender();
                 }
-            });
-
-            if (renderFrameId !== null) {
-                cancelAnimationFrame(renderFrameId);
-                renderFrameId = null;
             }
 
-            if (finishReason === 'length') {
-                const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
-                if (cleanedAssistantMessage !== assistantMessage) {
-                    assistantMessage = cleanedAssistantMessage;
-                }
+            const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
+            if (cleanedAssistantMessage !== assistantMessage) {
+                assistantMessage = cleanedAssistantMessage;
+                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                this.scrollToBottom();
             }
-
-            this.lastWllamaCompletionFinishedNaturally =
-                !this.stopRequested && !this.lastWllamaCompletionErrored && finishReason !== 'length';
-
-            console.log('Wllama completion diagnostics:', {
-                completionId,
-                chunkCount,
-                finishReason,
-                usage: completionUsage,
-                firstChunk: firstChunkText,
-                lastChunk: lastChunkText
-            });
-
-            messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-            this.scrollToBottom();
 
             // Clear abort controller on successful completion
             this.currentAbortController = null;
@@ -2776,13 +2722,9 @@ class AskAnton {
             // Ensure timeout is cleared
             clearTimeout(slowResponseTimeout);
 
-            if (renderFrameId !== null) {
-                cancelAnimationFrame(renderFrameId);
-                renderFrameId = null;
+            if (this.currentStream === completion) {
+                this.currentStream = null;
             }
-
-            this.currentStream = null;
-            this.isStoppingGeneration = false;
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
@@ -3262,6 +3204,16 @@ class AskAnton {
 
             // Clear search status
             this.elements.searchStatus.textContent = '';
+
+            // Reset wllama cache if in wllama mode
+            if (this.currentMode === 'wllama' && this.wllama) {
+                try {
+                    this.wllama.samplingReset();
+                    console.log('Wllama cache reset for new conversation');
+                } catch (error) {
+                    console.warn('Failed to reset wllama cache:', error);
+                }
+            }
 
             console.log('Conversation restarted');
         }
