@@ -1,4 +1,4 @@
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
 
 const DEVICE_MEMORY_GB = navigator.deviceMemory || 0;
 
@@ -625,7 +625,7 @@ class AskAnton {
     }
 
     /**
-     * Bring up the wllama engine with the Phi-4-mini model (Q4_K_M, 4-bit).
+    * Bring up the wllama engine with the Phi-3.5-mini model (Q4_K_M, 4-bit).
      * Attempts GPU acceleration first; falls back to CPU multi-thread, then
      * CPU single-thread. Reuses an existing instance if one is already loaded.
      * @param {(p:number)=>void|null} [progressCallback] Forwarded download progress (0..1).
@@ -673,9 +673,9 @@ class AskAnton {
                 this.updateProgress(15, 'Loading AI model...');
             }
 
-            // Configure WASM paths for CDN (single unified build in wllama 3.1)
+            // Configure the unified WASM build from the same wllama release.
             const CONFIG_PATHS = {
-                default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
+                default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm',
             };
 
             const useMultiThread = window.crossOriginIsolated === true;
@@ -740,8 +740,6 @@ class AskAnton {
                     n_ctx,
                     n_gpu_layers,
                     n_threads
-                    // Note: no_warmup not supported in wllama 3.1.1
-                    // Warmup is ~1-2 seconds and only runs once on load
                 });
             };
 
@@ -800,10 +798,6 @@ class AskAnton {
                         if (vendor.includes('qualcomm') || vendor.includes('adreno')) {
                             // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
                             console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info.vendor}") — known precision issues cause hallucinations`);
-                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
-                            // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
-                            // which predates the fix. Fall back to CPU until wllama is upgraded.
-                            console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
                         } else {
                             GPU_ENABLED = true;
                         }
@@ -2641,8 +2635,8 @@ class AskAnton {
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
-                repeat_penalty: 1.1,
-                repeat_last_n: 64,
+                penalty_repeat: 1.1,
+                penalty_last_n: 64,
                 cache_prompt: false, // Prevent KV cache accumulation across turns to avoid memory overflows
                 abortSignal: controller.signal,
                 stream: true
@@ -3203,16 +3197,6 @@ class AskAnton {
 
             // Clear search status
             this.elements.searchStatus.textContent = '';
-
-            // Reset wllama cache if in wllama mode
-            if (this.currentMode === 'wllama' && this.wllama) {
-                try {
-                    this.wllama.samplingReset();
-                    console.log('Wllama cache reset for new conversation');
-                } catch (error) {
-                    console.warn('Failed to reset wllama cache:', error);
-                }
-            }
 
             console.log('Conversation restarted');
         }
