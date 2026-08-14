@@ -1609,71 +1609,26 @@ class AskAnton {
     stopGeneration() {
         this.stopRequested = true;
 
-        // Abort the generation properly using AbortController
-        if (this.currentAbortController) {
+        const activeStream = this.currentStream;
+        const isWllamaCallbackStream = activeStream?.type === 'wllama-callback-stream';
+
+        // Wllama must keep polling until has_more is false or its pending
+        // native output can be returned as the start of the next response.
+        if (this.currentAbortController && !isWllamaCallbackStream) {
             console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
 
-        const activeStream = this.currentStream;
-
-        if (activeStream && this.currentMode === 'wllama') {
+        if (isWllamaCallbackStream) {
             this.isStoppingGeneration = true;
-            this.safeStopWllamaStream(activeStream)
-                .catch((error) => {
-                    console.warn('Wllama stop cleanup failed:', error);
-                })
-                .finally(() => {
-                    this.isStoppingGeneration = false;
-                    if (this.currentStream === activeStream) {
-                        this.currentStream = null;
-                    }
-                });
+            console.log('Stop requested; draining remaining wllama output');
         } else {
             this.currentStream = null;
         }
 
         this.updateSendButton(false);
         console.log('Stop requested');
-    }
-
-    /**
-     * Drain a wllama stream after interruption so its WASM state is left
-     * in a clean condition for the next prompt. Safe to call with a null
-     * or already-closed stream.
-     */
-    async safeStopWllamaStream(stream) {
-        if (!stream) {
-            return;
-        }
-
-        for (let i = 0; i < 2; i++) {
-            try {
-                const nextPromise = stream.next?.();
-                if (!nextPromise || typeof nextPromise.then !== 'function') {
-                    break;
-                }
-
-                await Promise.race([
-                    nextPromise,
-                    new Promise((resolve) => setTimeout(resolve, 120))
-                ]);
-            } catch (error) {
-                break;
-            }
-        }
-
-        try {
-            if (typeof stream.return === 'function') {
-                await stream.return();
-            }
-        } catch (error) {
-            console.warn('Stream return failed during wllama stop cleanup:', error);
-        }
-
-        // Wllama state is reset automatically after interruption
-        console.log('Wllama state reset after stop');
     }
 
     /**
@@ -2647,7 +2602,7 @@ class AskAnton {
 
             await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: this.wllama_usedGPU ? 400 : DEVICE_MEMORY_GB >= 16 ? 250 : 175,
+                max_tokens: 120,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
@@ -2733,6 +2688,7 @@ class AskAnton {
             }
 
             this.currentStream = null;
+            this.isStoppingGeneration = false;
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
