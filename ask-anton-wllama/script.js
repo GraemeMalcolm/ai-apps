@@ -2812,9 +2812,40 @@ class AskAnton {
         console.log('Raw wllama model response:', rawModelResponse);
         console.log('Wllama response complete, length:', assistantMessage.length);
 
-        // If wllama failed (either GPU or CPU), set flag to trigger failover to Basic mode.
-        // The calling code will handle the silent switch and automatic retry.
+        // A crashed WebGPU worker cannot be reused. Unload it, suppress future GPU
+        // attempts, and retry this request once with a fresh CPU-only instance.
         if (!this.stopRequested && (this.lastWllamaCompletionErrored || !assistantMessage.trim())) {
+            if (this.wllama_usedGPU) {
+                console.warn('Wllama GPU inference failed; unloading model and retrying on CPU...');
+                this.gpuFailed = true;
+                this.wllama_usedGPU = false;
+
+                const failedGpuWllama = this.wllama;
+                this.wllama = null;
+                if (failedGpuWllama) {
+                    try {
+                        await failedGpuWllama.exit();
+                    } catch (exitError) {
+                        console.warn('Failed to cleanly unload crashed GPU model:', exitError);
+                    }
+                }
+
+                try {
+                    messageTextDiv.innerHTML = this.getTypingIndicatorHtml();
+                    await this.initializeWllama(null, {
+                        activateMode: false,
+                        showChatInterface: false,
+                        showFatalError: false
+                    });
+                    console.log('Wllama reinitialized on CPU; retrying request...');
+                    return await this.generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput);
+                } catch (cpuLoadError) {
+                    console.warn('Wllama CPU-only reload failed; falling back to Basic mode:', cpuLoadError);
+                }
+            }
+
+            // The CPU-only load or inference failed. The calling code handles the
+            // silent switch to Basic mode and automatic retry.
             console.warn('Wllama inference failed; flagging for silent failover to Basic mode...');
             this.wllamaShouldFailoverToBasic = true;
             // Clean up the failed wllama instance
