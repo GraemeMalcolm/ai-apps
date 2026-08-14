@@ -2608,6 +2608,7 @@ class AskAnton {
         let firstChunkReceived = false;
         let timeoutMessageAdded = false;
         let finishReason = null;
+        let renderFrameId = null;
 
         // Create AbortController for consistency with other generation paths.
         const controller = new AbortController();
@@ -2648,14 +2649,12 @@ class AskAnton {
             // Throttle DOM updates to one per animation frame for smooth streaming.
             // Tokens accumulate in assistantMessage at the model's full speed; the
             // display catches up on the next rAF tick (~16 ms) regardless of burst size.
-            let renderPending = false;
             const scheduleRender = () => {
-                if (!renderPending) {
-                    renderPending = true;
-                    requestAnimationFrame(() => {
+                if (renderFrameId === null) {
+                    renderFrameId = requestAnimationFrame(() => {
                         messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
                         this.scrollToBottom();
-                        renderPending = false;
+                        renderFrameId = null;
                     });
                 }
             };
@@ -2694,14 +2693,20 @@ class AskAnton {
                 }
             }
 
+            if (renderFrameId !== null) {
+                cancelAnimationFrame(renderFrameId);
+                renderFrameId = null;
+            }
+
             if (finishReason === 'length') {
                 const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
                 if (cleanedAssistantMessage !== assistantMessage) {
                     assistantMessage = cleanedAssistantMessage;
-                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                    this.scrollToBottom();
                 }
             }
+
+            messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+            this.scrollToBottom();
 
             // Clear abort controller on successful completion
             this.currentAbortController = null;
@@ -2722,6 +2727,11 @@ class AskAnton {
         } finally {
             // Ensure timeout is cleared
             clearTimeout(slowResponseTimeout);
+
+            if (renderFrameId !== null) {
+                cancelAnimationFrame(renderFrameId);
+                renderFrameId = null;
+            }
 
             if (this.currentStream === completion) {
                 this.currentStream = null;
