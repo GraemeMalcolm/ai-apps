@@ -2530,9 +2530,18 @@ class AskAnton {
             return '';  // Return empty response to trigger failover
         }
 
-        // Ensure wllama is loaded
+        // Each completion uses a fresh native worker because wllama 3.5.1 has no
+        // public API for clearing its single sequence/KV state between requests.
         if (!this.wllama) {
-            throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
+            console.log('Loading a fresh wllama context from the cached model...');
+            await this.initializeWllama(null, {
+                activateMode: false,
+                showChatInterface: false,
+                showFatalError: false
+            });
+        }
+        if (!this.wllama) {
+            throw new Error('Wllama could not initialize a fresh inference context.');
         }
 
         // Build messages array for wllama
@@ -2619,7 +2628,7 @@ class AskAnton {
 
             await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: 256,
+                max_tokens: 384,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
@@ -2685,7 +2694,8 @@ class AskAnton {
                 }
             }
 
-            this.lastWllamaCompletionFinishedNaturally = !!finishReason && finishReason !== 'length';
+            this.lastWllamaCompletionFinishedNaturally =
+                !this.stopRequested && !this.lastWllamaCompletionErrored && finishReason !== 'length';
 
             console.log('Wllama completion diagnostics:', {
                 completionId,
@@ -2726,6 +2736,19 @@ class AskAnton {
 
             this.currentStream = null;
             this.isStoppingGeneration = false;
+
+            // cache_prompt=false does not clear llama.cpp's saved prompt/KV state.
+            // Terminating the worker is the only isolation boundary exposed by
+            // wllama 3.5.1; model files remain cached in OPFS for the next turn.
+            if (this.wllama) {
+                const completedWllama = this.wllama;
+                this.wllama = null;
+                try {
+                    await completedWllama.exit();
+                } catch (exitError) {
+                    console.warn('Failed to dispose completed wllama context:', exitError);
+                }
+            }
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
