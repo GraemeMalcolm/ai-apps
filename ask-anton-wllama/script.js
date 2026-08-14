@@ -203,7 +203,7 @@ class AskAnton {
         };
 
         // Prompt constants for consistent behavior across both models
-        this.SYSTEM_PROMPT = `You are a teacher of artificial intelligence. Answer using helpful, concise, simple language in short sentences.`;
+        this.SYSTEM_PROMPT = `You are a teacher of artificial intelligence. Answer using helpful, concise, simple language in short sentences. End your answer with [STOP] and do not write anything after it.`;
 
         this.PROMPT_WITH_CONTEXT = `Respond succinctly, using ONLY the following information:`;
         this.PROMPT_WITHOUT_CONTEXT = `Answer in one short, succinct paragraph, keeping the focus on general facts related to AI topics.`;
@@ -2635,7 +2635,10 @@ class AskAnton {
         let completionUsage = null;
         let firstChunkText = '';
         let lastChunkText = '';
+        let rawModelResponse = '';
+        let matchedStopSequence = '';
         let renderFrameId = null;
+        const stopSequences = ['[STOP]', '<|end|>', '<|user|>', '<|system|>'];
 
         // Create AbortController for consistency with other generation paths.
         const controller = new AbortController();
@@ -2703,6 +2706,8 @@ class AskAnton {
                         return;
                     }
 
+                    rawModelResponse += tokenText;
+
                     if (!firstChunkText) {
                         firstChunkText = tokenText;
                     }
@@ -2724,7 +2729,23 @@ class AskAnton {
                         audioPlayed = true;
                     }
 
-                    assistantMessage += tokenText;
+                    const updatedAssistantMessage = assistantMessage + tokenText;
+                    const stopMatch = stopSequences
+                        .map(sequence => ({ sequence, index: updatedAssistantMessage.indexOf(sequence) }))
+                        .filter(match => match.index !== -1)
+                        .sort((left, right) => left.index - right.index)[0];
+
+                    if (stopMatch) {
+                        matchedStopSequence = stopMatch.sequence;
+                        finishReason = 'stop';
+                        assistantMessage = updatedAssistantMessage.slice(0, stopMatch.index).trimEnd();
+                        this.lastWllamaCompletionFinishedNaturally = true;
+                        scheduleRender();
+                        controller.abort();
+                        return;
+                    }
+
+                    assistantMessage = updatedAssistantMessage;
                     scheduleRender();
                 }
             });
@@ -2764,7 +2785,10 @@ class AskAnton {
             clearTimeout(slowResponseTimeout);
 
             // Check if this was an abort (expected when user clicks stop)
-            if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
+            if (matchedStopSequence) {
+                console.log('Wllama stopped at model response boundary:', matchedStopSequence);
+                this.lastWllamaCompletionErrored = false;
+            } else if (this.stopRequested || error.name === 'AbortError' || error.message?.includes('abort')) {
                 console.log('Generation aborted by user');
                 this.lastWllamaCompletionErrored = false;
             } else {
@@ -2785,6 +2809,7 @@ class AskAnton {
             this.isStoppingGeneration = false;
         }
 
+        console.log('Raw wllama model response:', rawModelResponse);
         console.log('Wllama response complete, length:', assistantMessage.length);
 
         // If wllama failed (either GPU or CPU), set flag to trigger failover to Basic mode.
