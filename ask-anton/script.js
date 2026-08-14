@@ -2607,6 +2607,7 @@ class AskAnton {
         let completion = null;
         let firstChunkReceived = false;
         let timeoutMessageAdded = false;
+        let finishReason = null;
 
         // Create AbortController for consistency with other generation paths.
         const controller = new AbortController();
@@ -2665,7 +2666,12 @@ class AskAnton {
                     break;
                 }
 
-                const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+                const choice = chunk.choices?.[0];
+                if (choice?.finish_reason) {
+                    finishReason = choice.finish_reason;
+                }
+
+                const tokenText = choice?.delta?.content ?? '';
                 if (tokenText) {
                     // Clear timeout on first chunk
                     if (!firstChunkReceived) {
@@ -2688,11 +2694,13 @@ class AskAnton {
                 }
             }
 
-            const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
-            if (cleanedAssistantMessage !== assistantMessage) {
-                assistantMessage = cleanedAssistantMessage;
-                messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                this.scrollToBottom();
+            if (finishReason === 'length') {
+                const cleanedAssistantMessage = this.trimIncompleteSentenceForCPU(assistantMessage);
+                if (cleanedAssistantMessage !== assistantMessage) {
+                    assistantMessage = cleanedAssistantMessage;
+                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                    this.scrollToBottom();
+                }
             }
 
             // Clear abort controller on successful completion
