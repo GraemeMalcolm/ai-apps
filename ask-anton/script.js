@@ -94,6 +94,7 @@ class AskAnton {
         this.videoPopupHeight = 600;
         this.usedVoiceInput = false;
         this.lastWllamaCompletionErrored = false;
+        this.lastWllamaCompletionFinishedNaturally = false;
         this.wllama_usedGPU = false;   // true if current wllama instance was loaded with GPU layers
         this.gpuFailed = false;         // true after a GPU session crash; suppresses future GPU attempts
         this.wllamaShouldFailoverToBasic = false;  // true when wllama fails and should switch to basic mode
@@ -2254,7 +2255,11 @@ class AskAnton {
                     const displayedMessage = `${modelResponse.trim()}${fallbackNote}`;
                     messageTextDiv.innerHTML = this.formatResponse(displayedMessage);
 
-                    this.rememberConversationTurn(userMessage, modelResponse.trim());
+                    if (this.lastWllamaCompletionFinishedNaturally) {
+                        this.rememberConversationTurn(userMessage, modelResponse.trim());
+                    } else {
+                        console.log('Length-limited response not added to conversation history');
+                    }
                     return;
                 }
             }
@@ -2353,9 +2358,12 @@ class AskAnton {
             }
 
             // Only add to conversation history if not stopped (to prevent corruption)
-            if (!this.stopRequested && assistantMessage.trim()) {
+            const canRememberResponse = this.currentMode !== 'wllama' || this.lastWllamaCompletionFinishedNaturally;
+            if (!this.stopRequested && assistantMessage.trim() && canRememberResponse) {
                 // Store the original question, not the version augmented with context.
                 this.rememberConversationTurn(userMessage, assistantMessage);
+            } else if (!this.stopRequested && assistantMessage.trim()) {
+                console.log('Length-limited response not added to conversation history');
             } else if (this.stopRequested) {
                 console.log('Stopped response not added to conversation history to prevent corruption');
             }
@@ -2385,18 +2393,17 @@ class AskAnton {
     // LLM RESPONSE GENERATION (wllama)
     // ============================================================================
 
-    // Helper function to extract first sentence or first 30 characters
+    // Return only a complete first sentence; incomplete model fragments are not history.
     extractFirstSentence(text) {
         if (!text) return '';
 
         // Find the first occurrence of sentence-ending punctuation
-        const match = text.match(/^[^.!?:]*[.!?:]/);
+        const match = text.trim().match(/^[^.!?]*[.!?]["')\]]*/);
         if (match) {
             return match[0].trim();
         }
 
-        // If no sentence-ending punctuation, use first 30 characters
-        return text.substring(0, 30).trim();
+        return '';
     }
 
     trimIncompleteSentenceForCPU(text) {
@@ -2506,6 +2513,7 @@ class AskAnton {
      */
     async generateWithWllama(userMessage, context, messageTextDiv, usedVoiceInput = false) {
         this.lastWllamaCompletionErrored = false;
+        this.lastWllamaCompletionFinishedNaturally = false;
 
         // 🧪 DEBUG: Force generation failure for testing failover to Basic mode
         if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
@@ -2538,10 +2546,14 @@ class AskAnton {
             const previousAssistant = this.conversationHistory[i + 1];
 
             if (previousUser.role === 'user' && previousAssistant.role === 'assistant') {
-                messages.push(
-                    { role: 'user', content: this.extractFirstSentence(previousUser.content) },
-                    { role: 'assistant', content: this.extractFirstSentence(previousAssistant.content) }
-                );
+                const previousUserSentence = this.extractFirstSentence(previousUser.content) || previousUser.content.trim();
+                const previousAssistantSentence = this.extractFirstSentence(previousAssistant.content);
+                if (previousUserSentence && previousAssistantSentence) {
+                    messages.push(
+                        { role: 'user', content: previousUserSentence },
+                        { role: 'assistant', content: previousAssistantSentence }
+                    );
+                }
             }
         }
 
@@ -2562,6 +2574,11 @@ class AskAnton {
         let firstChunkReceived = false;
         let timeoutMessageAdded = false;
         let finishReason = null;
+        let completionId = null;
+        let chunkCount = 0;
+        let completionUsage = null;
+        let firstChunkText = '';
+        let lastChunkText = '';
         let renderFrameId = null;
 
         // Create AbortController for consistency with other generation paths.
@@ -2602,7 +2619,7 @@ class AskAnton {
 
             await this.wllama.createChatCompletion({
                 messages: messages,
-                max_tokens: 120,
+                max_tokens: 256,
                 temperature: 0.1,
                 top_k: 30,
                 top_p: 0.85,
@@ -2612,6 +2629,10 @@ class AskAnton {
                 abortSignal: controller.signal,
                 stream: true,
                 onData: (chunk) => {
+                    chunkCount++;
+                    completionId ??= chunk.id ?? null;
+                    completionUsage = chunk.usage ?? completionUsage;
+
                     if (this.stopRequested) {
                         return;
                     }
@@ -2625,6 +2646,11 @@ class AskAnton {
                     if (!tokenText) {
                         return;
                     }
+
+                    if (!firstChunkText) {
+                        firstChunkText = tokenText;
+                    }
+                    lastChunkText = tokenText;
 
                     // Clear timeout on first chunk
                     if (!firstChunkReceived) {
@@ -2658,6 +2684,17 @@ class AskAnton {
                     assistantMessage = cleanedAssistantMessage;
                 }
             }
+
+            this.lastWllamaCompletionFinishedNaturally = !!finishReason && finishReason !== 'length';
+
+            console.log('Wllama completion diagnostics:', {
+                completionId,
+                chunkCount,
+                finishReason,
+                usage: completionUsage,
+                firstChunk: firstChunkText,
+                lastChunk: lastChunkText
+            });
 
             messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
             this.scrollToBottom();
