@@ -1,4 +1,60 @@
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
+import {
+    Wllama,
+    WllamaAbortError,
+    WllamaError
+} from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
+
+class FixedWllama extends Wllama {
+    async getResponse(options, isStream) {
+        let finalResult = null;
+
+        while (true) {
+            if (options.abortSignal?.aborted) {
+                throw new WllamaAbortError();
+            }
+
+            const resultChunk = await this.proxy.wllamaAction('get_result', {
+                _name: 'gres_req'
+            });
+            const jsonString = resultChunk.data_json;
+
+            if (!jsonString || jsonString.length === 0) {
+                if (!resultChunk.has_more) {
+                    break;
+                }
+                continue;
+            }
+
+            if (jsonString === 'null') {
+                continue;
+            }
+
+            let jsonData = this.jsonDecode(jsonString);
+            finalResult = jsonData;
+
+            if (resultChunk.is_error) {
+                this.logger().error('Model returned an error:', jsonData);
+                throw new WllamaError(
+                    jsonData.message || 'Unknown inference error',
+                    'inference_error'
+                );
+            }
+
+            if (isStream) {
+                if (!Array.isArray(jsonData)) {
+                    jsonData = [jsonData];
+                }
+
+                for (const chunk of jsonData) {
+                    options.onData?.(chunk);
+                    finalResult = chunk;
+                }
+            }
+        }
+
+        return finalResult;
+    }
+}
 
 const DEVICE_MEMORY_GB = navigator.deviceMemory || 0;
 
@@ -735,7 +791,7 @@ class AskAnton {
             const attemptLoad = async (n_gpu_layers, n_threads) => {
                 const n_ctx = 1024;
                 console.log(`n_ctx: ${n_ctx} (deviceMemory: ${DEVICE_MEMORY_GB}GB)`);
-                this.wllama = new Wllama(CONFIG_PATHS);
+                this.wllama = new FixedWllama(CONFIG_PATHS);
                 await this.wllama.loadModelFromHF(modelSource, {
                     ...baseModelConfig,
                     n_ctx,
@@ -2530,18 +2586,9 @@ class AskAnton {
             return '';  // Return empty response to trigger failover
         }
 
-        // Each completion uses a fresh native worker because wllama 3.5.1 has no
-        // public API for clearing its single sequence/KV state between requests.
+        // Ensure wllama is loaded
         if (!this.wllama) {
-            console.log('Loading a fresh wllama context from the cached model...');
-            await this.initializeWllama(null, {
-                activateMode: false,
-                showChatInterface: false,
-                showFatalError: false
-            });
-        }
-        if (!this.wllama) {
-            throw new Error('Wllama could not initialize a fresh inference context.');
+            throw new Error('Wllama is not initialized. Please wait for CPU mode to finish loading.');
         }
 
         // Build messages array for wllama
@@ -2736,19 +2783,6 @@ class AskAnton {
 
             this.currentStream = null;
             this.isStoppingGeneration = false;
-
-            // cache_prompt=false does not clear llama.cpp's saved prompt/KV state.
-            // Terminating the worker is the only isolation boundary exposed by
-            // wllama 3.5.1; model files remain cached in OPFS for the next turn.
-            if (this.wllama) {
-                const completedWllama = this.wllama;
-                this.wllama = null;
-                try {
-                    await completedWllama.exit();
-                } catch (exitError) {
-                    console.warn('Failed to dispose completed wllama context:', exitError);
-                }
-            }
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
