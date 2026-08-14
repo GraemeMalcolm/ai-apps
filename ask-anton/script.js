@@ -2604,7 +2604,6 @@ class AskAnton {
 
         let assistantMessage = '';
         let audioPlayed = false;
-        let completion = null;
         let firstChunkReceived = false;
         let timeoutMessageAdded = false;
         let finishReason = null;
@@ -2629,9 +2628,24 @@ class AskAnton {
             }
         }, 30000);
 
+        // Throttle DOM updates to one per animation frame for smooth streaming.
+        // Tokens accumulate in assistantMessage at the model's full speed; the
+        // display catches up on the next rAF tick (~16 ms) regardless of burst size.
+        const scheduleRender = () => {
+            if (renderFrameId === null) {
+                renderFrameId = requestAnimationFrame(() => {
+                    messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
+                    this.scrollToBottom();
+                    renderFrameId = null;
+                });
+            }
+        };
+
         // Streamed completion: tokens arrive progressively for a responsive UI.
         try {
-            completion = await this.wllama.createChatCompletion({
+            this.currentStream = { type: 'wllama-callback-stream' };
+
+            await this.wllama.createChatCompletion({
                 messages: messages,
                 max_tokens: this.wllama_usedGPU ? 400 : DEVICE_MEMORY_GB >= 16 ? 250 : 175,
                 temperature: 0.1,
@@ -2641,37 +2655,22 @@ class AskAnton {
                 penalty_last_n: 64,
                 cache_prompt: false, // Prevent KV cache accumulation across turns to avoid memory overflows
                 abortSignal: controller.signal,
-                stream: true
-            });
+                stream: true,
+                onData: (chunk) => {
+                    if (this.stopRequested) {
+                        return;
+                    }
 
-            this.currentStream = completion;
+                    const choice = chunk.choices?.[0];
+                    if (choice?.finish_reason) {
+                        finishReason = choice.finish_reason;
+                    }
 
-            // Throttle DOM updates to one per animation frame for smooth streaming.
-            // Tokens accumulate in assistantMessage at the model's full speed; the
-            // display catches up on the next rAF tick (~16 ms) regardless of burst size.
-            const scheduleRender = () => {
-                if (renderFrameId === null) {
-                    renderFrameId = requestAnimationFrame(() => {
-                        messageTextDiv.innerHTML = this.formatResponse(assistantMessage);
-                        this.scrollToBottom();
-                        renderFrameId = null;
-                    });
-                }
-            };
+                    const tokenText = choice?.delta?.content ?? '';
+                    if (!tokenText) {
+                        return;
+                    }
 
-            for await (const chunk of completion) {
-                if (this.stopRequested) {
-                    console.log('Wllama generation stopped by user');
-                    break;
-                }
-
-                const choice = chunk.choices?.[0];
-                if (choice?.finish_reason) {
-                    finishReason = choice.finish_reason;
-                }
-
-                const tokenText = choice?.delta?.content ?? '';
-                if (tokenText) {
                     // Clear timeout on first chunk
                     if (!firstChunkReceived) {
                         clearTimeout(slowResponseTimeout);
@@ -2691,7 +2690,7 @@ class AskAnton {
                     assistantMessage += tokenText;
                     scheduleRender();
                 }
-            }
+            });
 
             if (renderFrameId !== null) {
                 cancelAnimationFrame(renderFrameId);
@@ -2733,9 +2732,7 @@ class AskAnton {
                 renderFrameId = null;
             }
 
-            if (this.currentStream === completion) {
-                this.currentStream = null;
-            }
+            this.currentStream = null;
         }
 
         console.log('Wllama response complete, length:', assistantMessage.length);
