@@ -597,7 +597,7 @@ class AskAnton {
 
     /**
      * Check if the device meets minimum hardware requirements for running
-     * the Phi 3.5-mini model. Returns false if device memory or CPU cores
+     * the Phi 4-mini model. Returns false if device memory or CPU cores
      * are below the minimum thresholds, or if a mobile device is detected.
      * @returns {boolean} true if hardware meets requirements, false otherwise.
      */
@@ -607,7 +607,7 @@ class AskAnton {
 
         // Check for mobile devices
         if (this.isMobile) {
-            console.log('Mobile device detected - disabling Phi 3.5-mini');
+            console.log('Mobile device detected - disabling Phi 4-mini');
             return false;
         }
 
@@ -617,7 +617,7 @@ class AskAnton {
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (DEVICE_MEMORY_GB < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
             return false;
         }
 
@@ -682,7 +682,7 @@ class AskAnton {
     }
 
     /**
-    * Bring up the wllama engine with the Phi-3.5-mini model (Q4_K_M, 4-bit).
+    * Bring up the wllama engine with the Phi-4-mini model (Q4_K_M, 4-bit).
      * Attempts GPU acceleration first; falls back to CPU multi-thread, then
      * CPU single-thread. Reuses an existing instance if one is already loaded.
      * @param {(p:number)=>void|null} [progressCallback] Forwarded download progress (0..1).
@@ -927,7 +927,7 @@ class AskAnton {
             if (!isLazyLoad) {
                 this.updateProgress(100, 'Ready to chat!');
             }
-            console.log('Wllama initialized successfully with Phi 3.5-mini');
+            console.log('Wllama initialized successfully with Phi 4-mini');
             this.availableModes.wllama = true;
 
             if (!this.modelLoadingCancelled) {
@@ -1070,7 +1070,7 @@ class AskAnton {
     /** Human-readable label for the model selector and aria descriptions. */
     getModeLabel(mode = this.currentMode) {
         if (mode === 'wllama') {
-            return 'Phi 3.5-mini';
+            return 'Phi 4-mini';
         }
 
         return 'None';
@@ -1716,7 +1716,7 @@ class AskAnton {
         // targetMode === 'wllama'
         if (!this.availableModes.wllama) {
             this.updateModeSelector();
-            this.addSystemMessage('Phi 3.5-mini is unavailable on this device.');
+            this.addSystemMessage('Phi 4-mini is unavailable on this device.');
             return;
         }
 
@@ -1724,7 +1724,7 @@ class AskAnton {
             this.disableInput();
             this.setCurrentMode('wllama');
             this.updateModeSelector();
-            this.addSystemMessage('Switched to Phi 3.5-mini');
+            this.addSystemMessage('Switched to Phi 4-mini');
             this.enableInput();
             return;
         }
@@ -1759,7 +1759,7 @@ class AskAnton {
             this.setCurrentMode(fallbackMode);
 
             if (loadingMsgElement) {
-                loadingMsgElement.textContent = `Failed to load Phi 3.5-mini. Switched to ${this.getModeLabel(fallbackMode)}.`;
+                loadingMsgElement.textContent = `Failed to load Phi 4-mini. Switched to ${this.getModeLabel(fallbackMode)}.`;
             }
         } finally {
             this.updateModeSelector();
@@ -1792,7 +1792,7 @@ class AskAnton {
         modeSelect.value = this.currentMode;
 
         const modeDescriptions = {
-            wllama: 'Phi 3.5-mini runs in your browser, GPU-accelerated when available.',
+            wllama: 'Phi 4-mini runs in your browser, GPU-accelerated when available.',
             basic: 'None: returns matching knowledge-base content without model inference.'
         };
 
