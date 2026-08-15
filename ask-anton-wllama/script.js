@@ -782,8 +782,8 @@ class AskAnton {
             };
 
             const modelSource = {
-                //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
-                repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+                repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+                //repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
                 quant: 'Q4_K_M'
             };
 
