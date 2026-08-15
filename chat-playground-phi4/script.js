@@ -1,4 +1,60 @@
-import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js';
+import {
+    Wllama,
+    WllamaAbortError,
+    WllamaError
+} from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
+
+class FixedWllama extends Wllama {
+    async getResponse(options, isStream) {
+        let finalResult = null;
+
+        while (true) {
+            if (options.abortSignal?.aborted) {
+                throw new WllamaAbortError();
+            }
+
+            const resultChunk = await this.proxy.wllamaAction('get_result', {
+                _name: 'gres_req'
+            });
+            const jsonString = resultChunk.data_json;
+
+            if (!jsonString || jsonString.length === 0) {
+                if (!resultChunk.has_more) {
+                    break;
+                }
+                continue;
+            }
+
+            if (jsonString === 'null') {
+                continue;
+            }
+
+            let jsonData = this.jsonDecode(jsonString);
+            finalResult = jsonData;
+
+            if (resultChunk.is_error) {
+                this.logger().error('Model returned an error:', jsonData);
+                throw new WllamaError(
+                    jsonData.message || 'Unknown inference error',
+                    'inference_error'
+                );
+            }
+
+            if (isStream) {
+                if (!Array.isArray(jsonData)) {
+                    jsonData = [jsonData];
+                }
+
+                for (const chunk of jsonData) {
+                    options.onData?.(chunk);
+                    finalResult = chunk;
+                }
+            }
+        }
+
+        return finalResult;
+    }
+}
 
 // Utility function to escape HTML and prevent XSS
 function escapeHtml(text) {
@@ -1424,7 +1480,7 @@ class ChatPlayground {
         this.wllamaLoaded = false;
 
         const CONFIG_PATHS = {
-            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm',
+            default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm',
         };
 
         const useMultiThread = window.crossOriginIsolated === true;
@@ -1464,11 +1520,6 @@ class ChatPlayground {
                         // Open bug: ggml-org/llama.cpp#23558 — still unresolved upstream.
                         console.warn(`WebGPU disabled: Qualcomm/Adreno GPU detected (vendor="${info?.vendor}") — known precision issues cause hallucinations`);
                         GPU_ENABLED = false;
-                    } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
-                        // Fixed in llama.cpp PR #23040 (wllama 3.2.3+), but this app uses 3.1.1
-                        // which predates the fix. Fall back to CPU until wllama is upgraded.
-                        console.warn(`WebGPU disabled: AMD GPU detected (vendor="${info?.vendor}") — flashattention bug in wllama <3.2.3 causes garbled output on Linux/Vulkan`);
-                        GPU_ENABLED = false;
                     }
                 } else {
                     GPU_ENABLED = false; // requestAdapter returned null — no WebGPU
@@ -1481,7 +1532,7 @@ class ChatPlayground {
 
         // Helper: create a fresh Wllama instance and load the model.
         const attemptLoad = async (n_gpu_layers, n_threads) => {
-            this.wllama = new Wllama(CONFIG_PATHS);
+            this.wllama = new FixedWllama(CONFIG_PATHS);
             await this.wllama.loadModelFromHF(modelRef, { ...baseParams, n_gpu_layers, n_threads });
         };
 
@@ -2511,7 +2562,6 @@ class ChatPlayground {
         this.currentAbortController = controller;
 
         let fullResponse = '';
-        let completion = null;
 
         try {
             // 🧪 DEBUG: Force generation failure for testing failover to Wikipedia mode
@@ -2529,47 +2579,47 @@ class ChatPlayground {
                 return;  // Return early to trigger failover
             }
 
+            let firstChunkReceived = false;
             const completionParams = {
                 messages,
                 max_tokens: this.config.modelParameters.max_tokens,
                 temperature: this.config.modelParameters.temperature,
                 top_k: 50,
                 top_p: this.config.modelParameters.top_p,
-                repeat_penalty: this.config.modelParameters.repetition_penalty,
-                repeat_last_n: 64,
+                penalty_repeat: this.config.modelParameters.repetition_penalty,
+                penalty_last_n: 64,
                 stop: ['[Current image shows:', '\nUser:', '\nHuman:'],
                 cache_prompt: false, // Prevent KV cache accumulation to avoid memory buffer errors with small context window
                 abortSignal: controller.signal,
-                stream: true
+                stream: true,
+                onData: (chunk) => {
+                    if (this.stopRequested) {
+                        return;
+                    }
+
+                    const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+                    if (tokenText) {
+                        if (!firstChunkReceived) {
+                            firstChunkReceived = true;
+                            contentEl.textContent = '';
+                            contentEl.style.width = '';
+                            contentEl.style.whiteSpace = '';
+                        }
+                        fullResponse += tokenText;
+                        contentEl.textContent = fullResponse;
+                        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                    }
+                }
             };
             console.log('Wllama chat completion request:', completionParams);
-            completion = await this.wllama.createChatCompletion(completionParams);
 
-            this.currentStream = completion;
-
-            let firstChunkReceived = false;
-
-            for await (const chunk of completion) {
-                if (this.stopRequested) {
-                    console.log('Wllama generation stopped by user');
-                    break;
-                }
-
-                const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
-                if (tokenText) {
-                    if (!firstChunkReceived) {
-                        firstChunkReceived = true;
-                        contentEl.textContent = '';
-                        contentEl.style.width = '';
-                        contentEl.style.whiteSpace = '';
-                    }
-                    fullResponse += tokenText;
-                    contentEl.textContent = fullResponse;
-                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-                }
-            }
+            // Keep polling through has_more=false. Aborting callback streaming can
+            // leave native output queued and prepend it to the next response.
+            this.currentStream = { type: 'wllama-callback-stream' };
+            await this.wllama.createChatCompletion(completionParams);
 
             this.currentAbortController = null;
+            this.currentStream = null;
 
             if (fullResponse.trim() && !this.stopRequested) {
                 const cleanedResponse = this.trimIncompleteFinalSentence(fullResponse);
@@ -2635,9 +2685,7 @@ class ChatPlayground {
             }
             this.currentAbortController = null;
         } finally {
-            if (this.currentStream === completion) {
-                this.currentStream = null;
-            }
+            this.currentStream = null;
         }
     }
 
@@ -2884,14 +2932,21 @@ class ChatPlayground {
             this.typingState.isTyping = false;
         }
 
-        // Abort the generation using AbortController
-        if (this.currentAbortController) {
+        const isWllamaCallbackStream = this.currentStream?.type === 'wllama-callback-stream';
+
+        // Callback streams must keep polling until has_more is false, or pending
+        // native output can appear at the start of the next response.
+        if (this.currentAbortController && !isWllamaCallbackStream) {
             console.log('Aborting generation via AbortController');
             this.currentAbortController.abort();
             this.currentAbortController = null;
         }
 
-        this.currentStream = null;
+        if (isWllamaCallbackStream) {
+            console.log('Stop requested; draining remaining wllama output');
+        } else {
+            this.currentStream = null;
+        }
 
         this.updateUIForGeneration(false);
     }
@@ -3857,8 +3912,8 @@ class ChatPlayground {
                     temperature: this.config.modelParameters.temperature,
                     top_k: 50,
                     top_p: this.config.modelParameters.top_p,
-                    repeat_penalty: this.config.modelParameters.repetition_penalty,
-                    repeat_last_n: 64,
+                    penalty_repeat: this.config.modelParameters.repetition_penalty,
+                    penalty_last_n: 64,
                     stop: ['[Current image shows:', '\nUser:', '\nHuman:'],
                     stream: false
                 };
