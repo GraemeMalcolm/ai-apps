@@ -1,66 +1,10 @@
-import {
-    Wllama,
-    WllamaAbortError,
-    WllamaError
-} from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js";
-
-class FixedWllama extends Wllama {
-    async getResponse(options, isStream) {
-        let finalResult = null;
-
-        while (true) {
-            if (options.abortSignal?.aborted) {
-                throw new WllamaAbortError();
-            }
-
-            const resultChunk = await this.proxy.wllamaAction("get_result", {
-                _name: "gres_req"
-            });
-            const jsonString = resultChunk.data_json;
-
-            if (!jsonString || jsonString.length === 0) {
-                if (!resultChunk.has_more) {
-                    break;
-                }
-                continue;
-            }
-
-            if (jsonString === "null") {
-                continue;
-            }
-
-            let jsonData = this.jsonDecode(jsonString);
-            finalResult = jsonData;
-
-            if (resultChunk.is_error) {
-                this.logger().error("Model returned an error:", jsonData);
-                throw new WllamaError(
-                    jsonData.message || "Unknown inference error",
-                    "inference_error"
-                );
-            }
-
-            if (isStream) {
-                if (!Array.isArray(jsonData)) {
-                    jsonData = [jsonData];
-                }
-
-                for (const chunk of jsonData) {
-                    options.onData?.(chunk);
-                    finalResult = chunk;
-                }
-            }
-        }
-
-        return finalResult;
-    }
-}
+import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/index.js";
 
 const WASM_PATHS = {
-    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/wasm/wllama.wasm"
+    default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
 
-const MODEL_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
 
 // Information Extractor Application
@@ -124,7 +68,7 @@ class InfoExtractorApp {
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
         return true;
@@ -708,8 +652,8 @@ class InfoExtractorApp {
         this.wllamaUsedGPU = false;
 
         try {
-            console.log('Initializing Phi 4-mini (wllama)...');
-            this.updateModelLoadingProgress(10, 'Initializing Phi 4-mini...');
+            console.log('Initializing Phi 3.5-mini (wllama)...');
+            this.updateModelLoadingProgress(10, 'Initializing Phi 3.5-mini...');
 
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user');
@@ -728,6 +672,10 @@ class InfoExtractorApp {
                             // Open bug: ggml-org/llama.cpp#23558 — garbled output on Qualcomm WebGPU
                             console.warn('WebGPU disabled: Qualcomm/Adreno GPU detected. Using CPU.');
                             gpuEnabled = false;
+                        } else if (vendor.includes('amd') || vendor.includes('advanced micro')) {
+                            // Flashattention bug fixed in wllama 3.2.3+ (llama.cpp PR #23040); app uses 3.1.1
+                            console.warn('WebGPU disabled: AMD GPU detected. Using CPU.');
+                            gpuEnabled = false;
                         }
                     } else {
                         gpuEnabled = false;
@@ -745,18 +693,18 @@ class InfoExtractorApp {
             const progressCallback = ({ loaded, total }) => {
                 if (this.cancelModelLoad) return;
                 if (!total) {
-                    this.updateModelLoadingProgress(20, 'Loading Phi 4-mini...');
+                    this.updateModelLoadingProgress(20, 'Loading Phi 3.5-mini...');
                     return;
                 }
                 const pct = Math.round((loaded / total) * 100);
-                this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 4-mini: ${pct}%`);
+                this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 3.5-mini: ${pct}%`);
             };
 
             const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
 
             const attemptLoad = async (n_gpu_layers, n_threads) => {
                 if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
-                this.wllama = new FixedWllama(WASM_PATHS);
+                this.wllama = new Wllama(WASM_PATHS);
                 await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers, n_threads, progressCallback });
             };
 
@@ -799,8 +747,8 @@ class InfoExtractorApp {
 
             this.isModelLoaded = true;
             this.isLoadingModel = false;
-            this.updateModelLoadingProgress(100, 'Phi 4-mini ready!');
-            console.log('Phi 4-mini loaded successfully');
+            this.updateModelLoadingProgress(100, 'Phi 3.5-mini ready!');
+            console.log('Phi 3.5-mini loaded successfully');
 
             setTimeout(() => {
                 this.hideModelLoading();
@@ -809,7 +757,7 @@ class InfoExtractorApp {
 
         } catch (error) {
             if (!this.cancelModelLoad) {
-                console.error('Failed to initialize Phi 4-mini:', error);
+                console.error('Failed to initialize Phi 3.5-mini:', error);
                 this.isModelLoaded = false;
                 this.isLoadingModel = false;
                 if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
@@ -846,7 +794,7 @@ class InfoExtractorApp {
 
         const tryLoad = async (n_threads) => {
             if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
-            this.wllama = new FixedWllama(WASM_PATHS);
+            this.wllama = new Wllama(WASM_PATHS);
             await this.wllama.loadModelFromHF(modelRef, { n_ctx: 768, n_gpu_layers: 0, n_threads, progressCallback: () => { } });
         };
 
@@ -1088,7 +1036,7 @@ Please identify the most likely values for these fields:
 
 Respond as a list of fields with their values.`;
 
-            console.log('Sending prompt to Phi 4-mini. Prompt length:', prompt.length);
+            console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
 
             // Debug mode: Force failure for testing failover
             if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
@@ -1108,7 +1056,7 @@ Respond as a list of fields with their values.`;
             let accumulatedText = '';
 
             try {
-                await this.wllama.createChatCompletion({
+                const stream = await this.wllama.createChatCompletion({
                     messages: [
                         {
                             role: "system",
@@ -1123,20 +1071,21 @@ Respond as a list of fields with their values.`;
                     temperature: 0.1,
                     top_k: 30,
                     top_p: 0.85,
-                    penalty_repeat: 1.1,
+                    repeat_penalty: 1.1,
                     cache_prompt: false,
                     stream: true,
                     abortSignal: abortController.signal,
-                    onData: (chunk) => {
-                        if (abortController.signal.aborted) return;
-                        const delta = chunk?.choices?.[0]?.delta?.content ?? '';
-                        if (delta) {
-                            accumulatedText += delta;
-                            const pct = Math.min(accumulatedText.length / EXPECTED_CHARS, 1);
-                            this.updateProgress(60 + Math.round(pct * 28), `Matching extracted values to fields...`);
-                        }
-                    }
                 });
+
+                for await (const chunk of stream) {
+                    if (abortController.signal.aborted) break;
+                    const delta = chunk?.choices?.[0]?.delta?.content ?? '';
+                    if (delta) {
+                        accumulatedText += delta;
+                        const pct = Math.min(accumulatedText.length / EXPECTED_CHARS, 1);
+                        this.updateProgress(60 + Math.round(pct * 28), `Matching extracted values to fields...`);
+                    }
+                }
             } finally {
                 clearTimeout(timeoutId);
             }
@@ -1145,7 +1094,7 @@ Respond as a list of fields with their values.`;
                 throw new Error('AI extraction timed out. Please try again, or disable the AI toggle to use pattern-based extraction instead.');
             }
 
-            console.log('Phi 4-mini response:', accumulatedText);
+            console.log('Phi 3.5-mini response:', accumulatedText);
 
             if (!accumulatedText || accumulatedText.trim().length === 0) {
                 throw new Error('Empty response from AI model');
@@ -1155,7 +1104,7 @@ Respond as a list of fields with their values.`;
             console.log('Parsed fields:', this.extractedFields);
 
         } catch (error) {
-            console.error('Phi 4-mini extraction failed:', error);
+            console.error('Phi 3.5-mini extraction failed:', error);
 
             // Set failover flag and clean up wllama instance
             this.wllamaShouldFailoverToBasic = true;
