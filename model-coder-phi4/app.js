@@ -1,4 +1,4 @@
-import "./llm.js?v=20260625-final";
+import "./llm.js?v=20260814-wllama-351";
 
 const statusRuntime = document.getElementById("runtime-status");
 const statusModel = document.getElementById("model-status");
