@@ -4,7 +4,7 @@ const WASM_PATHS = {
     default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
 
-const MODEL_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
 
 // Information Extractor Application
@@ -68,7 +68,7 @@ class InfoExtractorApp {
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
         return true;
@@ -652,8 +652,8 @@ class InfoExtractorApp {
         this.wllamaUsedGPU = false;
 
         try {
-            console.log('Initializing Phi 4-mini (wllama)...');
-            this.updateModelLoadingProgress(10, 'Initializing Phi 4-mini...');
+            console.log('Initializing Phi 3.5-mini (wllama)...');
+            this.updateModelLoadingProgress(10, 'Initializing Phi 3.5-mini...');
 
             if (this.cancelModelLoad) {
                 console.log('Model loading cancelled by user');
@@ -693,11 +693,11 @@ class InfoExtractorApp {
             const progressCallback = ({ loaded, total }) => {
                 if (this.cancelModelLoad) return;
                 if (!total) {
-                    this.updateModelLoadingProgress(20, 'Loading Phi 4-mini...');
+                    this.updateModelLoadingProgress(20, 'Loading Phi 3.5-mini...');
                     return;
                 }
                 const pct = Math.round((loaded / total) * 100);
-                this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 4-mini: ${pct}%`);
+                this.updateModelLoadingProgress(20 + Math.round(pct * 0.75), `Downloading Phi 3.5-mini: ${pct}%`);
             };
 
             const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
@@ -747,8 +747,8 @@ class InfoExtractorApp {
 
             this.isModelLoaded = true;
             this.isLoadingModel = false;
-            this.updateModelLoadingProgress(100, 'Phi 4-mini ready!');
-            console.log('Phi 4-mini loaded successfully');
+            this.updateModelLoadingProgress(100, 'Phi 3.5-mini ready!');
+            console.log('Phi 3.5-mini loaded successfully');
 
             setTimeout(() => {
                 this.hideModelLoading();
@@ -757,7 +757,7 @@ class InfoExtractorApp {
 
         } catch (error) {
             if (!this.cancelModelLoad) {
-                console.error('Failed to initialize Phi 4-mini:', error);
+                console.error('Failed to initialize Phi 3.5-mini:', error);
                 this.isModelLoaded = false;
                 this.isLoadingModel = false;
                 if (this.wllama) { try { await this.wllama.exit(); } catch (_) { } this.wllama = null; }
@@ -1036,7 +1036,7 @@ Please identify the most likely values for these fields:
 
 Respond as a list of fields with their values.`;
 
-            console.log('Sending prompt to Phi 4-mini. Prompt length:', prompt.length);
+            console.log('Sending prompt to Phi 3.5-mini. Prompt length:', prompt.length);
 
             // Debug mode: Force failure for testing failover
             if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
@@ -1094,7 +1094,7 @@ Respond as a list of fields with their values.`;
                 throw new Error('AI extraction timed out. Please try again, or disable the AI toggle to use pattern-based extraction instead.');
             }
 
-            console.log('Phi 4-mini response:', accumulatedText);
+            console.log('Phi 3.5-mini response:', accumulatedText);
 
             if (!accumulatedText || accumulatedText.trim().length === 0) {
                 throw new Error('Empty response from AI model');
@@ -1104,7 +1104,7 @@ Respond as a list of fields with their values.`;
             console.log('Parsed fields:', this.extractedFields);
 
         } catch (error) {
-            console.error('Phi 4-mini extraction failed:', error);
+            console.error('Phi 3.5-mini extraction failed:', error);
 
             // Set failover flag and clean up wllama instance
             this.wllamaShouldFailoverToBasic = true;

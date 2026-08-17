@@ -202,7 +202,7 @@ function buildClassInfoPrompt(classIndex) {
 
 /**
  * Check if the device meets minimum hardware requirements for running
- * the Phi 4-mini model. Returns false if device memory or CPU cores
+ * the Phi 3.5-mini model. Returns false if device memory or CPU cores
  * are below the minimum thresholds.
  * @returns {boolean} true if hardware meets requirements, false otherwise.
  */
@@ -217,7 +217,7 @@ function checkHardwareRequirements() {
     console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
     if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-        console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
+        console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
         return false;
     }
 
@@ -275,7 +275,7 @@ async function init() {
             availableModes.cpu = false;
             updateModelName('Wikipedia API (Basic)');
             updateLoadingStatus('phi', 'ready', 'Basic');
-            const infoMsg = 'Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 4-mini model. Using Basic (Wikipedia) mode.';
+            const infoMsg = 'Your device does not meet the minimum requirements (8GB RAM, 8 CPU cores) for running the Phi 3.5-mini model. Using Basic (Wikipedia) mode.';
             hideLoadingOverlay();
             updateModeSelect();
             setTimeout(() => {
@@ -680,7 +680,7 @@ async function initWllama(progressCallback = null) {
         }
 
         console.log("Initializing wllama...");
-        updateModelName('Phi 4-mini (AI mode)');
+        updateModelName('Phi 3.5-mini (AI mode)');
         updateLoadingStatus('phi', 'loading', '10%');
 
         // Configure WASM paths for CDN
@@ -715,8 +715,8 @@ async function initWllama(progressCallback = null) {
         console.log(`Cross-origin isolated: ${window.crossOriginIsolated}, available threads: ${availableThreads}, attempting ${preferredThreads} thread(s)`);
 
         const modelRef = {
-            repo: 'unsloth/Phi-4-mini-instruct-GGUF',
-            //repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+            //repo: 'unsloth/Phi-4-mini-instruct-GGUF',
+            repo: 'bartowski/Phi-3.5-mini-instruct-GGUF',
             quant: 'Q4_K_M'
         };
 
@@ -2551,7 +2551,7 @@ function selectMode() {
             }).then(() => {
                 currentMode = 'cpu';
                 if (loadingBubble) {
-                    setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 4-mini)');
+                    setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 3.5-mini)');
                 }
                 modeSelect.disabled = false;
                 sendBtn.disabled = false;
@@ -2593,7 +2593,7 @@ function selectMode() {
                     clearInterval(checkReady);
                     currentMode = 'cpu';
                     if (loadingBubble) {
-                        setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 4-mini)');
+                        setBubbleContent(loadingBubble, 'Switched to AI mode (Phi 3.5-mini)');
                     }
                     modeSelect.disabled = false;
                     sendBtn.disabled = false;
@@ -2625,7 +2625,7 @@ function selectMode() {
         }
 
         currentMode = 'cpu';
-        addMessage('Switched to AI mode (Phi 4-mini)', 'bot');
+        addMessage('Switched to AI mode (Phi 3.5-mini)', 'bot');
         updateModeSelect();
     } else {
         currentMode = 'basic';
@@ -2650,14 +2650,14 @@ function updateModeSelect() {
     if (cpuOption) {
         const cpuReady = availableModes.cpu;
         cpuOption.disabled = !cpuReady;
-        cpuOption.textContent = cpuReady ? '🟢 AI mode (Phi 4-mini)' : '⚫ AI mode (unavailable)';
+        cpuOption.textContent = cpuReady ? '🟢 AI mode (Phi 3.5-mini)' : '⚫ AI mode (unavailable)';
     }
     if (basicOption) {
         basicOption.textContent = '⚪ Basic (Wikipedia)';
     }
 
     // Update tooltip to reflect current mode
-    const modeLabel = currentMode === 'cpu' ? 'AI mode (Phi 4-mini)' : 'Basic (Wikipedia)';
+    const modeLabel = currentMode === 'cpu' ? 'AI mode (Phi 3.5-mini)' : 'Basic (Wikipedia)';
     modeSelect.title = `AI mode: ${modeLabel}`;
     modeSelect.setAttribute('aria-label', `Select AI mode. Currently: ${modeLabel}`);
 }
@@ -3166,7 +3166,7 @@ function showAppDetails() {
     // Update model name based on current mode
     if (modelNameElement) {
         if (currentMode === 'cpu' && wllamaReady && wllama) {
-            modelNameElement.textContent = 'Phi 4-mini';
+            modelNameElement.textContent = 'Phi 3.5-mini';
         } else if (currentMode === 'basic') {
             modelNameElement.textContent = 'None (Wikipedia API)';
         } else {

@@ -3,7 +3,7 @@ import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/in
 const WASM_PATHS = {
     default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
-const MODEL_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
 
 (function () {
@@ -758,7 +758,7 @@ const MODEL_QUANT = "Q4_K_M";
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
         return true;
@@ -782,7 +782,7 @@ const MODEL_QUANT = "Q4_K_M";
         modelLoadingAbortController = new AbortController();
         disableUI();
         setupCancelLink();
-        updateModelStatus("Loading Phi 4-mini...", true);
+        updateModelStatus("Loading Phi 3.5-mini...", true);
 
         try {
             // Detect GPU vendor and skip WebGPU for known-problematic GPUs
@@ -818,11 +818,11 @@ const MODEL_QUANT = "Q4_K_M";
             const progressCallback = function ({ loaded, total }) {
                 if (modelLoadingCancelled) return;
                 if (!total) {
-                    updateModelStatus("Loading Phi 4-mini...", true);
+                    updateModelStatus("Loading Phi 3.5-mini...", true);
                     return;
                 }
                 const pct = Math.round((loaded / total) * 100);
-                updateModelStatus("Phi 4-mini: " + pct + "%", true);
+                updateModelStatus("Phi 3.5-mini: " + pct + "%", true);
                 showCancelLink();
             };
 
@@ -874,13 +874,13 @@ const MODEL_QUANT = "Q4_K_M";
             isModelLoaded = true;
             isLoadingModel = false;
             if (elements.cancelLink) elements.cancelLink.style.display = "none";
-            updateModelStatus("Phi 4-mini ready", false);
+            updateModelStatus("Phi 3.5-mini ready", false);
             enableUI();
-            console.log("Phi 4-mini loaded successfully");
+            console.log("Phi 3.5-mini loaded successfully");
 
         } catch (error) {
             if (modelLoadingCancelled) return;
-            console.error("Failed to load Phi 4-mini:", error);
+            console.error("Failed to load Phi 3.5-mini:", error);
             isModelLoaded = false;
             isLoadingModel = false;
             if (wllamaInstance) { try { await wllamaInstance.exit(); } catch (_) { } wllamaInstance = null; }
@@ -1070,7 +1070,7 @@ const MODEL_QUANT = "Q4_K_M";
                 lockEditor();
             } else {
                 const usingAI = isUsingAI();
-                showStatus(usingAI ? "Detecting PII with Phi 4-mini..." : "Detecting PII using rules...", false);
+                showStatus(usingAI ? "Detecting PII with Phi 3.5-mini..." : "Detecting PII using rules...", false);
 
                 let result;
                 if (usingAI) {
@@ -1158,7 +1158,7 @@ const MODEL_QUANT = "Q4_K_M";
         if (elements.modeSelect) {
             elements.modeSelect.addEventListener("change", function () {
                 const isAI = elements.modeSelect.value === "ai";
-                announce(isAI ? "Switched to Phi 4-mini mode" : "Switched to basic pattern matching mode");
+                announce(isAI ? "Switched to Phi 3.5-mini mode" : "Switched to basic pattern matching mode");
             });
         }
 

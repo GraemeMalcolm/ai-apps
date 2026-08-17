@@ -4,7 +4,7 @@ const WASM_PATHS = {
     default: "https://cdn.jsdelivr.net/npm/@wllama/wllama@3.1.1/esm/wasm/wllama.wasm"
 };
 
-const MODEL_REPO = "unsloth/Phi-4-mini-instruct-GGUF";
+const MODEL_REPO = "bartowski/Phi-3.5-mini-instruct-GGUF";
 const MODEL_QUANT = "Q4_K_M";
 const MODEL_N_CTX = 712;
 const MODERATION_LIST_PATH = "./moderation/mod.txt";
@@ -241,7 +241,7 @@ function validateMessages(messages, label = "messages") {
 
 class ModelCoderLLM {
     constructor() {
-        this.wllama = null;  // wllama engine for Phi 4-mini
+        this.wllama = null;  // wllama engine for Phi 3.5-mini
         this.usingWllama = false;  // Track if wllama is active
         this.usingBasic = false;  // Basic Chat Wikipedia mode
         this.availableModes = { cpu: true, basic: true };
@@ -284,7 +284,7 @@ class ModelCoderLLM {
         console.log(`Requirements: ${MIN_MEMORY_GB}GB RAM, ${MIN_CORES} cores`);
 
         if (deviceMemory < MIN_MEMORY_GB || cores < MIN_CORES) {
-            console.log(`Hardware below minimum requirements - disabling Phi 4-mini`);
+            console.log(`Hardware below minimum requirements - disabling Phi 3.5-mini`);
             return false;
         }
         return true;
@@ -655,7 +655,7 @@ class ModelCoderLLM {
             return;
         }
 
-        this._status("loading", "Initializing Phi 4-mini...");
+        this._status("loading", "Initializing Phi 3.5-mini...");
         this.usingBasic = false;
 
         try {
@@ -717,7 +717,7 @@ class ModelCoderLLM {
                     throw new Error('Loading cancelled by user');
                 }
 
-                this._status("ready", "Model ready: Phi 4-mini");
+                this._status("ready", "Model ready: Phi 3.5-mini");
                 return;
             } catch (error) {
                 // If cancelled, rethrow immediately
@@ -771,11 +771,11 @@ class ModelCoderLLM {
 
         const progressCallback = ({ loaded, total }) => {
             if (!total) {
-                this._status("loading", "Loading Phi 4-mini...");
+                this._status("loading", "Loading Phi 3.5-mini...");
                 return;
             }
             const pct = Math.round((loaded / total) * 100);
-            this._status("loading", `Downloading Phi 4-mini: ${pct}%`);
+            this._status("loading", `Downloading Phi 3.5-mini: ${pct}%`);
         };
 
         const modelRef = { repo: MODEL_REPO, quant: MODEL_QUANT };
@@ -939,7 +939,7 @@ class ModelCoderLLM {
 
     async _completeWithWllama(messages, onDelta, expectedSessionVersion = this.sessionVersion) {
         const useStreaming = typeof onDelta === "function";
-        console.log(`[wllama] Phi 4-mini (${useStreaming ? "stream" : "sync"}):`, messages);
+        console.log(`[wllama] Phi 3.5-mini (${useStreaming ? "stream" : "sync"}):`, messages);
 
         // Debug mode: Force failure for testing failover
         if (this.debugConfig.enabled && this.debugConfig.forceWllamaGenerationFail) {
