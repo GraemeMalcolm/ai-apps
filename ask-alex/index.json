@@ -1,0 +1,714 @@
+[
+    {
+        "category": "Set up and configure Azure Databricks",
+        "link": "https://learn.microsoft.com/en-us/training/courses/dp-750t00",
+        "documents": [
+            {
+                "id": 1,
+                "title": "Choose a compute type",
+                "keywords": [
+                    "compute types",
+                    "job compute",
+                    "serverless compute",
+                    "shared compute"
+                ],
+                "content": "Compute choices shape each workload. Azure Databricks provides job, serverless, classic, and shared compute plus SQL warehouses, letting engineers match isolation, startup time, scalability, and cost to processing requirements."
+            },
+            {
+                "id": 2,
+                "title": "Configure compute performance",
+                "keywords": [
+                    "cluster sizing",
+                    "node count",
+                    "compute autoscaling",
+                    "instance pools"
+                ],
+                "content": "Performance starts with sizing. Configure CPU capacity, node type, worker count, cluster size, autoscaling ranges, automatic termination, and pools to meet processing demand without paying for unnecessary idle resources."
+            },
+            {
+                "id": 3,
+                "title": "Configure compute features",
+                "keywords": [
+                    "Photon acceleration",
+                    "Databricks runtime",
+                    "Spark version",
+                    "ML runtime"
+                ],
+                "content": "Compute features tune execution. Select an Azure Databricks Runtime and Apache Spark version, enable Photon acceleration for supported SQL workloads, and choose machine learning runtimes when preinstalled ML libraries are required."
+            },
+            {
+                "id": 4,
+                "title": "Manage compute libraries and permissions",
+                "keywords": [
+                    "cluster libraries",
+                    "compute permissions",
+                    "library installation",
+                    "cluster access"
+                ],
+                "content": "Compute must be usable and controlled. Install workspace, package-repository, or custom libraries on compatible resources, then grant appropriate permissions so authorized users can attach, restart, manage, or run workloads."
+            },
+            {
+                "id": 5,
+                "title": "Organize catalogs with naming conventions",
+                "keywords": [
+                    "catalog naming",
+                    "environment isolation",
+                    "catalog creation",
+                    "sharing boundaries"
+                ],
+                "content": "Clear naming supports governance. Design catalogs around teams, domains, environments, isolation requirements, and external sharing boundaries, then create each catalog with ownership and managed storage appropriate to its purpose."
+            },
+            {
+                "id": 6,
+                "title": "Create schemas and volumes",
+                "keywords": [
+                    "schema creation",
+                    "Unity volumes",
+                    "catalog namespace",
+                    "file governance"
+                ],
+                "content": "Schemas and volumes organize assets. Schemas group tables, views, functions, and models within catalogs, while Unity Catalog volumes provide governed storage for non-tabular files using the three-level namespace."
+            },
+            {
+                "id": 7,
+                "title": "Create tables and views",
+                "keywords": [
+                    "managed table",
+                    "external table",
+                    "materialized view",
+                    "DDL operations"
+                ],
+                "content": "Tables and views expose governed data. Create managed or external tables, standard views, and materialized views, and use data definition language operations to alter, replace, describe, or remove these objects."
+            },
+            {
+                "id": 8,
+                "title": "Connect external catalogs and configure Genie",
+                "keywords": [
+                    "foreign catalog",
+                    "catalog connection",
+                    "Genie instructions",
+                    "data discovery"
+                ],
+                "content": "External discovery broadens the lakehouse. Configure connections and foreign catalogs for federated sources, then provide AI/BI Genie instructions, descriptions, and example queries that help users discover and interpret trusted data."
+            }
+        ]
+    },
+    {
+        "category": "Secure and govern Unity Catalog objects",
+        "link": "https://learn.microsoft.com/en-us/training/paths/azure-databricks-data-engineer-secure-govern-unity-catalog/",
+        "documents": [
+            {
+                "id": 9,
+                "title": "Grant Unity Catalog privileges",
+                "keywords": [
+                    "catalog privileges",
+                    "securable objects",
+                    "principal grants",
+                    "permission inheritance"
+                ],
+                "content": "Privileges control governed assets. Grant the minimum required permissions on catalogs, schemas, tables, views, volumes, and other securable objects to users, groups, or service principals while accounting for inherited access."
+            },
+            {
+                "id": 10,
+                "title": "Implement fine-grained data access",
+                "keywords": [
+                    "table access",
+                    "column security",
+                    "row security",
+                    "dynamic views"
+                ],
+                "content": "Fine-grained controls limit exposure. Combine table permissions, column-level restrictions, row-level security, and dynamic views so each principal can query only the records and attributes permitted by policy."
+            },
+            {
+                "id": 11,
+                "title": "Use Azure Key Vault secrets",
+                "keywords": [
+                    "Key Vault",
+                    "secret scope",
+                    "Databricks secrets",
+                    "credential protection"
+                ],
+                "content": "Secrets should remain outside code. Use Azure Key Vault-backed secret scopes to retrieve credentials from notebooks and jobs without embedding sensitive values in source files, parameters, or visible configuration."
+            },
+            {
+                "id": 12,
+                "title": "Authenticate automated data access",
+                "keywords": [
+                    "service principal",
+                    "managed identity",
+                    "workload authentication",
+                    "resource identity"
+                ],
+                "content": "Automation needs durable identity. Service principals authenticate unattended data operations, while managed identities access supported Azure resources without stored credentials, reducing secret rotation and accidental credential disclosure."
+            },
+            {
+                "id": 13,
+                "title": "Document data and apply ABAC",
+                "keywords": [
+                    "table descriptions",
+                    "column definitions",
+                    "ABAC policies",
+                    "governance tags"
+                ],
+                "content": "Metadata makes assets understandable. Preserve table and column descriptions for discovery, apply governed tags to data objects, and use attribute-based access control policies to enforce scalable rules based on those attributes."
+            },
+            {
+                "id": 14,
+                "title": "Apply filters, masks, and retention policies",
+                "keywords": [
+                    "row filters",
+                    "column masks",
+                    "retention policy",
+                    "sensitive fields"
+                ],
+                "content": "Policies protect data throughout its life. Row filters tailor visible records, column masks obscure sensitive values, and retention rules determine how long regulated or operational data remains available."
+            },
+            {
+                "id": 15,
+                "title": "Track lineage and audit activity",
+                "keywords": [
+                    "data lineage",
+                    "Catalog Explorer",
+                    "audit logging",
+                    "object history"
+                ],
+                "content": "Governance requires traceability. Catalog Explorer reveals owners, history, dependencies, and lineage across assets, while audit logs record platform activity for investigation, compliance reporting, and security monitoring."
+            },
+            {
+                "id": 16,
+                "title": "Share data with Delta Sharing",
+                "keywords": [
+                    "Delta Sharing",
+                    "share recipients",
+                    "external sharing",
+                    "secure exchange"
+                ],
+                "content": "Delta Sharing exchanges data securely. Design shares, recipients, authentication, object selection, and revocation around business requirements so external consumers receive controlled access without copying credentials or exposing the source workspace."
+            }
+        ]
+    },
+    {
+        "category": "Prepare and process data",
+        "link": "https://learn.microsoft.com/en-us/training/paths/azure-databricks-data-engineer-prepare-process-data/",
+        "documents": [
+            {
+                "id": 17,
+                "title": "Design data ingestion logic",
+                "keywords": [
+                    "ingestion design",
+                    "extraction type",
+                    "source configuration",
+                    "file selection"
+                ],
+                "content": "Ingestion begins with source analysis. Design extraction logic around source capabilities, full or incremental loads, file types, arrival patterns, latency, volume, and the destination model required by downstream consumers."
+            },
+            {
+                "id": 18,
+                "title": "Choose a data ingestion tool",
+                "keywords": [
+                    "ingestion tools",
+                    "Lakeflow Connect",
+                    "ingestion notebooks",
+                    "Data Factory"
+                ],
+                "content": "The right tool reduces complexity. Choose Lakeflow Connect for managed connectors, notebooks for custom processing, or Azure Data Factory for broader integration and orchestration based on source, transformation, and operations needs."
+            },
+            {
+                "id": 19,
+                "title": "Choose loading methods and table formats",
+                "keywords": [
+                    "batch loading",
+                    "streaming loads",
+                    "Delta format",
+                    "Iceberg tables"
+                ],
+                "content": "Loading design affects reliability and latency. Select batch or streaming processing and choose Delta, Parquet, CSV, JSON, or Iceberg based on transaction support, interoperability, schema, and performance requirements."
+            },
+            {
+                "id": 20,
+                "title": "Design data partitioning",
+                "keywords": [
+                    "partitioning scheme",
+                    "partition columns",
+                    "partition pruning",
+                    "small files"
+                ],
+                "content": "Partitioning can accelerate selective reads. Choose stable, appropriately sized partition columns based on common filters and data volume, while avoiding excessive cardinality and small files that increase metadata and processing overhead."
+            },
+            {
+                "id": 21,
+                "title": "Model changing and historical data",
+                "keywords": [
+                    "SCD types",
+                    "temporal table",
+                    "history tracking",
+                    "effective dates"
+                ],
+                "content": "Historical models preserve business change. Choose an appropriate slowly changing dimension type and use temporal tables, effective dates, current flags, or version records to answer point-in-time analytical questions."
+            },
+            {
+                "id": 22,
+                "title": "Choose granularity and table ownership",
+                "keywords": [
+                    "data granularity",
+                    "table grain",
+                    "unmanaged tables",
+                    "storage ownership"
+                ],
+                "content": "Table design establishes meaning and ownership. Define a consistent row grain and column detail, then choose managed or unmanaged storage according to lifecycle control, interoperability, location, and governance requirements."
+            },
+            {
+                "id": 23,
+                "title": "Optimize table layout with clustering",
+                "keywords": [
+                    "liquid clustering",
+                    "Z ordering",
+                    "deletion vectors",
+                    "clustering strategy"
+                ],
+                "content": "Physical layout influences query speed. Use liquid clustering or Z-ordering around common access patterns, and understand how deletion vectors improve row-level changes by delaying expensive file rewrites."
+            },
+            {
+                "id": 24,
+                "title": "Ingest with Lakeflow Connect and notebooks",
+                "keywords": [
+                    "managed connectors",
+                    "custom ingestion",
+                    "notebook streaming",
+                    "notebook batch"
+                ],
+                "content": "Databricks supports managed and custom ingestion. Lakeflow Connect simplifies supported batch and streaming sources, while Python, SQL, or Scala notebooks implement specialized extraction, parsing, transformation, and write logic."
+            },
+            {
+                "id": 25,
+                "title": "Ingest data with SQL",
+                "keywords": [
+                    "COPY INTO",
+                    "CTAS statement",
+                    "replace table",
+                    "SQL ingestion"
+                ],
+                "content": "SQL can load files and query results. Use CREATE TABLE AS SELECT, CREATE OR REPLACE TABLE, and COPY INTO for repeatable ingestion patterns with appropriate schemas, file options, and idempotency behavior."
+            },
+            {
+                "id": 26,
+                "title": "Process change data capture",
+                "keywords": [
+                    "change data capture",
+                    "CDC feed",
+                    "incremental changes",
+                    "change sequence"
+                ],
+                "content": "Change data capture processes source mutations efficiently. Consume inserts, updates, and deletes from a CDC feed, preserve ordering and keys, handle duplicates, and apply changes consistently to target Delta tables."
+            },
+            {
+                "id": 27,
+                "title": "Ingest streaming data",
+                "keywords": [
+                    "Structured Streaming",
+                    "Event Hubs",
+                    "stream checkpoints",
+                    "watermarking"
+                ],
+                "content": "Streaming ingestion processes continuous events. Spark Structured Streaming can read Azure Event Hubs and other sources using checkpoints, triggers, watermarks, and fault-tolerant sinks to provide scalable incremental processing."
+            },
+            {
+                "id": 28,
+                "title": "Use Auto Loader and declarative pipelines",
+                "keywords": [
+                    "Auto Loader",
+                    "file discovery",
+                    "schema evolution",
+                    "declarative ingestion"
+                ],
+                "content": "Auto Loader discovers arriving cloud files. Combine incremental file detection, schema inference and evolution, checkpoints, and Lakeflow Spark Declarative Pipelines to create maintainable ingestion flows that scale with growing directories."
+            },
+            {
+                "id": 29,
+                "title": "Profile and clean source data",
+                "keywords": [
+                    "data profiling",
+                    "summary statistics",
+                    "duplicate values",
+                    "null handling"
+                ],
+                "content": "Profiling reveals data problems early. Generate summary statistics and distributions, choose suitable column types, identify duplicate or missing records, and apply explicit rules to resolve null and invalid values."
+            },
+            {
+                "id": 30,
+                "title": "Filter, aggregate, and combine data",
+                "keywords": [
+                    "data filtering",
+                    "group aggregation",
+                    "table joins",
+                    "set operators"
+                ],
+                "content": "Core transformations shape analytical datasets. Filter records, group and aggregate measures, join related tables, and use union, intersect, or except operations while preserving intended keys, cardinality, and semantics."
+            },
+            {
+                "id": 31,
+                "title": "Reshape and load transformed data",
+                "keywords": [
+                    "data denormalization",
+                    "pivot operation",
+                    "merge command",
+                    "append writes"
+                ],
+                "content": "Reshaping aligns data with consumption needs. Denormalize, pivot, or unpivot records, then load results through merge, insert, append, or overwrite operations selected for the required update and idempotency behavior."
+            },
+            {
+                "id": 32,
+                "title": "Implement data validation checks",
+                "keywords": [
+                    "nullability checks",
+                    "cardinality validation",
+                    "range checking",
+                    "type validation"
+                ],
+                "content": "Validation prevents bad records from spreading. Check nullability, cardinality, numeric or date ranges, and expected data types, then reject, quarantine, repair, or report values that violate defined quality rules."
+            },
+            {
+                "id": 33,
+                "title": "Enforce schemas and pipeline expectations",
+                "keywords": [
+                    "schema enforcement",
+                    "schema drift",
+                    "pipeline expectations",
+                    "quality constraints"
+                ],
+                "content": "Schemas and expectations make quality explicit. Enforce compatible writes, manage intentional schema drift, and define Lakeflow pipeline expectations that warn, drop, or fail when records violate declared constraints."
+            }
+        ]
+    },
+    {
+        "category": "Deploy and maintain pipelines and workloads",
+        "link": "https://learn.microsoft.com/en-us/training/paths/azure-databricks-data-engineer-deploy-maintain-data-pipelines-workloads/",
+        "documents": [
+            {
+                "id": 34,
+                "title": "Design pipeline operations",
+                "keywords": [
+                    "operation order",
+                    "pipeline dependencies",
+                    "execution sequence",
+                    "pipeline choice"
+                ],
+                "content": "Pipeline design defines reliable execution. Order extraction, validation, transformation, and publication steps according to dependencies, and choose notebooks or Lakeflow Spark Declarative Pipelines based on complexity and operational needs."
+            },
+            {
+                "id": 35,
+                "title": "Design task logic and error handling",
+                "keywords": [
+                    "task logic",
+                    "error handling",
+                    "retry strategy",
+                    "failure paths"
+                ],
+                "content": "Tasks need predictable failure behavior. Define inputs, outputs, dependencies, retries, timeouts, conditional paths, and recovery actions for notebooks, pipelines, and Lakeflow Jobs so errors remain observable and recoverable."
+            },
+            {
+                "id": 36,
+                "title": "Build notebook pipelines",
+                "keywords": [
+                    "notebook pipeline",
+                    "precedence constraints",
+                    "task parameters",
+                    "notebook orchestration"
+                ],
+                "content": "Notebook pipelines compose procedural tasks. Pass parameters and values between notebooks, configure precedence constraints and dependencies, isolate reusable logic, and make each step idempotent enough for safe retries or repair runs."
+            },
+            {
+                "id": 37,
+                "title": "Build Lakeflow Spark Declarative Pipelines",
+                "keywords": [
+                    "Lakeflow pipelines",
+                    "declarative flows",
+                    "streaming tables",
+                    "materialized views"
+                ],
+                "content": "Declarative pipelines describe desired datasets. Define streaming tables, materialized views, transformations, dependencies, and quality expectations while Lakeflow manages orchestration, incremental processing, infrastructure, and operational state."
+            },
+            {
+                "id": 38,
+                "title": "Create and configure Lakeflow Jobs",
+                "keywords": [
+                    "Lakeflow Jobs",
+                    "job setup",
+                    "job configuration",
+                    "job tasks"
+                ],
+                "content": "Lakeflow Jobs run production workflows. Create jobs with one or more dependent tasks, select compute, configure parameters and libraries, set permissions, and define execution settings appropriate to each workload."
+            },
+            {
+                "id": 39,
+                "title": "Configure job automation and recovery",
+                "keywords": [
+                    "job triggers",
+                    "job schedules",
+                    "job alerts",
+                    "automatic restarts"
+                ],
+                "content": "Automation keeps workloads timely and resilient. Configure event triggers or schedules, notify operators about failures or duration thresholds, and enable automatic restarts or retries that match the pipeline's recovery characteristics."
+            },
+            {
+                "id": 40,
+                "title": "Use Git development workflows",
+                "keywords": [
+                    "Git folders",
+                    "branch strategy",
+                    "pull requests",
+                    "merge conflicts"
+                ],
+                "content": "Git supports collaborative Databricks development. Apply version-control practices, isolate changes in branches, review them through pull requests, and resolve merge conflicts before promoting notebooks and project files between environments."
+            },
+            {
+                "id": 41,
+                "title": "Test Databricks solutions",
+                "keywords": [
+                    "unit testing",
+                    "integration testing",
+                    "end-to-end testing",
+                    "acceptance testing"
+                ],
+                "content": "Testing reduces deployment risk. Use unit tests for isolated logic, integration tests for connected components, end-to-end tests for complete workflows, and user acceptance testing to validate business requirements."
+            },
+            {
+                "id": 42,
+                "title": "Package and deploy Databricks bundles",
+                "keywords": [
+                    "Asset Bundles",
+                    "bundle packaging",
+                    "Databricks CLI",
+                    "deployment API"
+                ],
+                "content": "Bundles make deployment repeatable. Configure and package Databricks resources and source files as an Asset Bundle, define environment targets and variables, and deploy through the Databricks CLI or REST APIs."
+            },
+            {
+                "id": 43,
+                "title": "Monitor clusters and repair jobs",
+                "keywords": [
+                    "cluster consumption",
+                    "cost monitoring",
+                    "job repair",
+                    "run management"
+                ],
+                "content": "Operational monitoring controls reliability and cost. Review cluster consumption and utilization, then diagnose Lakeflow Job runs and use repair, restart, stop, or rerun functions to recover failed workflows efficiently."
+            },
+            {
+                "id": 44,
+                "title": "Troubleshoot and optimize Spark workloads",
+                "keywords": [
+                    "Spark UI",
+                    "query profile",
+                    "data skew",
+                    "shuffle issues"
+                ],
+                "content": "Spark diagnostics expose performance bottlenecks. Use execution DAGs, the Spark UI, and query profiles to investigate caching, skew, spilling, shuffles, resource pressure, slow stages, and failing jobs or notebooks."
+            },
+            {
+                "id": 45,
+                "title": "Optimize and maintain Delta tables",
+                "keywords": [
+                    "OPTIMIZE command",
+                    "VACUUM command",
+                    "file compaction",
+                    "Delta maintenance"
+                ],
+                "content": "Delta maintenance balances speed and storage cost. Use OPTIMIZE to compact small files and improve data layout, and apply VACUUM with a safe retention period to remove obsolete files."
+            },
+            {
+                "id": 46,
+                "title": "Stream logs and configure Azure Monitor alerts",
+                "keywords": [
+                    "Log Analytics",
+                    "Azure Monitor",
+                    "log streaming",
+                    "monitor alerts"
+                ],
+                "content": "Centralized telemetry improves operations. Stream Azure Databricks logs to Log Analytics for querying and correlation, then configure Azure Monitor alert rules and action groups for important failures, thresholds, and service conditions."
+            }
+        ]
+    },
+    {
+        "category": "Azure Databricks fundamentals",
+        "link": "https://learn.microsoft.com/en-us/azure/databricks/introduction/",
+        "documents": [
+            {
+                "id": 47,
+                "title": "What is Azure Databricks?",
+                "keywords": [
+                    "Databricks",
+                    "Azure Databricks",
+                    "Databricks platform",
+                    "analytics platform"
+                ],
+                "content": "Azure Databricks is a unified analytics platform. It combines managed cloud infrastructure with tools for building, deploying, sharing, and maintaining enterprise data engineering, analytics, machine learning, and AI solutions at scale."
+            },
+            {
+                "id": 48,
+                "title": "What is Apache Spark?",
+                "keywords": [
+                    "Apache Spark",
+                    "Spark",
+                    "distributed processing",
+                    "Spark engine"
+                ],
+                "content": "Apache Spark is a distributed processing engine. It divides large data workloads across multiple compute nodes and provides APIs for SQL, Python, Scala, Java, machine learning, and real-time stream processing."
+            },
+            {
+                "id": 49,
+                "title": "What is a data lake?",
+                "keywords": [
+                    "data lake",
+                    "data lakes",
+                    "raw data storage",
+                    "cloud object storage"
+                ],
+                "content": "A data lake stores data at large scale. It keeps structured, semi-structured, and unstructured data in open file formats, often in inexpensive cloud object storage, for flexible downstream processing and analysis."
+            },
+            {
+                "id": 50,
+                "title": "What is a data warehouse?",
+                "keywords": [
+                    "data warehouse",
+                    "data warehouses",
+                    "analytical warehouse",
+                    "warehouse concept"
+                ],
+                "content": "A data warehouse supports business analytics. It stores cleaned, structured, and integrated historical data in models optimized for SQL queries, reporting, dashboards, aggregation, and consistent decision-making across an organization."
+            },
+            {
+                "id": 51,
+                "title": "What is a data lakehouse?",
+                "keywords": [
+                    "data lakehouse",
+                    "lakehouse",
+                    "lakehouse architecture",
+                    "lakehouse platform"
+                ],
+                "content": "A data lakehouse combines lakes and warehouses. It provides low-cost, open storage for varied data together with reliable transactions, governance, performance, and structured analytics for BI, data science, and machine learning."
+            },
+            {
+                "id": 52,
+                "title": "What is Delta Lake?",
+                "keywords": [
+                    "Delta Lake",
+                    "Delta table",
+                    "Delta tables",
+                    "transaction log"
+                ],
+                "content": "Delta Lake is an open storage layer. It adds a transaction log, ACID reliability, schema controls, scalable metadata, and unified batch and streaming support to Parquet data stored in a lakehouse."
+            },
+            {
+                "id": 53,
+                "title": "What is Unity Catalog?",
+                "keywords": [
+                    "Unity Catalog",
+                    "unified governance",
+                    "governance layer",
+                    "Databricks governance"
+                ],
+                "content": "Unity Catalog is the Databricks governance layer. It centrally manages discovery, permissions, lineage, auditing, and secure access for data and AI assets across users, workspaces, and supported cloud storage locations."
+            },
+            {
+                "id": 54,
+                "title": "What is a Databricks workspace?",
+                "keywords": [
+                    "Databricks workspace",
+                    "workspace",
+                    "workspace concept",
+                    "collaborative environment"
+                ],
+                "content": "A Databricks workspace is a collaborative environment. It provides the web interface and organizational boundary where teams create notebooks, queries, jobs, pipelines, dashboards, models, and other Databricks resources."
+            },
+            {
+                "id": 55,
+                "title": "What is a compute cluster?",
+                "keywords": [
+                    "compute cluster",
+                    "cluster",
+                    "Spark cluster",
+                    "compute nodes"
+                ],
+                "content": "A compute cluster supplies processing resources. It groups a driver and worker nodes that run Spark commands, notebooks, and jobs, and can be configured or automatically scaled for workload requirements."
+            },
+            {
+                "id": 56,
+                "title": "What is a Databricks notebook?",
+                "keywords": [
+                    "Databricks notebook",
+                    "notebook",
+                    "interactive notebook",
+                    "notebook cells"
+                ],
+                "content": "A Databricks notebook is an interactive document. It combines executable SQL, Python, Scala, or R cells with text, visualizations, parameters, and results for collaborative exploration, development, and scheduled processing."
+            },
+            {
+                "id": 57,
+                "title": "What is a SQL warehouse?",
+                "keywords": [
+                    "SQL warehouse",
+                    "SQL warehouses",
+                    "warehouse compute",
+                    "Databricks SQL"
+                ],
+                "content": "A SQL warehouse is compute for SQL analytics. It runs queries, dashboards, and BI connections against lakehouse data, with sizing, scaling, and serverless options designed for concurrent analytical workloads."
+            },
+            {
+                "id": 58,
+                "title": "What is data engineering?",
+                "keywords": [
+                    "data engineering",
+                    "data engineer",
+                    "data engineers",
+                    "engineering pipelines"
+                ],
+                "content": "Data engineering makes data usable. It involves ingesting, cleaning, transforming, modeling, securing, orchestrating, and monitoring data so reliable datasets are available for analytics, reporting, machine learning, and operational applications."
+            },
+            {
+                "id": 59,
+                "title": "What are ETL and ELT?",
+                "keywords": [
+                    "ETL",
+                    "ELT",
+                    "extract transform load",
+                    "extract load transform"
+                ],
+                "content": "ETL and ELT are data integration patterns. ETL transforms data before loading it into a destination, while ELT loads data first and uses the destination platform to perform transformations."
+            },
+            {
+                "id": 60,
+                "title": "Batch processing and stream processing",
+                "keywords": [
+                    "batch processing",
+                    "stream processing",
+                    "batch versus streaming",
+                    "real-time processing"
+                ],
+                "content": "Batch and streaming process data differently. Batch workloads handle bounded collections on a schedule, while streaming workloads continuously process arriving events to produce results with lower latency."
+            },
+            {
+                "id": 61,
+                "title": "What is medallion architecture?",
+                "keywords": [
+                    "medallion architecture",
+                    "bronze layer",
+                    "silver layer",
+                    "gold layer"
+                ],
+                "content": "Medallion architecture refines data through layers. Bronze preserves raw ingested data, silver validates and cleans it, and gold presents enriched, aggregated, business-ready datasets for analytics and applications."
+            },
+            {
+                "id": 62,
+                "title": "What are ACID transactions?",
+                "keywords": [
+                    "ACID transactions",
+                    "atomicity",
+                    "consistency",
+                    "isolation durability"
+                ],
+                "content": "ACID properties make data operations reliable. Atomicity completes all changes or none, consistency preserves rules, isolation prevents concurrent interference, and durability ensures committed changes survive failures."
+            }
+        ]
+    }
+]
