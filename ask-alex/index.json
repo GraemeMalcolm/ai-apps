@@ -531,11 +531,12 @@
     },
     {
         "category": "Azure Databricks fundamentals",
-        "link": "https://learn.microsoft.com/en-us/azure/databricks/introduction/",
+        "link": "https://learn.microsoft.com/en-us/training/modules/explore-azure-databricks/",
         "documents": [
             {
                 "id": 47,
                 "title": "What is Azure Databricks?",
+                "video_url": "https://share.synthesia.io/embeds/videos/d236e33a-2516-40d6-904a-6e4c8118111c",
                 "keywords": [
                     "Databricks",
                     "Azure Databricks",
@@ -547,13 +548,14 @@
             {
                 "id": 48,
                 "title": "What is Apache Spark?",
+                "video_url": "https://share.synthesia.io/embeds/videos/ee8226eb-f402-4585-b9c5-0f588d13c0b6",
                 "keywords": [
                     "Apache Spark",
                     "Spark",
                     "distributed processing",
                     "Spark engine"
                 ],
-                "content": "Apache Spark is a distributed processing engine. It divides large data workloads across multiple compute nodes and provides APIs for SQL, Python, Scala, Java, machine learning, and real-time stream processing."
+                "content": "Apache Spark is a distributed processing engine on which Azure Databricks is built. It divides large data workloads across multiple compute nodes and provides APIs for SQL, Python, Scala, Java, machine learning, and real-time stream processing."
             },
             {
                 "id": 49,
@@ -569,6 +571,7 @@
             {
                 "id": 50,
                 "title": "What is a data warehouse?",
+                "video_url": "https://share.synthesia.io/embeds/videos/558e7219-b54a-47c5-a4b2-1f5b885ccc95",
                 "keywords": [
                     "data warehouse",
                     "data warehouses",
@@ -580,6 +583,7 @@
             {
                 "id": 51,
                 "title": "What is a data lakehouse?",
+                "video_url": "https://share.synthesia.io/embeds/videos/1094b2cb-c44e-4dfa-ac4d-fc10f73e51c4",
                 "keywords": [
                     "data lakehouse",
                     "lakehouse",
@@ -591,6 +595,7 @@
             {
                 "id": 52,
                 "title": "What is Delta Lake?",
+                "video_url": "https://share.synthesia.io/embeds/videos/f90c601d-9938-42bb-862d-104b1683c6fd",
                 "keywords": [
                     "Delta Lake",
                     "Delta table",
@@ -602,6 +607,7 @@
             {
                 "id": 53,
                 "title": "What is Unity Catalog?",
+                "video_url": "https://share.synthesia.io/embeds/videos/150d5065-db14-407a-96b2-4fdd492ac6af",
                 "keywords": [
                     "Unity Catalog",
                     "unified governance",
@@ -613,6 +619,7 @@
             {
                 "id": 54,
                 "title": "What is a Databricks workspace?",
+                "video_url": "https://share.synthesia.io/embeds/videos/4728833a-84b9-417b-b12c-4a5f0cf2f0b0",
                 "keywords": [
                     "Databricks workspace",
                     "workspace",
@@ -635,6 +642,7 @@
             {
                 "id": 56,
                 "title": "What is a Databricks notebook?",
+                "video_url": "https://share.synthesia.io/embeds/videos/936e6d58-651b-4211-9d60-4cdb8dd35e06",
                 "keywords": [
                     "Databricks notebook",
                     "notebook",
