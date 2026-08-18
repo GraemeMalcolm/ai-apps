@@ -608,8 +608,10 @@ function trimIncompleteSentence(text) {
         return text;
     }
 
-    // If text already ends with sentence-ending punctuation, it's complete
-    if (/[.!?]$/.test(text)) {
+    const trailingLine = text.slice(text.lastIndexOf('\n') + 1);
+
+    // A bare ordered-list marker such as "2." is not a complete ending.
+    if (/[.!?]$/.test(text) && !/^\s*\d+\.$/.test(trailingLine)) {
         return text;
     }
 
