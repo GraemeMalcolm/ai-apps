@@ -97,7 +97,7 @@ let wllamaShouldFailoverToBasic = false; // Flag to trigger failover from wllama
 let debugConfig = { enabled: false, forceWllamaGenerationFail: false };
 
 // Shared prompt constants for Wllama and Wikipedia modes
-const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Always respond with a single paragraph, using short sentences.';
+const SYSTEM_PROMPT = 'You are an AI assistant that helps people find information about computing history. Always respond using succinct language and short sentences.';
 
 // Vosk speech recognition (lazy-loaded fallback)
 let voskModel = null;
