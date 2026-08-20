@@ -29,10 +29,12 @@
                 "id": 3,
                 "title": "Configure compute features",
                 "keywords": [
-                    "Photon acceleration",
-                    "Databricks runtime",
-                    "Spark version",
-                    "ML runtime"
+                    "photon acceleration",
+                    "configure compute",
+                    "compute configuration",
+                    "configuring compute",
+                    "spark version",
+                    "ml runtime"
                 ],
                 "content": "Compute features tune execution. Select an Azure Databricks Runtime and Apache Spark version, enable Photon acceleration for supported SQL workloads, and choose machine learning runtimes when preinstalled ML libraries are required."
             },
@@ -76,7 +78,7 @@
                     "managed table",
                     "external table",
                     "materialized view",
-                    "DDL operations"
+                    "ddl operations"
                 ],
                 "content": "Tables and views expose governed data. Create managed or external tables, standard views, and materialized views, and use data definition language operations to alter, replace, describe, or remove these objects."
             },
@@ -86,7 +88,7 @@
                 "keywords": [
                     "foreign catalog",
                     "catalog connection",
-                    "Genie instructions",
+                    "genie",
                     "data discovery"
                 ],
                 "content": "External discovery broadens the lakehouse. Configure connections and foreign catalogs for federated sources, then provide AI/BI Genie instructions, descriptions, and example queries that help users discover and interpret trusted data."
@@ -123,7 +125,7 @@
                 "id": 11,
                 "title": "Use Azure Key Vault secrets",
                 "keywords": [
-                    "Key Vault",
+                    "key vault",
                     "secret scope",
                     "Databricks secrets",
                     "credential protection"
@@ -147,7 +149,7 @@
                 "keywords": [
                     "table descriptions",
                     "column definitions",
-                    "ABAC policies",
+                    "abac policies",
                     "governance tags"
                 ],
                 "content": "Metadata makes assets understandable. Preserve table and column descriptions for discovery, apply governed tags to data objects, and use attribute-based access control policies to enforce scalable rules based on those attributes."
@@ -168,7 +170,7 @@
                 "title": "Track lineage and audit activity",
                 "keywords": [
                     "data lineage",
-                    "Catalog Explorer",
+                    "catalog explorer",
                     "audit logging",
                     "object history"
                 ],
@@ -178,7 +180,7 @@
                 "id": 16,
                 "title": "Share data with Delta Sharing",
                 "keywords": [
-                    "Delta Sharing",
+                    "delta sharing",
                     "share recipients",
                     "external sharing",
                     "secure exchange"
@@ -207,9 +209,9 @@
                 "title": "Choose a data ingestion tool",
                 "keywords": [
                     "ingestion tools",
-                    "Lakeflow Connect",
+                    "lakeflow connect",
                     "ingestion notebooks",
-                    "Data Factory"
+                    "data factory"
                 ],
                 "content": "The right tool reduces complexity. Choose Lakeflow Connect for managed connectors, notebooks for custom processing, or Azure Data Factory for broader integration and orchestration based on source, transformation, and operations needs."
             },
@@ -239,7 +241,7 @@
                 "id": 21,
                 "title": "Model changing and historical data",
                 "keywords": [
-                    "SCD types",
+                    "scd types",
                     "temporal table",
                     "history tracking",
                     "effective dates"
@@ -261,10 +263,9 @@
                 "id": 23,
                 "title": "Optimize table layout with clustering",
                 "keywords": [
-                    "liquid clustering",
-                    "Z ordering",
-                    "deletion vectors",
-                    "clustering strategy"
+                    "clustering",
+                    "z ordering",
+                    "deletion vectors"
                 ],
                 "content": "Physical layout influences query speed. Use liquid clustering or Z-ordering around common access patterns, and understand how deletion vectors improve row-level changes by delaying expensive file rewrites."
             },
@@ -283,10 +284,10 @@
                 "id": 25,
                 "title": "Ingest data with SQL",
                 "keywords": [
-                    "COPY INTO",
-                    "CTAS statement",
+                    "copy into",
+                    "ctas statement",
                     "replace table",
-                    "SQL ingestion"
+                    "sql ingestion"
                 ],
                 "content": "SQL can load files and query results. Use CREATE TABLE AS SELECT, CREATE OR REPLACE TABLE, and COPY INTO for repeatable ingestion patterns with appropriate schemas, file options, and idempotency behavior."
             },
@@ -295,7 +296,7 @@
                 "title": "Process change data capture",
                 "keywords": [
                     "change data capture",
-                    "CDC feed",
+                    "cdc feed",
                     "incremental changes",
                     "change sequence"
                 ],
@@ -305,9 +306,9 @@
                 "id": 27,
                 "title": "Ingest streaming data",
                 "keywords": [
-                    "Structured Streaming",
-                    "Event Hubs",
-                    "stream checkpoints",
+                    "streaming",
+                    "stream",
+                    "event hubs",
                     "watermarking"
                 ],
                 "content": "Streaming ingestion processes continuous events. Spark Structured Streaming can read Azure Event Hubs and other sources using checkpoints, triggers, watermarks, and fault-tolerant sinks to provide scalable incremental processing."
@@ -657,10 +658,9 @@
                 "id": 57,
                 "title": "What is a SQL warehouse?",
                 "keywords": [
-                    "sql warehouse",
-                    "sql warehouses",
-                    "warehouse compute",
-                    "databricks sql"
+                    "sql",
+                    "warehouse",
+                    "warehouses"
                 ],
                 "content": "A SQL warehouse is compute for SQL analytics. It runs queries, dashboards, and BI connections against lakehouse data, with sizing, scaling, and serverless options designed for concurrent analytical workloads."
             },
