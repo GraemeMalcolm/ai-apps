@@ -419,9 +419,9 @@
             },
             {
                 "id": 37,
-                "title": "Build Lakeflow Spark Declarative Pipelines",
+                "title": "Build lakeflow Spark Declarative Pipelines",
                 "keywords": [
-                    "Lakeflow pipelines",
+                    "lakeflow pipelines",
                     "declarative flows",
                     "streaming tables",
                     "materialized views"
@@ -432,7 +432,7 @@
                 "id": 38,
                 "title": "Create and configure Lakeflow Jobs",
                 "keywords": [
-                    "Lakeflow Jobs",
+                    "lakeflow jobs",
                     "job setup",
                     "job configuration",
                     "job tasks"
@@ -454,7 +454,7 @@
                 "id": 40,
                 "title": "Use Git development workflows",
                 "keywords": [
-                    "Git folders",
+                    "git",
                     "branch strategy",
                     "pull requests",
                     "merge conflicts"
@@ -476,10 +476,10 @@
                 "id": 42,
                 "title": "Package and deploy Databricks bundles",
                 "keywords": [
-                    "Asset Bundles",
+                    "asset bundles",
                     "bundle packaging",
-                    "Databricks CLI",
-                    "deployment API"
+                    "databricks cli",
+                    "deployment api"
                 ],
                 "content": "Bundles make deployment repeatable. Configure and package Databricks resources and source files as an Asset Bundle, define environment targets and variables, and deploy through the Databricks CLI or REST APIs."
             },
@@ -498,7 +498,9 @@
                 "id": 44,
                 "title": "Troubleshoot and optimize Spark workloads",
                 "keywords": [
-                    "Spark UI",
+                    "spark workloads",
+                    "troubleshoot spark",
+                    "optimize spark",
                     "query profile",
                     "data skew",
                     "shuffle issues"
@@ -509,10 +511,10 @@
                 "id": 45,
                 "title": "Optimize and maintain Delta tables",
                 "keywords": [
-                    "OPTIMIZE command",
-                    "VACUUM command",
+                    "optimize command",
+                    "vacuum command",
                     "file compaction",
-                    "Delta maintenance"
+                    "delta maintenance"
                 ],
                 "content": "Delta maintenance balances speed and storage cost. Use OPTIMIZE to compact small files and improve data layout, and apply VACUUM with a safe retention period to remove obsolete files."
             },
@@ -521,7 +523,7 @@
                 "title": "Stream logs and configure Azure Monitor alerts",
                 "keywords": [
                     "Log Analytics",
-                    "Azure Monitor",
+                    "azure monitor",
                     "log streaming",
                     "monitor alerts"
                 ],
@@ -547,13 +549,12 @@
             },
             {
                 "id": 48,
-                "title": "What is Apache Spark?",
+                "title": "The databricks runtime and Spark engine",
                 "video_url": "https://share.synthesia.io/embeds/videos/ee8226eb-f402-4585-b9c5-0f588d13c0b6",
                 "keywords": [
-                    "Apache Spark",
-                    "Spark",
+                    "spark",
                     "distributed processing",
-                    "Spark engine"
+                    "databricks runtime"
                 ],
                 "content": "Apache Spark is a distributed processing engine on which Azure Databricks is built. It divides large data workloads across multiple compute nodes and provides APIs for SQL, Python, Scala, Java, machine learning, and real-time stream processing."
             },
@@ -587,6 +588,7 @@
                 "keywords": [
                     "data lakehouse",
                     "lakehouse",
+                    "lake house",
                     "lakehouse architecture",
                     "lakehouse platform"
                 ],
@@ -597,9 +599,9 @@
                 "title": "What is Delta Lake?",
                 "video_url": "https://share.synthesia.io/embeds/videos/f90c601d-9938-42bb-862d-104b1683c6fd",
                 "keywords": [
-                    "Delta Lake",
-                    "Delta table",
-                    "Delta tables",
+                    "delta lake",
+                    "delta table",
+                    "delta tables",
                     "transaction log"
                 ],
                 "content": "Delta Lake is an open storage layer. It adds a transaction log, ACID reliability, schema controls, scalable metadata, and unified batch and streaming support to Parquet data stored in a lakehouse."
@@ -609,10 +611,10 @@
                 "title": "What is Unity Catalog?",
                 "video_url": "https://share.synthesia.io/embeds/videos/150d5065-db14-407a-96b2-4fdd492ac6af",
                 "keywords": [
-                    "Unity Catalog",
+                    "unity catalog",
                     "unified governance",
                     "governance layer",
-                    "Databricks governance"
+                    "databricks governance"
                 ],
                 "content": "Unity Catalog is the Databricks governance layer. It centrally manages discovery, permissions, lineage, auditing, and secure access for data and AI assets across users, workspaces, and supported cloud storage locations."
             },
@@ -621,7 +623,7 @@
                 "title": "What is a Databricks workspace?",
                 "video_url": "https://share.synthesia.io/embeds/videos/4728833a-84b9-417b-b12c-4a5f0cf2f0b0",
                 "keywords": [
-                    "Databricks workspace",
+                    "databricks workspace",
                     "workspace",
                     "workspace concept",
                     "collaborative environment"
@@ -644,7 +646,7 @@
                 "title": "What is a Databricks notebook?",
                 "video_url": "https://share.synthesia.io/embeds/videos/936e6d58-651b-4211-9d60-4cdb8dd35e06",
                 "keywords": [
-                    "Databricks notebook",
+                    "databricks notebook",
                     "notebook",
                     "interactive notebook",
                     "notebook cells"
@@ -655,10 +657,10 @@
                 "id": 57,
                 "title": "What is a SQL warehouse?",
                 "keywords": [
-                    "SQL warehouse",
-                    "SQL warehouses",
+                    "sql warehouse",
+                    "sql warehouses",
                     "warehouse compute",
-                    "Databricks SQL"
+                    "databricks sql"
                 ],
                 "content": "A SQL warehouse is compute for SQL analytics. It runs queries, dashboards, and BI connections against lakehouse data, with sizing, scaling, and serverless options designed for concurrent analytical workloads."
             },
@@ -677,8 +679,8 @@
                 "id": 59,
                 "title": "What are ETL and ELT?",
                 "keywords": [
-                    "ETL",
-                    "ELT",
+                    "etl",
+                    "elt",
                     "extract transform load",
                     "extract load transform"
                 ],
@@ -710,10 +712,10 @@
                 "id": 62,
                 "title": "What are ACID transactions?",
                 "keywords": [
-                    "ACID transactions",
+                    "acid transactions",
                     "atomicity",
                     "consistency",
-                    "isolation durability"
+                    "isolation"
                 ],
                 "content": "ACID properties make data operations reliable. Atomicity completes all changes or none, consistency preserves rules, isolation prevents concurrent interference, and durability ensures committed changes survive failures."
             }
